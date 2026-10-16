@@ -1160,11 +1160,9 @@ static void notify_pickup(int node)
     case PK_DOUBLE: mod_add(MOD_DOUBLE); play_ci(&snd_powerup); break;
     case PK_JETPACK: start_jetpack(0, 0); play_ci(&snd_powerup); break;
     case PK_MYSTERY:
-        /* caja misteriosa: premio en monedas (sin tienda online) */
+        /* MysteryBoxPickup: se abre al terminar la carrera */
+        ginfo.boxes_pending++;
         score += score_multiplier() * 50;
-        ginfo.total_coins += 50 + rnd_range(0, 4) * 50;
-        ginfo.message = "Caja misteriosa: monedas!";
-        ginfo.message_t = game_time;
         play_ci(&snd_powerup);
         break;
     default: break;
@@ -1426,6 +1424,7 @@ static void intro_tick(void)
     guard_on_enable();
     if (track_running_tutorial) { guard_reset_catch_up(); ch.stumble = 0; }
     running_begin();
+    ginfo.headstart_until = (ginfo.hs500 > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
 }
 
 static void running_begin(void)
@@ -1765,6 +1764,8 @@ static void die_tick(float dt)
         /* fin de la partida: puntuacion final = puntos + monedas*2*multiplicador */
         ginfo.final_score = score + coins_run * 2 * 1;
         ginfo.total_coins += coins_run;
+        ginfo.gameover_coins = coins_run;
+        ginfo.reward[0] = 0;
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
         game_save();
         change_state(GS_GAMEOVER);
@@ -1881,32 +1882,147 @@ void game_init(void)
     music_set_volume(0.25f);
 }
 
-/* ------------------------------------------------------------ entradas */
-void game_input(int left, int right, int up, int down, int board, int start, int confirm)
+/* ------------------------------------------------------------ tienda (Upgrades.cs) */
+enum { SK_AMOUNT, SK_TIER, SK_BOX };
+const ShopItem shop_items[] = {
+    {"Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
+    {"Headstart 250", "icon_upgrades_headstart500", SK_AMOUNT, 1},
+    {"Headstart 1000", "icon_upgrades_headstart2000", SK_AMOUNT, 2},
+    {"Caja misteriosa", "icon_upgrades_mysteryBox", SK_BOX, 0},
+    {"Jetpack", "icon_upgrades_jetpack", SK_TIER, PW_JETPACK},
+    {"Super Sneakers", "icon_upgrades_superSneakers", SK_TIER, PW_SNEAKERS},
+    {"Coin Magnet", "icon_upgrades_coinMagnet", SK_TIER, PW_MAGNET},
+    {"2x Multiplier", "icon_upgrades_doubleScore", SK_TIER, PW_DOUBLE},
+};
+const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
+static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
+
+int shop_price(int i)
 {
-    if (start && (state == GS_RUNNING || state == GS_JETPACK || state == GS_INTRO)) {
-        ginfo.paused = !ginfo.paused;
-        snd_pause_all(ginfo.paused);
-        music_pause(ginfo.paused);
+    const ShopItem *it = &shop_items[i];
+    if (it->kind == SK_BOX) return 500;
+    if (it->kind == SK_AMOUNT) return it->idx == 0 ? 300 : it->idx == 1 ? 400 : 2000;
+    int t = upgrade_tier[it->idx];
+    return t >= 5 ? -1 : tier_prices[t + 1];
+}
+
+int shop_amount(int i)
+{
+    const ShopItem *it = &shop_items[i];
+    if (it->kind == SK_AMOUNT) return it->idx == 0 ? ginfo.hoverboards : it->idx == 1 ? ginfo.hs500 : ginfo.hs2000;
+    if (it->kind == SK_TIER) return upgrade_tier[it->idx];
+    return ginfo.boxes_pending;
+}
+
+/* MysteryBox.Roll() (los personajes y trofeos del original se convierten en monedas) */
+static void mystery_open(void)
+{
+    if (ginfo.boxes_pending <= 0) return;
+    ginfo.boxes_pending--;
+    ginfo.boxes_opened++;
+    int coins = 0, hb = 0, h5 = 0, h20 = 0;
+    if (ginfo.boxes_opened == 1) coins = 300;
+    else if (ginfo.boxes_opened == 2) h5 = 1;
+    else if (ginfo.boxes_opened == 3) coins = 600;
+    else {
+        float r = rnd01();
+        if (r < 0.40f) coins = 100;
+        else if (r < 0.45f) coins = 100;
+        else if (r < 0.69f) coins = rnd_range(200, 300);
+        else if (r < 0.73f) h5 = 1;
+        else if (r < 0.80f) coins = 500;
+        else if (r < 0.87f) hb = 2;
+        else if (r < 0.92f) coins = 1000;
+        else if (r < 0.95f) coins = 1500;
+        else if (r < 0.96f) hb = rnd_range(0, 7) + 3;
+        else if (r < 0.97f) h20 = 1;
+        else if (r < 0.98f) coins = 2500;
+        else if (r < 0.988f) hb = 10;
+        else if (r < 0.993f) coins = 5000;
+        else if (r < 0.998f) h20 = 3;
+        else coins = 10000;
+    }
+    ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20;
+    if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d monedas", coins);
+    else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
+    else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
+    else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
+    ginfo.reward_t = game_time;
+    snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+    game_save();
+}
+
+static void shop_buy(int i)
+{
+    int price = shop_price(i);
+    if (price < 0 || ginfo.total_coins < price) { snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0); return; }
+    ginfo.total_coins -= price;
+    const ShopItem *it = &shop_items[i];
+    if (it->kind == SK_AMOUNT) {
+        if (it->idx == 0) ginfo.hoverboards++;
+        else if (it->idx == 1) ginfo.hs500++;
+        else ginfo.hs2000++;
+    } else if (it->kind == SK_TIER) upgrade_tier[it->idx]++;
+    else { ginfo.boxes_pending++; mystery_open(); }
+    snd_play(sfx_find("Hr_gui_coin"), 0.8f, 1.0f, 0);
+    game_save();
+}
+
+/* ------------------------------------------------------------ entradas */
+static void use_headstart(int big)
+{
+    if (state != GS_RUNNING || game_time > ginfo.headstart_until) return;
+    if (big ? ginfo.hs2000 <= 0 : ginfo.hs500 <= 0) return;
+    if (big) ginfo.hs2000--; else ginfo.hs500--;
+    ginfo.headstart_until = 0;
+    /* Game.StartHeadStart500/2000: distancia = duracion (metros) * 8, velocidad 1000 */
+    start_jetpack(1, (big ? 1000.0f : 250.0f) * DISTANCE_PER_METER);
+    game_save();
+}
+
+void game_input(unsigned in)
+{
+    int confirm = (in & IN_CROSS) != 0;
+    if ((in & IN_START) && (state == GS_RUNNING || state == GS_JETPACK || state == GS_INTRO)) {
+        if (!ginfo.paused) {
+            ginfo.paused = 1;
+            snd_pause_all(1);
+            music_pause(1);
+        } else if (ginfo.countdown <= 0) ginfo.countdown = 3.0f;   /* "Starting in" 3, 2, 1 */
         return;
     }
     if (ginfo.paused) {
-        if (confirm) { ginfo.paused = 0; snd_pause_all(0); music_pause(0); }
+        if (confirm && ginfo.countdown <= 0) ginfo.countdown = 3.0f;
         return;
     }
     switch (state) {
     case GS_MENU:
-        if (confirm || start) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
-        if (board && ginfo.total_coins >= 300) { ginfo.total_coins -= 300; ginfo.hoverboards++; game_save(); snd_play(sfx_tap, 1, 1, 0); }
+        if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
+        else if (in & (IN_TRIANGLE | IN_SQUARE)) { snd_play(sfx_tap, 1, 1, 0); ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
+        break;
+    case GS_SHOP:
+        if ((in & IN_UP) && !(in & IN_CROSS)) ginfo.shop_sel = (ginfo.shop_sel + shop_count - 1) % shop_count;
+        if ((in & IN_DOWN) && !(in & IN_CIRCLE)) ginfo.shop_sel = (ginfo.shop_sel + 1) % shop_count;
+        if (confirm) shop_buy(ginfo.shop_sel);
+        if (in & (IN_CIRCLE | IN_TRIANGLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
     case GS_GAMEOVER:
-        if (confirm || start) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
+        if (confirm || (in & IN_START)) {
+            if (ginfo.boxes_pending > 0) mystery_open();
+            else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
+        }
         break;
     case GS_DIE:
-        if (up || confirm) in_up = 1;
+        if (in & (IN_UP | IN_CROSS)) in_up = 1;
         break;
     default:
-        in_left |= left; in_right |= right; in_up |= up; in_down |= down; in_board |= board;
+        if (in & IN_L) use_headstart(0);
+        if (in & IN_R) use_headstart(1);
+        in_left |= (in & IN_LEFT) != 0;
+        in_right |= (in & IN_RIGHT) != 0;
+        in_up |= (in & IN_UP) != 0;
+        in_down |= (in & IN_DOWN) != 0;
+        in_board |= (in & IN_BOARD) != 0;
         break;
     }
 }
@@ -1916,7 +2032,13 @@ static int extra_cols[8];
 
 void game_update(float dt)
 {
-    if (ginfo.paused) return;
+    if (ginfo.paused) {
+        if (ginfo.countdown > 0) {
+            ginfo.countdown -= dt;
+            if (ginfo.countdown <= 0) { ginfo.countdown = 0; ginfo.paused = 0; snd_pause_all(0); music_pause(0); }
+        }
+        return;
+    }
     if (dt > 1.0f / 15.0f) dt = 1.0f / 15.0f;
     game_time += dt;
     scene_char_z = ch.z;
@@ -2030,11 +2152,14 @@ void game_draw(void)
 }
 
 /* ------------------------------------------------------------ partida guardada */
+#define SAVE_MAGIC 0x53535032
 void game_save(void)
 {
     FILE *f = fopen("save.dat", "wb");
     if (!f) return;
-    int d[4] = {0x53535031, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards};
+    int d[16] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
+                 ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
+                 upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, 0, 0, 0};
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2043,11 +2168,16 @@ void game_load(void)
 {
     FILE *f = fopen("save.dat", "rb");
     if (!f) return;
-    int d[4];
-    if (fread(d, sizeof(d), 1, f) == 1 && d[0] == 0x53535031) {
-        ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3];
-    }
+    int d[16];
+    memset(d, 0, sizeof(d));
+    int n = fread(d, 4, 16, f);
     fclose(f);
+    if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; return; }
+    if (n < 16 || d[0] != SAVE_MAGIC) return;
+    ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; ginfo.hs500 = d[4]; ginfo.hs2000 = d[5];
+    ginfo.boxes_pending = d[6]; ginfo.boxes_opened = d[7];
+    upgrade_tier[PW_JETPACK] = d[8]; upgrade_tier[PW_SNEAKERS] = d[9]; upgrade_tier[PW_MAGNET] = d[10]; upgrade_tier[PW_DOUBLE] = d[11];
+    tutorial_completed = d[12] ? 1 : 1;
 }
 
 void scene_on_chunk_laid(int chunk) { (void)chunk; }

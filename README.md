@@ -31,7 +31,7 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 
 ### Pendiente
 
-* Tienda, misiones, personajes desbloqueables y la palabra del día (necesitaban conexión en el original).
+* Misiones (el multiplicador sube con ellas), personajes desbloqueables y la palabra del día.
 * Tutorial (el tramo existe; de momento se empieza como si ya se hubiera completado).
 * Partículas (chispas de la tabla, polvo del jetpack).
 
@@ -85,10 +85,14 @@ El original se jugaba deslizando el dedo; en la PSP:
 | ↑ o ✕ | Saltar |
 | ↓ o ○ | Rodar |
 | □ o △ | Activar la tabla (hoverboard), equivale al doble toque |
-| START | Pausa |
+| START | Pausa (al reanudar hay cuenta atrás "Starting in 3, 2, 1" como en el original) |
+| L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
 | L + SELECT | Medidor de rendimiento |
 
-En el menú, □ compra una tabla por 300 monedas (como en la tienda del original).
+En el menú, △ o □ abren la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
+Headstart 1000 (2000), cajas misteriosas (500) y los 5 niveles de mejora del jetpack, las super zapatillas, el imán
+y el multiplicador ×2 (500, 1500, 3000, 10000, 30000). Las cajas misteriosas recogidas en la carrera se abren al
+terminar, con las probabilidades de `MysteryBox.Roll()`. La partida se guarda en `save.dat`.
 
 ## Rendimiento y pruebas sin PSP
 

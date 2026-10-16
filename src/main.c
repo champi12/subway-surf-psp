@@ -98,7 +98,16 @@ int main(int argc, char **argv)
 #ifdef AUTOTEST
         /* juego automatico para probar en el emulador sin mandos */
         frame_no++;
+#ifdef AT_UI
+        if (frame_no == 40) pr |= PSP_CTRL_TRIANGLE;
+        if (frame_no == 70 || frame_no == 80) pr |= PSP_CTRL_DOWN;
+        if (frame_no == 100) pr |= PSP_CTRL_CIRCLE;
+        if (ginfo.state == GS_MENU && frame_no > 120) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 700) { pr |= PSP_CTRL_START; }
+        if (frame_no == 740) { pr |= PSP_CTRL_START; }
+#else
         if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
+#endif
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
         {
             extern void game_debug_powerup(int k);
@@ -107,10 +116,20 @@ int main(int argc, char **argv)
         }
 
 #endif
-        game_input((pr & PSP_CTRL_LEFT) || sl, (pr & PSP_CTRL_RIGHT) || sr,
-                   (pr & (PSP_CTRL_UP | PSP_CTRL_CROSS)) || su, (pr & (PSP_CTRL_DOWN | PSP_CTRL_CIRCLE)) || sd,
-                   (pr & (PSP_CTRL_SQUARE | PSP_CTRL_TRIANGLE)) != 0, (pr & PSP_CTRL_START) != 0,
-                   (pr & PSP_CTRL_CROSS) != 0);
+        unsigned in = 0;
+        if ((pr & PSP_CTRL_LEFT) || sl) in |= IN_LEFT;
+        if ((pr & PSP_CTRL_RIGHT) || sr) in |= IN_RIGHT;
+        if ((pr & (PSP_CTRL_UP | PSP_CTRL_CROSS)) || su) in |= IN_UP;
+        if ((pr & (PSP_CTRL_DOWN | PSP_CTRL_CIRCLE)) || sd) in |= IN_DOWN;
+        if (pr & (PSP_CTRL_SQUARE | PSP_CTRL_TRIANGLE)) in |= IN_BOARD;
+        if (pr & PSP_CTRL_START) in |= IN_START;
+        if (pr & PSP_CTRL_CROSS) in |= IN_CROSS;
+        if (pr & PSP_CTRL_CIRCLE) in |= IN_CIRCLE;
+        if (pr & PSP_CTRL_TRIANGLE) in |= IN_TRIANGLE;
+        if (pr & PSP_CTRL_SQUARE) in |= IN_SQUARE;
+        if (pr & PSP_CTRL_LTRIGGER) in |= IN_L;
+        if (pr & PSP_CTRL_RTRIGGER) in |= IN_R;
+        game_input(in);
 
         unsigned int tu0 = sceKernelGetSystemTimeLow();
         game_update(dt);
