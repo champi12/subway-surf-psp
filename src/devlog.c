@@ -268,12 +268,19 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     if (r_stat_clipped > win.clip) win.clip = r_stat_clipped;
     win.dropped += r_mem.dropped;
 
+    /* frame_ms es lo que duro la vuelta ANTERIOR del bucle: su CPU, su espera y sus cargas son las de la llamada previa */
+    static float prev_cpu, prev_wait;
+    static int prev_loads;
     if (hitch && win.hitch_lines < 5) {
         win.hitch_lines++;
-        dlog("TIRON %.0f ms (cpu %.1f ms, ge %.1f ms) en %s a %d m%s", frame_ms, cpu_ms, wait_ms,
-             state_name(ginfo.state), ginfo.meters,
-             r_mem.frame_texloads ? " - cargando texturas de la Memory Stick" : "");
+        float other = frame_ms - prev_cpu - prev_wait;
+        dlog("TIRON %.0f ms (cpu %.1f ms, ge %.1f ms, otros %.1f ms) en %s a %d m%s", frame_ms, prev_cpu, prev_wait,
+             other > 0 ? other : 0, state_name(ginfo.state), ginfo.meters,
+             prev_loads ? " - cargando texturas de la Memory Stick" : "");
     }
+    prev_cpu = cpu_ms;
+    prev_wait = wait_ms;
+    prev_loads = r_mem.frame_texloads;
     if (ginfo.state != last_state) {
         dlog("ESTADO %s -> %s", last_state < 0 ? "-" : state_name(last_state), state_name(ginfo.state));
         if (ginfo.state == GS_INTRO || (ginfo.state == GS_RUNNING && last_state == GS_MENU)) run_start_t = ginfo.time;

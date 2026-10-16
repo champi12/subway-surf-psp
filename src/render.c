@@ -77,6 +77,52 @@ static void *vram_alloc(int bytes)
     return p;
 }
 
+/* lee la textura de la Memory Stick la primera vez que se usa (y la sube a la VRAM si cabe) */
+static int tex_ensure(int t)
+{
+    Texture *tx = &gd.tex[t];
+    if (tx->loaded) return 0;
+    if (tex_failed && tex_failed[t]) return -1;
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    if (data_tex_load(t) < 0) {
+        dlog_error("Sin memoria para la textura %s (%d KB)", tx->name, (int)((tx->databytes + tx->palbytes) / 1024));
+        if (tex_failed) tex_failed[t] = 1;
+        return -1;
+    }
+    const char *where = "RAM";
+    /* las texturas de 16 bits del escenario van a la VRAM si caben */
+    if (tx->fmt != TEX_T8 && t < 64) {
+        void *v = vram_alloc(tx->databytes);
+        if (v) {
+            memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
+            free(tx->data);
+            tx->data = v;
+            vram_tex_ptr[t] = v;
+            vram_tex_next++;
+            r_mem.vram_tex += (int)tx->databytes;
+            r_mem.vram_tex_n++;
+            where = "VRAM";
+        } else {
+            r_mem.vram_full++;
+            dlog("AVISO la textura %s (%d KB) no cabe en la VRAM: se queda en la RAM (mas lenta)", tx->name, (int)(tx->databytes / 1024));
+        }
+    }
+    if (where[0] == 'R') { r_mem.ram_tex += (int)(tx->databytes + tx->palbytes); r_mem.ram_tex_n++; }
+    sceKernelDcacheWritebackAll();
+    r_mem.frame_texloads++;
+    dlog("TEXTURA %s %dx%d %s %d KB en %s (%.1f ms)", tx->name, tx->w, tx->h,
+         tx->fmt == TEX_T8 ? "paleta" : tx->fmt == TEX_4444 ? "4444" : tx->fmt == TEX_5650 ? "5650" : "8888",
+         (int)((tx->databytes + tx->palbytes) / 1024), where, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
+    return 0;
+}
+
+/* carga una textura por nombre antes de empezar a jugar, para que no se lea en plena carrera */
+void r_preload_texture(const char *name)
+{
+    for (int t = 0; t < gd.ntex; t++)
+        if (!strcmp(gd.tex[t].name, name)) { tex_ensure(t); return; }
+}
+
 void r_bind_texture(int t)
 {
     if (t == cur_tex) return;
@@ -84,41 +130,11 @@ void r_bind_texture(int t)
     if (t < 0) { sceGuDisable(GU_TEXTURE_2D); return; }
     sceGuEnable(GU_TEXTURE_2D);
     Texture *tx = &gd.tex[t];
-    if (!tx->loaded) {
-        if (tex_failed && tex_failed[t]) { sceGuDisable(GU_TEXTURE_2D); cur_tex = -1; return; }
-        unsigned int t0 = sceKernelGetSystemTimeLow();
-        if (data_tex_load(t) < 0) {
-            /* sin memoria: se dibuja sin textura en lugar de leer basura */
-            dlog_error("Sin memoria para la textura %s (%d KB)", tx->name, (int)((tx->databytes + tx->palbytes) / 1024));
-            if (tex_failed) tex_failed[t] = 1;
-            sceGuDisable(GU_TEXTURE_2D);
-            cur_tex = -1;
-            return;
-        }
-        const char *where = "RAM";
-        /* las texturas de 16 bits del escenario van a la VRAM si caben */
-        if (tx->fmt != TEX_T8 && t < 64) {
-            void *v = vram_alloc(tx->databytes);
-            if (v) {
-                memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
-                free(tx->data);
-                tx->data = v;
-                vram_tex_ptr[t] = v;
-                vram_tex_next++;
-                r_mem.vram_tex += (int)tx->databytes;
-                r_mem.vram_tex_n++;
-                where = "VRAM";
-            } else {
-                r_mem.vram_full++;
-                dlog("AVISO la textura %s (%d KB) no cabe en la VRAM: se queda en la RAM (mas lenta)", tx->name, (int)(tx->databytes / 1024));
-            }
-        }
-        if (where[0] == 'R') { r_mem.ram_tex += (int)(tx->databytes + tx->palbytes); r_mem.ram_tex_n++; }
-        sceKernelDcacheWritebackAll();
-        r_mem.frame_texloads++;
-        dlog("TEXTURA %s %dx%d %s %d KB en %s (%.1f ms)", tx->name, tx->w, tx->h,
-             tx->fmt == TEX_T8 ? "paleta" : tx->fmt == TEX_4444 ? "4444" : tx->fmt == TEX_5650 ? "5650" : "8888",
-             (int)((tx->databytes + tx->palbytes) / 1024), where, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
+    if (tex_ensure(t) < 0) {
+        /* sin memoria: se dibuja sin textura en lugar de leer basura */
+        sceGuDisable(GU_TEXTURE_2D);
+        cur_tex = -1;
+        return;
     }
     switch (tx->fmt) {
     case TEX_T8:

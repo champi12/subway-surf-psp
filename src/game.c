@@ -2121,7 +2121,11 @@ void game_update(float dt)
     if (ch.stumble && game_time >= ch.stumble_end) { ch.stumble = 0; guard_reset_catch_up(); }
     if (stumble_pending && game_time >= stumble_pending_t) {
         stumble_pending = 0;
-        if (state == GS_RUNNING) { anim_crossfade(&anim_char, "stumbleFall", 0.2f); game_die(); }
+        if (state == GS_RUNNING) {
+            dlog("MUERTE por tropezar dos veces seguidas: te atrapa el inspector a %d m", ginfo.meters);
+            anim_crossfade(&anim_char, "stumbleFall", 0.2f);
+            game_die();
+        }
     }
     if (ch.hbt == 1) {
         float e = clamp01((game_time - ch.hbt_start) / 0.5f);

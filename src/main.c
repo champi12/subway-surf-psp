@@ -77,6 +77,9 @@ int main(int argc, char **argv)
         dlog("GE iniciado: VRAM framebuffers+Z %d KB, texturas hasta %d KB | VFPU %s", r_mem.vram_fb / 1024,
              (R_VRAM_TOTAL - r_mem.vram_fb) / 1024, r_using_vfpu() ? "si (autotest correcto)" : "NO (autotest fallido, se usa la CPU)");
     }
+    /* texturas que si no se leerian de la Memory Stick en plena carrera (tiron de 50-130 ms en la consola) */
+    r_preload_texture("enemies");
+    r_preload_texture("jetpackSmoke");
     audio_init();
     scene_init();
     game_load();

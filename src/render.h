@@ -46,5 +46,6 @@ void r_begin_2d(void);
 void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, float u1, float v1, unsigned int abgr);
 void r_rect(float x, float y, float w, float h, unsigned int abgr);
 void r_bind_texture(int tex);
+void r_preload_texture(const char *name);
 
 #endif
