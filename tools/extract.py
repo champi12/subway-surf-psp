@@ -1,0 +1,972 @@
+#!/usr/bin/env python3
+"""Convierte el APK de Subway Surfers 1.0 (Android, Unity 3.5) en los datos del port de PSP.
+
+Uso:
+    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/
+
+Genera en data/:
+    world.bin   jerarquia de la escena (tramos de via, obstaculos, monedas, personaje...)
+    mesh.bin    modelos (pistas, trenes, personajes) con triangulos grandes subdivididos
+    tex.bin     texturas reducidas a 512x512 maximo, con paleta de 256 colores o 16 bits, swizzled
+    anim.bin    animaciones muestreadas a 30 fps
+    sfx.bin     efectos de sonido (PCM 16 bits 22050 Hz mono)
+    music/      musica original (MP3, la PSP la decodifica por hardware)
+    wav/        todos los sonidos en WAV para convertirlos a AT3 si se quiere
+
+Nada de esto se guarda en el repositorio: cada uno lo genera con su propia copia del juego.
+"""
+import io
+import math
+import os
+import struct
+import sys
+import tempfile
+import wave
+import zipfile
+
+import numpy as np
+from PIL import Image
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from unityscene import Scene  # noqa: E402
+from UnityPy.helpers.MeshHelper import MeshHandler  # noqa: E402
+
+# ---------------------------------------------------------------- formato
+# Debe coincidir con src/worldfmt.h
+C_MESH, C_SKIN, C_BOX, C_SPHERE, C_CAPSULE, C_TRACKCHUNK, C_RANDOMIZER, C_RANDTARGET, C_GROUP, \
+    C_SPAWNPOINT, C_RANDOFFSET, C_MIRROR, C_MOVINGTRAIN, C_MOVINGCOIN, C_COINPLACE, C_COINLINE, \
+    C_COINJUMP, C_PICKUP, C_PICKUPROTATE, C_PICKUPDEFAULT, C_TUNNEL, C_TRACKOBJECT, C_RENDACT, \
+    C_SNAP, C_GLOW, C_TUTORIAL, C_ANIMATION, C_CHARCTRL, C_CAMERA, C_COIN, C_VISIBLE, C_SSGROUP, \
+    C_ONTRIGGER, C_DAILYLETTER, C_CURVEPOINT, C_JETCLOUD = range(1, 37)
+
+TAG_IDS = {'Untagged': 0, 'Player': 1, 'HitMovingTrain': 2, 'JumpTrain': 3, 'DodgeTrain': 4, 'RollBarrier': 5,
+           'JumpBarrier': 6, 'HitBarrier': 7, 'HitTrain': 8, 'Ground': 9, 'Station': 10, 'Subway': 11,
+           'JumpHighBarrier': 12, 'MainCamera': 13}
+
+PICKUP_KIND = {'Coin': 0, 'CoinMagnetPickup': 1, 'SuperSneakersPickup': 2, 'JetpackPickup': 3,
+               'DoubleScoreMultiplierPickup': 4, 'MysteryBoxPickup': 5, 'DailyLetterPickup': 6}
+
+BLEND_OPAQUE, BLEND_ALPHA, BLEND_ADD, BLEND_MUL, BLEND_ADDALPHA = range(5)
+
+MAX_EDGE = 0.0       # >0: subdivide triangulos grandes (no hace falta: el motor recorta por software)
+ANIM_FPS = 30.0
+
+
+def f2u(x):
+    return struct.unpack('<I', struct.pack('<f', float(x)))[0]
+
+
+class Strings:
+    def __init__(self):
+        self.lst = ['']
+        self.idx = {'': 0}
+
+    def get(self, s):
+        if s not in self.idx:
+            self.idx[s] = len(self.lst)
+            self.lst.append(s)
+        return self.idx[s]
+
+    def blob(self):
+        out = bytearray(struct.pack('<I', len(self.lst)))
+        for s in self.lst:
+            b = s.encode('utf-8')[:255]
+            out += struct.pack('<B', len(b)) + b
+        while len(out) % 4:
+            out += b'\0'
+        return bytes(out)
+
+
+def key(obj):
+    return (os.path.basename(obj.assets_file.name), obj.path_id)
+
+
+# ---------------------------------------------------------------- escena
+class Exporter:
+    def __init__(self, sc):
+        self.sc = sc
+        self.strings = Strings()
+        self.nodes = []          # dicts
+        self.objmap = {}         # key(GO o componente) -> nodo
+        self.meshes = []         # objetos Mesh
+        self.mesh_idx = {}
+        self.mesh_world = []     # True si es escenario (subdividir)
+        self.materials = []      # dicts
+        self.mat_idx = {}
+        self.textures = []
+        self.tex_idx = {}
+        self.clips = []
+        self.clip_idx = {}
+        self.audio = []
+        self.audio_idx = {}
+        self.pending = []        # (nodo, comp, campo) a resolver despues
+
+    # -- recursos --
+    def mesh_id(self, obj, world=True):
+        if obj is None:
+            return -1
+        k = key(obj)
+        if k not in self.mesh_idx:
+            self.mesh_idx[k] = len(self.meshes)
+            self.meshes.append(obj)
+            self.mesh_world.append(world)
+        elif not world:
+            self.mesh_world[self.mesh_idx[k]] = False
+        return self.mesh_idx[k]
+
+    def tex_id(self, obj):
+        if obj is None:
+            return -1
+        k = key(obj)
+        if k not in self.tex_idx:
+            self.tex_idx[k] = len(self.textures)
+            self.textures.append(obj)
+        return self.tex_idx[k]
+
+    def mat_id(self, obj):
+        if obj is None:
+            return -1
+        k = key(obj)
+        if k in self.mat_idx:
+            return self.mat_idx[k]
+        d = obj.read_typetree()
+        sh = self.sc.resolve(obj.assets_file, d['m_Shader']['m_FileID'], d['m_Shader']['m_PathID'])
+        shname = ''
+        if sh is not None:
+            import re
+            s = sh.read_typetree().get('m_Script', '')
+            m = re.search(r'Shader "([^"]+)"', s)
+            shname = m.group(1) if m else ''
+        blend = BLEND_OPAQUE
+        if 'Additive' in shname:
+            blend = BLEND_ADDALPHA if 'Particles' in shname else BLEND_ADD
+        elif 'Multiply' in shname:
+            blend = BLEND_MUL
+        elif 'Transparent' in shname or 'AlphaBlended' in shname:
+            blend = BLEND_ALPHA
+        tex = -1
+        st = (1.0, 1.0, 0.0, 0.0)
+        for name, t in d['m_SavedProperties']['m_TexEnvs']:
+            nm = name['name'] if isinstance(name, dict) else name
+            if nm in ('_MainTex', '_ShadowTex'):
+                to = self.sc.resolve(obj.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                if to is not None and to.type.name == 'Texture2D':
+                    tex = self.tex_id(to)
+                st = (t['m_Scale']['x'], t['m_Scale']['y'], t['m_Offset']['x'], t['m_Offset']['y'])
+        col = [1.0, 1.0, 1.0, 1.0]
+        cols = {}
+        for name, c in d['m_SavedProperties']['m_Colors']:
+            nm = name['name'] if isinstance(name, dict) else name
+            cols[nm] = (c['r'], c['g'], c['b'], c['a'])
+        if '_MainColor' in cols and 'Distorted' in shname:
+            c = cols['_MainColor']
+            col = [c[0], c[1], c[2], 1.0]
+        elif '_TintColor' in cols:
+            col = list(cols['_TintColor'])
+        elif '_Color' in cols and 'Transparent' in shname:
+            col = list(cols['_Color'])
+        if 'Projector' in shname:
+            blend = BLEND_MUL
+        dist = cols.get('_Distort', (-0.0005, -0.0003, 0, 0))
+        m = {'name': d['m_Name'], 'shader': shname, 'blend': blend, 'tex': tex, 'st': st, 'color': col,
+             'distort': (dist[0], dist[1]), 'sky': 'Sky' in shname}
+        self.mat_idx[k] = len(self.materials)
+        self.materials.append(m)
+        return self.mat_idx[k]
+
+    def clip_id(self, obj):
+        if obj is None:
+            return -1
+        k = key(obj)
+        if k not in self.clip_idx:
+            self.clip_idx[k] = len(self.clips)
+            self.clips.append(obj)
+        return self.clip_idx[k]
+
+    def audio_id(self, obj):
+        if obj is None:
+            return -1
+        k = key(obj)
+        if k not in self.audio_idx:
+            self.audio_idx[k] = len(self.audio)
+            self.audio.append(obj)
+        return self.audio_idx[k]
+
+    # -- nodos --
+    def add_tree(self, go, parent=-1):
+        idx = len(self.nodes)
+        n = {'go': go, 'parent': parent, 'children': []}
+        self.nodes.append(n)
+        self.objmap[key(go['obj'])] = idx
+        for c in go['comps']:
+            self.objmap[key(c['obj'])] = idx
+        for ch in go['children']:
+            n['children'].append(self.add_tree(ch, idx))
+        return idx
+
+    def ref(self, obj, ptr):
+        """Indice del nodo al que apunta un PPtr (a GameObject o a componente)."""
+        if ptr is None or ptr[2] == 0:
+            return -1
+        o = self.sc.resolve_ptr(obj, ptr)
+        if o is None:
+            return -1
+        return self.objmap.get(key(o), -1)
+
+    def comps_of(self, n):
+        go = n['go']
+        out = []
+        classes = {c.get('class') for c in go['comps'] if c['type'] == 'MonoBehaviour'}
+        for c in go['comps']:
+            t = c['type']
+            o = c['obj']
+            d = c.get('data')
+            if t == 'MeshFilter' and d:
+                mesh = self.sc.resolve(o.assets_file, d['m_Mesh'][1], d['m_Mesh'][2])
+                rend = next((x for x in go['comps'] if x['type'] == 'MeshRenderer'), None)
+                if mesh is None or rend is None or not rend.get('data'):
+                    continue
+                rd = rend['data']
+                mats = [self.mat_id(self.sc.resolve(rend['obj'].assets_file, p[1], p[2])) for p in rd['m_Materials']]
+                subsets = list(rd.get('m_SubsetIndices') or [])
+                sbroot = self.ref(rend['obj'], rd.get('m_StaticBatchRoot'))
+                words = [self.mesh_id(mesh), 1 if rd['m_Enabled'] else 0, len(mats)] + [m & 0xffffffff for m in mats]
+                words += [len(subsets)] + subsets + [sbroot & 0xffffffff]
+                out.append((C_MESH, words))
+            elif t == 'SkinnedMeshRenderer' and d:
+                mesh = self.sc.resolve(o.assets_file, d['m_Mesh'][1], d['m_Mesh'][2])
+                mats = [self.mat_id(self.sc.resolve(o.assets_file, p[1], p[2])) for p in d['m_Materials']]
+                bones = [self.ref(o, b) for b in d['m_Bones']]
+                words = [self.mesh_id(mesh, world=False), 1 if d['m_Enabled'] else 0, len(mats)] + \
+                    [m & 0xffffffff for m in mats] + [len(bones)] + [b & 0xffffffff for b in bones]
+                out.append((C_SKIN, words))
+            elif t == 'BoxCollider' and d:
+                c_, s_ = d['m_Center'], d['m_Size']
+                out.append((C_BOX, [int(bool(d['m_IsTrigger'])), int(bool(d['m_Enabled']))] +
+                            [f2u(c_['x']), f2u(c_['y']), f2u(c_['z']), f2u(s_['x']), f2u(s_['y']), f2u(s_['z'])]))
+            elif t == 'SphereCollider' and d:
+                c_ = d['m_Center']
+                out.append((C_SPHERE, [int(bool(d['m_IsTrigger'])), int(bool(d['m_Enabled'])),
+                                       f2u(c_['x']), f2u(c_['y']), f2u(c_['z']), f2u(d['m_Radius'])]))
+            elif t == 'CapsuleCollider' and d:
+                c_ = d['m_Center']
+                out.append((C_CAPSULE, [int(bool(d['m_IsTrigger'])), int(bool(d['m_Enabled'])),
+                                        f2u(c_['x']), f2u(c_['y']), f2u(c_['z']), f2u(d['m_Radius']),
+                                        f2u(d['m_Height']), d['m_Direction']]))
+            elif t == 'CharacterController' and d:
+                c_ = d['m_Center']
+                out.append((C_CHARCTRL, [f2u(d['m_Height']), f2u(d['m_Radius']), f2u(d['m_SlopeLimit']),
+                                         f2u(d['m_StepOffset']), f2u(d['m_SkinWidth']),
+                                         f2u(c_['x']), f2u(c_['y']), f2u(c_['z'])]))
+            elif t == 'Camera' and d:
+                bg = d['m_BackGroundColor']
+                out.append((C_CAMERA, [f2u(d['near clip plane']), f2u(d['far clip plane']), f2u(d['field of view']),
+                                       f2u(bg['r']), f2u(bg['g']), f2u(bg['b'])]))
+            elif t == 'Animation' and d:
+                clips = [self.clip_id(self.sc.resolve(o.assets_file, p[1], p[2])) for p in d['m_Animations']]
+                defc = self.clip_id(self.sc.resolve(o.assets_file, d['m_Animation'][1], d['m_Animation'][2]))
+                out.append((C_ANIMATION, [defc & 0xffffffff, int(bool(d['m_PlayAutomatically'])), d['m_WrapMode'],
+                                          len(clips)] + [c & 0xffffffff for c in clips]))
+            elif t == 'MonoBehaviour':
+                cl, f = c.get('class'), c.get('fields')
+                if f is None:
+                    continue
+                if cl == 'TrackChunk':
+                    cps = f.get('CheckPoints') or []
+                    w = [f2u(f['zSize']), f['probability'], f2u(f['zMinimum']), int(bool(f['zMaximumActive'])),
+                         f2u(f['zMaximum']), int(bool(f['isTutorial'])), len(cps)]
+                    for cp in cps:
+                        w += [cp['TrackNumber'], f2u(cp['Z'])]
+                    out.append((C_TRACKCHUNK, w))
+                elif cl in ('Randomizer',):
+                    out.append((C_RANDOMIZER, []))
+                elif cl == 'RandomizerTarget':
+                    tg = [self.ref(o, p) for p in f.get('Targets') or []]
+                    out.append((C_RANDTARGET, [len(tg)] + [x & 0xffffffff for x in tg]))
+                elif cl in ('Group', 'SuperSneakersGroup'):
+                    out.append((C_SSGROUP if cl == 'SuperSneakersGroup' else C_GROUP, []))
+                elif cl == 'SpawnPoint':
+                    ks = ['dailyLetter', 'doubleScoreMultiplier', 'jetpackPickup', 'jumpBooster', 'magnetBooster',
+                          'mysteryBox']
+                    out.append((C_SPAWNPOINT, [self.ref(o, f[k_]) & 0xffffffff for k_ in ks]))
+                elif cl == 'RandomizeOffset':
+                    r = f['randomOffsets']
+                    out.append((C_RANDOFFSET, [int(bool(r['left'])), int(bool(r['mid'])), int(bool(r['right']))]))
+                elif cl == 'Mirror':
+                    out.append((C_MIRROR, []))
+                elif cl == 'MovingTrain':
+                    out.append((C_MOVINGTRAIN, [f2u(f['speed']), f2u(f['trainCount'])]))
+                elif cl == 'MovingCoin':
+                    out.append((C_MOVINGCOIN, [f2u(f['speed'])]))
+                elif cl == 'CoinPlaceholder':
+                    out.append((C_COINPLACE, []))
+                elif cl == 'CoinLine':
+                    out.append((C_COINLINE, [f2u(f['length']), f2u(f['coinSpacing'])]))
+                elif cl == 'CoinJumpCurve':
+                    out.append((C_COINJUMP, [f2u(f['speed']), f2u(f['curveOffset']), f2u(f['coinSpacing']),
+                                             f2u(f['beginRatio']), f2u(f['endRatio']), int(bool(f['superSneakers']))]))
+                elif cl == 'Pickup':
+                    kind = -1
+                    for k_, v in PICKUP_KIND.items():
+                        if k_ in classes:
+                            kind = v
+                    out.append((C_PICKUP, [kind & 0xffffffff, int(bool(f.get('CanBeSpawned', 1)))]))
+                elif cl == 'PickupRotate':
+                    out.append((C_PICKUPROTATE, [self.ref(o, f['target']) & 0xffffffff, f2u(f['speed']),
+                                                 f2u(f['rotatePhase'])]))
+                elif cl == 'PickupDefault':
+                    out.append((C_PICKUPDEFAULT, [self.ref(o, f['meshRenderer']) & 0xffffffff,
+                                                  self.ref(o, f['glow']) & 0xffffffff,
+                                                  int(bool(f['ShouldSpawnParticles']))]))
+                elif cl == 'DailyLetterPickup':
+                    letters = [self.mesh_id(self.sc.resolve_ptr(o, p)) for p in f.get('Letters') or []]
+                    out.append((C_DAILYLETTER, [self.ref(o, f['meshRenderer']) & 0xffffffff,
+                                                self.ref(o, f['glow']) & 0xffffffff,
+                                                self.ref(o, f['LetterMesh']) & 0xffffffff, len(letters)] +
+                                [x & 0xffffffff for x in letters]))
+                elif cl == 'Tunnel':
+                    out.append((C_TUNNEL, []))
+                elif cl == 'TrackObject':
+                    out.append((C_TRACKOBJECT, []))
+                elif cl == 'RendererActivator':
+                    out.append((C_RENDACT, []))
+                elif cl == 'SnapObject':
+                    out.append((C_SNAP, []))
+                elif cl == 'Glow':
+                    out.append((C_GLOW, []))
+                elif cl == 'Coin':
+                    out.append((C_COIN, []))
+                elif cl == 'VisibleObject':
+                    out.append((C_VISIBLE, []))
+                elif cl == 'OnTriggerObject':
+                    out.append((C_ONTRIGGER, []))
+                elif cl == 'TutorialEvent':
+                    txt = self.strings.get(f.get('text') or '')
+                    out.append((C_TUTORIAL, [int(bool(f['displayText'])), txt, int(bool(f['displayMesh'])),
+                                             self.ref(o, f['mesh']) & 0xffffffff, f2u(f['direction']),
+                                             f2u(f['time']), int(bool(f['endTutorial'])),
+                                             int(bool(f['allowHoverboard']))]))
+                elif cl == 'CurvePoint':
+                    out.append((C_CURVEPOINT, [f2u(f['t']), int(bool(f['smoothTangents'])),
+                                               self.ref(o, f['customIn']) & 0xffffffff,
+                                               self.ref(o, f['customOut']) & 0xffffffff, f2u(f['weight'])]))
+                elif cl == 'JetPackCloud':
+                    out.append((C_JETCLOUD, []))
+        return out
+
+    def build_world(self):
+        blob = []
+        recs = []
+        for i, n in enumerate(self.nodes):
+            go = n['go']
+            td = go['tr']['data']
+            p, r, s = td['m_LocalPosition'], td['m_LocalRotation'], td['m_LocalScale']
+            first = n['children'][0] if n['children'] else -1
+            nxt = -1
+            if n['parent'] >= 0:
+                sib = self.nodes[n['parent']]['children']
+                j = sib.index(i)
+                if j + 1 < len(sib):
+                    nxt = sib[j + 1]
+            comps = self.comps_of(n)
+            off = len(blob)
+            for t, w in comps:
+                blob += [t, len(w)] + list(w)
+            recs.append(struct.pack('<iii3f4f3fHBBBBHI', n['parent'], first, nxt,
+                                    p['x'], p['y'], p['z'], r['x'], r['y'], r['z'], r['w'], s['x'], s['y'], s['z'],
+                                    self.strings.get(go['name']), go['layer'], TAG_IDS.get(go['tag'], 0),
+                                    1 if go['active'] else 0, len(comps), 0, off))
+        out = bytearray(b'SSW1')
+        out += struct.pack('<II', len(recs), len(blob))
+        for r_ in recs:
+            out += r_
+        out += struct.pack('<%dI' % len(blob), *[x & 0xffffffff for x in blob])
+        out += self.strings.blob()
+        return bytes(out)
+
+
+# ---------------------------------------------------------------- mallas
+def subdivide(V, UV, tris, max_edge):
+    V = [tuple(v) for v in V]
+    UV = [tuple(u) for u in UV]
+    cache = {}
+
+    def mid(a, b):
+        k = (min(a, b), max(a, b))
+        if k not in cache:
+            cache[k] = len(V)
+            V.append(tuple((V[a][i] + V[b][i]) * 0.5 for i in range(3)))
+            UV.append(tuple((UV[a][i] + UV[b][i]) * 0.5 for i in range(2)))
+        return cache[k]
+
+    def l2(a, b):
+        return sum((V[a][i] - V[b][i]) ** 2 for i in range(3))
+
+    out = []
+    stack = list(tris)
+    m2 = max_edge * max_edge
+    guard = 0
+    while stack:
+        t = stack.pop()
+        a, b, c = t
+        e = [(l2(a, b), 0), (l2(b, c), 1), (l2(c, a), 2)]
+        e.sort(reverse=True)
+        if e[0][0] <= m2 or guard > 400000:
+            out.append(t)
+            continue
+        guard += 1
+        w = e[0][1]
+        if w == 0:
+            m = mid(a, b); stack += [(a, m, c), (m, b, c)]
+        elif w == 1:
+            m = mid(b, c); stack += [(a, b, m), (a, m, c)]
+        else:
+            m = mid(c, a); stack += [(a, b, m), (m, b, c)]
+    return V, UV, out
+
+
+CLUSTER = 64.0       # tamano de celda para trocear el escenario (culling por trozos)
+
+
+def make_parts(V, UV, subs, skin, world):
+    """Divide la malla en trozos (submalla + celda espacial) con sus propios vertices."""
+    parts = []
+    for si, sm in enumerate(subs):
+        if not sm:
+            continue
+        if world and not skin:
+            cells = {}
+            for t in sm:
+                cx = sum(V[i][0] for i in t) / 3.0
+                cy = sum(V[i][1] for i in t) / 3.0
+                cz = sum(V[i][2] for i in t) / 3.0
+                k = (int(math.floor(cx / CLUSTER)), int(math.floor(cy / CLUSTER)), int(math.floor(cz / CLUSTER)))
+                cells.setdefault(k, []).append(t)
+            groups = list(cells.values())
+        else:
+            groups = [sm]
+        for g in groups:
+            remap = {}
+            idx = []
+            for t in g:
+                for i in t:
+                    if i not in remap:
+                        remap[i] = len(remap)
+                    idx.append(remap[i])
+            order = sorted(remap, key=remap.get)
+            parts.append((si, order, idx))
+    return parts
+
+
+def export_meshes(ex):
+    out = bytearray(b'SSM2')
+    out += struct.pack('<I', len(ex.meshes))
+    body = bytearray()
+    offs = []
+    stats = []
+    for mi, mo in enumerate(ex.meshes):
+        d = mo.read()
+        h = MeshHandler(d)
+        h.process()
+        V = list(h.m_Vertices or [])
+        UV = list(h.m_UV0 or [(0.0, 0.0)] * len(V))
+        subs = [[t for t in sm if len(t) == 3] for sm in h.get_triangles()]
+        skin = bool(h.m_BoneWeights) and len(h.m_BoneWeights) == len(V)
+        if MAX_EDGE > 0 and ex.mesh_world[mi] and not skin:
+            nsubs = []
+            for sm in subs:
+                V, UV, sm2 = subdivide(V, UV, sm, MAX_EDGE)
+                nsubs.append(sm2)
+            subs = nsubs
+        Va = np.array(V, dtype=np.float32).reshape(-1, 3) if V else np.zeros((1, 3), np.float32)
+        mn, mx = Va.min(axis=0), Va.max(axis=0)
+        ctr = (mn + mx) * 0.5
+        rad = float(np.sqrt(((Va - ctr) ** 2).sum(axis=1)).max())
+        world = ex.mesh_world[mi] and rad > CLUSTER * 0.75
+        parts = make_parts(V, UV, subs, skin, world)
+        offs.append(len(body))
+        nm = d.m_Name.encode()[:31]
+        body += struct.pack('<B', len(nm)) + nm.ljust(31, b'\0')
+        body += struct.pack('<HHBBH', len(parts), len(subs), 1 if skin else 0, 0, 0)
+        body += struct.pack('<4f6f', ctr[0], ctr[1], ctr[2], rad, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2])
+        tv = 0
+        for si, order, idx in parts:
+            P = Va[order]
+            pmn, pmx = P.min(axis=0), P.max(axis=0)
+            pc = (pmn + pmx) * 0.5
+            pr = float(np.sqrt(((P - pc) ** 2).sum(axis=1)).max())
+            body += struct.pack('<HHI4f', si, len(order), len(idx), pc[0], pc[1], pc[2], pr)
+            for i in order:
+                body += struct.pack('<5f', UV[i][0], 1.0 - UV[i][1], V[i][0], V[i][1], V[i][2])
+            body += struct.pack('<%dH' % len(idx), *idx)
+            if len(idx) % 2:
+                body += b'\0\0'
+            if skin:
+                bw, bi = h.m_BoneWeights, h.m_BoneIndices
+                for i in order:
+                    body += struct.pack('<4f4B', *[float(x) for x in bw[i]], *[int(x) for x in bi[i]])
+            tv += len(order)
+        if skin:
+            bp = d.m_BindPose
+            body += struct.pack('<I', len(bp))
+            for m in bp:
+                body += struct.pack('<16f', *[m.e00, m.e10, m.e20, m.e30, m.e01, m.e11, m.e21, m.e31,
+                                              m.e02, m.e12, m.e22, m.e32, m.e03, m.e13, m.e23, m.e33])
+        else:
+            body += struct.pack('<I', 0)
+        while len(body) % 4:
+            body += b'\0'
+        stats.append((d.m_Name, tv, sum(len(p[2]) for p in parts) // 3, len(parts)))
+    for o in offs:
+        out += struct.pack('<I', o + 8 + 4 * len(offs))
+    out += body
+    return bytes(out), stats
+
+
+# ---------------------------------------------------------------- texturas
+def swizzle(data, width_bytes, height):
+    """Swizzle de la PSP: bloques de 16 bytes x 8 filas."""
+    src = np.frombuffer(data, dtype=np.uint8).reshape(height, width_bytes)
+    bx = width_bytes // 16
+    by = height // 8
+    t = src.reshape(by, 8, bx, 16).transpose(0, 2, 1, 3)
+    return t.tobytes()
+
+
+TEX_T8, TEX_5650, TEX_4444, TEX_8888 = 0, 1, 2, 3
+
+
+def export_textures(ex, maxsize=512, hq=()):
+    out = bytearray(b'SST1')
+    out += struct.pack('<I', len(ex.textures))
+    body = bytearray()
+    offs = []
+    for to in ex.textures:
+        t = to.read()
+        img = t.image.convert('RGBA')
+        w, h = img.size
+        nw = 1 << max(0, (w - 1).bit_length())
+        nh = 1 << max(0, (h - 1).bit_length())
+        while nw > maxsize or nh > maxsize:     # misma escala en los dos ejes
+            nw, nh = max(1, nw // 2), max(1, nh // 2)
+        nw, nh = max(nw, 16), max(nh, 8)
+        if (nw, nh) != (w, h):
+            img = img.resize((nw, nh), Image.LANCZOS)
+        a = np.asarray(img)
+        has_alpha = bool((a[:, :, 3] < 250).any())
+        name = t.m_Name
+        if name in hq:
+            if has_alpha:
+                fmt = TEX_4444
+                r = (a[:, :, 0].astype(np.uint16) >> 4)
+                g = (a[:, :, 1].astype(np.uint16) >> 4) << 4
+                b = (a[:, :, 2].astype(np.uint16) >> 4) << 8
+                al = (a[:, :, 3].astype(np.uint16) >> 4) << 12
+                pix = (r | g | b | al).astype('<u2').tobytes()
+            else:
+                fmt = TEX_5650
+                r = (a[:, :, 0].astype(np.uint16) >> 3)
+                g = (a[:, :, 1].astype(np.uint16) >> 2) << 5
+                b = (a[:, :, 2].astype(np.uint16) >> 3) << 11
+                pix = (r | g | b).astype('<u2').tobytes()
+            data = swizzle(pix, nw * 2, nh)
+            pal = b''
+        else:
+            fmt = TEX_T8
+            if has_alpha:
+                q = img.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+                pal_rgba = np.zeros((256, 4), np.uint8)
+                # la paleta de FASTOCTREE con RGBA trae el alfa
+                p = q.getpalette('RGBA')
+                if p is None:
+                    p = q.getpalette() or []
+                    p = sum([p[i:i + 3] + [255] for i in range(0, len(p), 3)], [])
+                p = np.array(p[:1024], np.uint8).reshape(-1, 4)
+                pal_rgba[:len(p)] = p
+            else:
+                q = img.convert('RGB').quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+                p = np.array(q.getpalette()[:768], np.uint8).reshape(-1, 3)
+                pal_rgba = np.zeros((256, 4), np.uint8)
+                pal_rgba[:len(p), :3] = p
+                pal_rgba[:, 3] = 255
+            idx = np.asarray(q, dtype=np.uint8)
+            data = swizzle(idx.tobytes(), nw, nh)
+            pal = pal_rgba.tobytes()
+        offs.append(len(body))
+        body += struct.pack('<B', min(len(name.encode()), 31)) + name.encode()[:31].ljust(31, b'\0')
+        body += struct.pack('<HHHH', nw, nh, fmt, 1 if has_alpha else 0)
+        body += struct.pack('<II', len(pal), len(data))
+        body += pal + data
+        while len(body) % 16:
+            body += b'\0'
+        print('  textura %-28s %4dx%-4d -> %3dx%-3d %s' % (name, w, h, nw, nh, ['T8', '5650', '4444', '8888'][fmt]))
+    for o in offs:
+        out += struct.pack('<I', o)
+    # cabecera: magic, n, offsets; los datos empiezan alineados a 16
+    hdr_len = len(out)
+    pad = (16 - hdr_len % 16) % 16
+    res = bytearray(out)
+    res += b'\0' * pad
+    base = len(res)
+    for i in range(len(offs)):
+        struct.pack_into('<I', res, 8 + 4 * i, offs[i] + base)
+    res += body
+    return bytes(res)
+
+
+# ---------------------------------------------------------------- animaciones
+def hermite(k0, k1, t, comp=None):
+    t0, t1 = k0['time'], k1['time']
+    dt = t1 - t0
+    if dt <= 0:
+        return k0['value'] if comp is None else k0['value'][comp]
+
+    def g(k, f):
+        v = k[f]
+        return v if comp is None else v[comp]
+    p0, p1 = g(k0, 'value'), g(k1, 'value')
+    m0, m1 = g(k0, 'outSlope'), g(k1, 'inSlope')
+    if math.isinf(m0) or math.isinf(m1) or math.isnan(m0) or math.isnan(m1):
+        return p0
+    s = (t - t0) / dt
+    s2, s3 = s * s, s * s * s
+    return (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 * dt + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1 * dt
+
+
+def eval_curve(keys, t, comp=None):
+    if not keys:
+        return 0.0
+    if t <= keys[0]['time']:
+        v = keys[0]['value']
+        return v if comp is None else v[comp]
+    if t >= keys[-1]['time']:
+        v = keys[-1]['value']
+        return v if comp is None else v[comp]
+    lo, hi = 0, len(keys) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if keys[mid]['time'] <= t:
+            lo = mid
+        else:
+            hi = mid
+    return hermite(keys[lo], keys[hi], t, comp)
+
+
+def export_anims(ex):
+    out = bytearray(b'SSA1')
+    out += struct.pack('<I', len(ex.clips))
+    body = bytearray()
+    offs = []
+    for co in ex.clips:
+        d = co.read_typetree()
+        tracks = {}
+        length = 0.0
+        for kind, lst in (('rot', d['m_RotationCurves']), ('pos', d['m_PositionCurves']), ('scl', d['m_ScaleCurves'])):
+            for c in lst:
+                keys = c['curve']['m_Curve']
+                if not keys:
+                    continue
+                length = max(length, keys[-1]['time'])
+                tracks.setdefault(c['path'], {})[kind] = keys
+        nfr = max(1, int(math.ceil(length * ANIM_FPS - 1e-4)) + 1)
+        offs.append(len(body))
+        name = d['m_Name']
+        evs = d.get('m_Events') or []
+        body += struct.pack('<B', min(len(name.encode()), 47)) + name.encode()[:47].ljust(47, b'\0')
+        body += struct.pack('<fIIIIf', length, d['m_WrapMode'], nfr, len(tracks), len(evs), d.get('m_SampleRate', 30.0))
+        for e in evs:
+            fn = e['functionName'].encode()[:31]
+            body += struct.pack('<f', e['time']) + struct.pack('<B', len(fn)) + fn.ljust(31, b'\0')
+        for path, tr in tracks.items():
+            pb = ex.strings.get(path)
+            flags = (1 if 'pos' in tr else 0) | (2 if 'rot' in tr else 0) | (4 if 'scl' in tr else 0)
+            body += struct.pack('<HH', pb, flags)
+            for f in range(nfr):
+                t = min(f / ANIM_FPS, length)
+                if 'pos' in tr:
+                    body += struct.pack('<3f', *[eval_curve(tr['pos'], t, c_) for c_ in 'xyz'])
+                if 'rot' in tr:
+                    q = [eval_curve(tr['rot'], t, c_) for c_ in 'xyzw']
+                    n = math.sqrt(sum(x * x for x in q)) or 1.0
+                    body += struct.pack('<4f', *[x / n for x in q])
+                if 'scl' in tr:
+                    body += struct.pack('<3f', *[eval_curve(tr['scl'], t, c_) for c_ in 'xyz'])
+    for o in offs:
+        out += struct.pack('<I', o + 8 + 4 * len(offs))
+    out += body
+    return bytes(out)
+
+
+# ---------------------------------------------------------------- audio
+def decode_aiff(b):
+    if b[:4] != b'FORM':
+        return None
+    pos = 12
+    ch = bits = rate = None
+    data = None
+    while pos + 8 <= len(b):
+        cid = b[pos:pos + 4]
+        sz = struct.unpack('>I', b[pos + 4:pos + 8])[0]
+        cd = b[pos + 8:pos + 8 + sz]
+        if cid == b'COMM':
+            ch, _, bits = struct.unpack('>hIh', cd[:8])
+            e = struct.unpack('>H', cd[8:10])[0]
+            m = struct.unpack('>Q', cd[10:18])[0]
+            rate = m * 2.0 ** (e - 16383 - 63)
+        elif cid == b'SSND':
+            off = struct.unpack('>I', cd[:4])[0]
+            data = cd[8 + off:]
+        pos += 8 + sz + (sz & 1)
+    if data is None or bits != 16:
+        return None
+    a = np.frombuffer(data[:len(data) // 2 * 2], dtype='>i2').astype(np.float32)
+    a = a.reshape(-1, ch).mean(axis=1)
+    return a, rate
+
+
+def resample(a, rate, new):
+    if abs(rate - new) < 1 or len(a) == 0:
+        return a
+    n = int(len(a) * new / rate)
+    x = np.linspace(0, len(a) - 1, n)
+    return np.interp(x, np.arange(len(a)), a)
+
+
+def write_wav(path, a, rate):
+    with wave.open(path, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(int(rate))
+        w.writeframes(np.clip(a, -32768, 32767).astype('<i2').tobytes())
+
+
+def export_audio(ex, outdir):
+    os.makedirs(os.path.join(outdir, 'music'), exist_ok=True)
+    os.makedirs(os.path.join(outdir, 'wav'), exist_ok=True)
+    names = []
+    blobs = []
+    for ao in ex.audio:
+        d = ao.read()
+        raw = bytes(d.m_AudioData or b'')
+        name = d.m_Name
+        names.append(name)
+        if raw[:4] == b'FORM':
+            r = decode_aiff(raw)
+            if r is None:
+                blobs.append(b'')
+                continue
+            a, rate = r
+            write_wav(os.path.join(outdir, 'wav', name + '.wav'), a, rate)
+            pcm = resample(a, rate, 22050)
+            blobs.append(np.clip(pcm, -32768, 32767).astype('<i2').tobytes())
+        elif raw[:4] == b'RIFF':
+            with open(os.path.join(outdir, 'wav', name + '.wav'), 'wb') as f:
+                f.write(raw)
+            with wave.open(io.BytesIO(raw)) as w:
+                fr = w.readframes(w.getnframes())
+                a = np.frombuffer(fr, '<i2').astype(np.float32).reshape(-1, w.getnchannels()).mean(axis=1)
+                rate = w.getframerate()
+            blobs.append(np.clip(resample(a, rate, 22050), -32768, 32767).astype('<i2').tobytes())
+        else:
+            # MP3 (musica y algun efecto): se guarda tal cual
+            with open(os.path.join(outdir, 'music', name + '.mp3'), 'wb') as f:
+                f.write(raw)
+            blobs.append(b'')
+    out = bytearray(b'SSS1')
+    out += struct.pack('<I', len(names))
+    off = 8 + len(names) * 40
+    for n, b in zip(names, blobs):
+        nb = n.encode()[:31]
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b) // 2)
+        off += len(b)
+        off += (4 - off % 4) % 4
+    for b in blobs:
+        out += b
+        while len(out) % 4:
+            out += b'\0'
+    return bytes(out), names
+
+
+
+# ---------------------------------------------------------------- interfaz (NGUI)
+def export_ui(sc, ex):
+    """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
+    atlases = []
+    fonts = []
+    for fname, f in sc.files.items():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            cl, fl = sc.read_mono(o)
+            if cl not in ('UIAtlas', 'UIFont') or not fl:
+                continue
+            go = sc.resolve_ptr(o, fl['m_GameObject'])
+            gname = go.read().m_Name if go else '?'
+            if cl == 'UIAtlas':
+                mat = sc.resolve_ptr(o, fl['material'])
+                if mat is None or not fl['sprites']:
+                    continue
+                d = mat.read_typetree()
+                tex = None
+                for name, t in d['m_SavedProperties']['m_TexEnvs']:
+                    tex = sc.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if tex is not None:
+                        break
+                if tex is None:
+                    continue
+                td = tex.read()
+                atlases.append({'name': gname, 'tex': ex.tex_id(tex), 'w': td.m_Width, 'h': td.m_Height,
+                                'pixel': fl['mPixelSize'], 'sprites': fl['sprites'], 'key': key(o)})
+            else:
+                if fl['mAtlas'][2] == 0:
+                    continue
+                at = sc.resolve_ptr(o, fl['mAtlas'])
+                fonts.append({'name': gname, 'atlas_key': key(at) if at else None, 'font': fl['mFont'],
+                              'spacing': (fl['mSpacingX'], fl['mSpacingY'])})
+    out = bytearray(b'SSU1')
+    out += struct.pack('<II', len(atlases), len(fonts))
+    akeys = [a['key'] for a in atlases]
+    for a in atlases:
+        nb = a['name'].encode()[:31]
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+        out += struct.pack('<iIIfI', a['tex'], a['w'], a['h'], a['pixel'], len(a['sprites']))
+        for sp in a['sprites']:
+            sn = sp['name'].encode()[:31]
+            o_, i_ = sp['outer'], sp['inner']
+            out += struct.pack('<B', len(sn)) + sn.ljust(31, b'\0')
+            out += struct.pack('<8f', o_['x'], o_['y'], o_['width'], o_['height'], i_['x'], i_['y'], i_['width'], i_['height'])
+    for fo in fonts:
+        nb = fo['name'].encode()[:31]
+        f = fo['font']
+        ai = akeys.index(fo['atlas_key']) if fo['atlas_key'] in akeys else -1
+        sn = f['mSpriteName'].encode()[:31]
+        glyphs = f['mSaved']
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+        out += struct.pack('<B', len(sn)) + sn.ljust(31, b'\0')
+        out += struct.pack('<iiiiiiI', ai, f['mSize'], f['mBase'], f['mWidth'], f['mHeight'], fo['spacing'][0], len(glyphs))
+        for g in glyphs:
+            out += struct.pack('<9h', g['index'], g['x'], g['y'], g['width'], g['height'], g['offsetX'], g['offsetY'],
+                               g['advance'], 0)
+    print('  %d atlas, %d fuentes' % (len(atlases), len(fonts)))
+    return bytes(out)
+
+# ---------------------------------------------------------------- main
+EXCLUDE_ROOTS = {'0UI', 'IngameHighScore', 'XXXTestToRemove', 'temp'}
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(__doc__)
+        sys.exit(1)
+    apk, outdir = sys.argv[1], sys.argv[2]
+    os.makedirs(outdir, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix='sspsp_')
+    print('Descomprimiendo el APK...')
+    with zipfile.ZipFile(apk) as z:
+        for n in z.namelist():
+            if n.startswith('assets/bin/Data/'):
+                z.extract(n, tmp)
+    data_dir = os.path.join(tmp, 'assets', 'bin', 'Data')
+    print('Cargando la escena de Unity...')
+    sc = Scene(data_dir)
+    ex = Exporter(sc)
+    roots = sc.roots('level0')
+    trees = []
+    for r in roots:
+        go = sc.go_tree(r)
+        if go['name'] in EXCLUDE_ROOTS:
+            continue
+        trees.append(go)
+    # prefabs de las monedas (CoinPool / InAirCoinsManager) y otros referenciados
+    extra = []
+    for t in trees:
+        stack = [t]
+        while stack:
+            g = stack.pop()
+            stack += g['children']
+            for c in g['comps']:
+                if c.get('class') in ('CoinPool', 'InAirCoinsManager') and c.get('fields'):
+                    p = c['fields']['coinPrefab']
+                    o = sc.resolve_ptr(c['obj'], p)
+                    if o is not None and o.type.name == 'GameObject':
+                        extra.append(o)
+    seen = set()
+    for o in extra:
+        if key(o) in seen:
+            continue
+        seen.add(key(o))
+        trees.append(sc.go_tree(o))
+    for t in trees:
+        ex.add_tree(t)
+    print('  %d nodos' % len(ex.nodes))
+    world = ex.build_world()
+    # recoger tambien los clips de audio referenciados por los MonoBehaviour (AudioClipInfo, etc.)
+    for n in ex.nodes:
+        for c in n['go']['comps']:
+            if c['type'] == 'AudioSource' and c.get('data'):
+                ex.audio_id(sc.resolve_ptr(c['obj'], c['data']['m_audioClip']))
+            f = c.get('fields')
+            if not f:
+                continue
+            stack = [f]
+            while stack:
+                v = stack.pop()
+                if isinstance(v, dict):
+                    stack += list(v.values())
+                elif isinstance(v, list):
+                    if len(v) == 3 and v[0] == 'ptr':
+                        o = sc.resolve_ptr(c['obj'], v)
+                        if o is not None and o.type.name == 'AudioClip':
+                            ex.audio_id(o)
+                    else:
+                        stack += v
+                elif isinstance(v, tuple) and len(v) == 3 and v[0] == 'ptr':
+                    o = sc.resolve_ptr(c['obj'], v)
+                    if o is not None and o.type.name == 'AudioClip':
+                        ex.audio_id(o)
+    # el resto de clips de audio del juego (por si acaso)
+    for o in sc.env.objects:
+        if o.type.name == 'AudioClip':
+            ex.audio_id(o)
+    print('Exportando interfaz...')
+    ui = export_ui(sc, ex)
+    print('Exportando mallas...')
+    mesh, stats = export_meshes(ex)
+    tv = sum(s[1] for s in stats)
+    tt = sum(s[2] for s in stats)
+    print('  %d mallas, %d vertices, %d triangulos' % (len(stats), tv, tt))
+    print('Exportando texturas...')
+    tex = export_textures(ex, hq=('main', 'trains', 'FontAtlas'))
+    print('Exportando animaciones...')
+    anim = export_anims(ex)
+    print('  %d clips' % len(ex.clips))
+    print('Exportando audio...')
+    sfx, names = export_audio(ex, outdir)
+    print('  %d sonidos' % len(names))
+    # materiales
+    mat = bytearray(b'SSX1')
+    mat += struct.pack('<I', len(ex.materials))
+    for m in ex.materials:
+        nb = m['name'].encode()[:31]
+        mat += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+        mat += struct.pack('<iI4f4f2fI', m['tex'], m['blend'], *m['st'], *m['color'], *m['distort'],
+                           1 if m['sky'] else 0)
+    # world.bin lleva al final materiales y nombres de sonidos (las cadenas se escriben al final)
+    world = ex.build_world()
+    names_blob = bytearray(struct.pack('<I', len(names)))
+    for n in names:
+        nb = n.encode()[:31]
+        names_blob += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+    for fn, b in (('world.bin', world), ('mat.bin', bytes(mat)), ('mesh.bin', mesh), ('tex.bin', tex),
+                  ('anim.bin', anim), ('sfx.bin', sfx), ('ui.bin', ui)):
+        with open(os.path.join(outdir, fn), 'wb') as f:
+            f.write(b)
+        print('  %-10s %8d KB' % (fn, len(b) // 1024))
+    with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
+        for i, s_ in enumerate(stats):
+            f.write('%d %s %d %d %d\n' % (i, *s_))
+    print('Listo.')
+
+
+if __name__ == '__main__':
+    main()

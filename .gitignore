@@ -1,0 +1,12 @@
+# datos generados a partir del APK (no se distribuyen)
+data/
+*.apk
+# compilacion
+*.o
+*.elf
+*.prx
+EBOOT.PBP
+PARAM.SFO
+dist/
+autotest_out/
+__pycache__/
