@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <malloc.h>
+#include <stdio.h>
 #include "render.h"
 #include "data.h"
 
@@ -17,9 +18,16 @@
 #define VRING_BYTES (2 * 1024 * 1024)
 #define IRING_BYTES (512 * 1024)
 
-static unsigned int __attribute__((aligned(64))) dlist[LIST_WORDS];
-static unsigned char __attribute__((aligned(64))) vring[VRING_BYTES];
-static unsigned char __attribute__((aligned(64))) iring[IRING_BYTES];
+/* todo va por duplicado: la CPU prepara un fotograma mientras el GE dibuja el anterior */
+static unsigned int __attribute__((aligned(64))) dlists[2][LIST_WORDS];
+static unsigned int __attribute__((aligned(64))) kick_list[2][64];
+static unsigned char __attribute__((aligned(64))) vrings[2][VRING_BYTES];
+static unsigned char __attribute__((aligned(64))) irings[2][IRING_BYTES];
+static unsigned char *vring = vrings[0], *iring = irings[0];
+static unsigned int *dlist = dlists[0];
+static int frame_par, ge_busy;
+static void vfpu_selftest(void);
+static int model_set;
 static int vpos, ipos;
 static void *fbp0, *fbp1, *zbp;
 static int cur_fb;
@@ -28,6 +36,8 @@ int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped;
 M34 r_view;
 V3 r_cam_pos;
 float r_near = 2.0f, r_far = 1000.0f;
+/* el original es vertical (retrato) con fov 60; en la pantalla apaisada de la PSP 50 encuadra parecido */
+float r_fov = 50.0f;
 
 /* constantes de la proyeccion de Unity (para calcular la curvatura igual que el original) */
 static float P00, P11, ZA, ZB;
@@ -139,7 +149,8 @@ static unsigned int col_abgr(const float *c, float amul)
 }
 
 extern float r_mat_uoff[256];
-int r_mesh_verts[512];
+extern int r_mesh_verts[512];
+extern unsigned int r_prof[8];
 static int bind_material(int mi, float amul)
 {
     if (mi < 0 || mi >= gd.nmats) return BLEND_OPAQUE;
@@ -170,7 +181,7 @@ void r_init(void)
     fbp1 = (void *)(BUF_W * SCR_H * 2);
     zbp = (void *)(BUF_W * SCR_H * 4);
     sceGuInit();
-    sceGuStart(GU_DIRECT, dlist);
+    sceGuStart(GU_DIRECT, dlists[0]);
     sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);
     sceGuDispBuffer(SCR_W, SCR_H, fbp1, BUF_W);
     sceGuDepthBuffer(zbp, BUF_W);
@@ -191,22 +202,29 @@ void r_init(void)
     sceGuSync(0, 0);
     sceDisplayWaitVblankStart();
     sceGuDisplay(GU_TRUE);
-    /* proyeccion de Unity: fov vertical 60, cerca 2, lejos 1000 */
-    float f = 1.0f / tanf(60.0f * 0.5f * DEG2RAD);
+    /* proyeccion de Unity: cerca 2, lejos 1000 */
+    float f = 1.0f / tanf(r_fov * 0.5f * DEG2RAD);
     P11 = f;
     P00 = f / ((float)SCR_W / SCR_H);
     ZA = (r_far + r_near) / (r_far - r_near);
     ZB = -2.0f * r_far * r_near / (r_far - r_near);
     gx = GUARD / P00;
     gy = GUARD / P11;
+    vfpu_selftest();
 }
 
 void r_begin_frame(unsigned int clear)
 {
     vpos = ipos = 0;
-    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = 0;
-    sceGuStart(GU_DIRECT, dlist);
+    vring = vrings[frame_par];
+    iring = irings[frame_par];
+    dlist = dlists[frame_par];
+    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = 0;
+    model_set = 0;
+    /* lista "llamable": se construye mientras el GE sigue con el fotograma anterior */
+    sceGuStart(GU_CALL, dlist);
     cur_tex = -2; cur_blend = -1; cur_color = 0; cur_st[0] = -1;
+    sceGuDrawBufferList(GU_PSM_5650, frame_par ? fbp1 : fbp0, BUF_W);
     sceGuClearColor(clear);
     sceGuClearDepth(0);
     sceGuDepthMask(GU_FALSE);
@@ -215,7 +233,7 @@ void r_begin_frame(unsigned int clear)
     sceGuEnable(GU_CULL_FACE);
     sceGumMatrixMode(GU_PROJECTION);
     sceGumLoadIdentity();
-    sceGumPerspective(60.0f, (float)SCR_W / SCR_H, r_near, r_far);
+    sceGumPerspective(r_fov, (float)SCR_W / SCR_H, r_near, r_far);
     sceGumMatrixMode(GU_VIEW);
     sceGumLoadIdentity();
     sceGumMatrixMode(GU_MODEL);
@@ -224,14 +242,35 @@ void r_begin_frame(unsigned int clear)
     sceGuColor(0xffffffff); cur_color = 0xffffffff;
 }
 
+float r_wait_ms;
+
 void r_end_frame(void)
 {
-    sceKernelDcacheWritebackAll();
     sceGuFinish();
+    sceKernelDcacheWritebackAll();
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    /* espera a que el GE termine el fotograma anterior y lo muestra en el siguiente VBlank */
+    if (ge_busy) sceGuSync(0, 0);
+    sceDisplayWaitVblankStart();
+    if (ge_busy) sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)(frame_par ? fbp0 : fbp1)), BUF_W,
+                                       PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
+    r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
+    /* lanza el fotograma nuevo */
+    sceGuStart(GU_DIRECT, kick_list[frame_par]);
+    sceGuCallList(dlist);
+    sceGuFinish();
+    ge_busy = 1;
+    frame_par ^= 1;
+}
+
+void r_present_last(void)
+{
+    if (!ge_busy) return;
     sceGuSync(0, 0);
     sceDisplayWaitVblankStart();
-    sceGuSwapBuffers();
-    cur_fb ^= 1;
+    sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)(frame_par ? fbp0 : fbp1)), BUF_W,
+                          PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
+    ge_busy = 0;
 }
 
 void r_set_camera_matrix(const M34 *cam, float fov)
@@ -411,7 +450,115 @@ static int sphere_visible(V3 c, float r)
     return 1;
 }
 
+/* Version VFPU: la matriz 4x4 entera en un registro de matriz, una instruccion por vertice */
+static int use_vfpu = 0;
+static float __attribute__((aligned(16))) vf_mat[16];
+static float __attribute__((aligned(16))) vf_par[4];
+
+static void transform_vfpu(OV *o, const MVert *src, int nv, const M34 *mv, float kx, float ky)
+{
+    const float *m = mv->m;
+    for (int c = 0; c < 4; c++) {
+        vf_mat[c * 4 + 0] = m[c * 3 + 0];
+        vf_mat[c * 4 + 1] = m[c * 3 + 1];
+        vf_mat[c * 4 + 2] = m[c * 3 + 2];
+        vf_mat[c * 4 + 3] = c == 3 ? 1.0f : 0.0f;
+    }
+    vf_par[0] = kx; vf_par[1] = ky; vf_par[2] = ZA; vf_par[3] = ZB;
+    __asm__ volatile(
+        "lv.q   C000, 0(%0)\n"
+        "lv.q   C010, 16(%0)\n"
+        "lv.q   C020, 32(%0)\n"
+        "lv.q   C030, 48(%0)\n"
+        "lv.q   C200, 0(%1)\n"
+        : : "r"(vf_mat), "r"(vf_par) : "memory");
+    for (int i = 0; i < nv; i++, src++, o++) {
+        __asm__ volatile(
+            "lv.s   S100, 8(%1)\n"
+            "lv.s   S101, 12(%1)\n"
+            "lv.s   S102, 16(%1)\n"
+            "vhtfm4.q C110, E000, C100\n"     /* (x, y, d, 1) */
+            "vmul.s S120, S112, S202\n"       /* d * za */
+            "vadd.s S120, S120, S203\n"       /* zc */
+            "vmul.s S120, S120, S120\n"       /* zc^2 */
+            "vscl.p C132, C200, S120\n"       /* (kx, ky) * zc^2 */
+            "vadd.p C110, C110, C132\n"       /* x, y curvados */
+            "vneg.s S112, S112\n"
+            "sv.s   S110, 8(%0)\n"
+            "sv.s   S111, 12(%0)\n"
+            "sv.s   S112, 16(%0)\n"
+            : : "r"(o), "r"(src) : "memory");
+        o->u = src->u; o->v = src->v;
+    }
+}
+
+static void transform_fast_c(OV *o, const MVert *src, int nv, const M34 *mv, float kx, float ky);
+
+/* Matriz del GE que aproxima la curvatura alrededor de un punto (desarrollo de Taylor de primer orden):
+ * x' = x + kx*zc^2 con zc = ZA*d + ZB  ->  lineal en d cerca de d0. Error kx*ZA^2*(d-d0)^2: para objetos de
+ * menos de 20 unidades es menor que 0.2 unidades (invisible). */
+static void bent_gumatrix(ScePspFMatrix4 *out, const M34 *mv, float d0, float kx, float ky)
+{
+    float zc0 = ZA * d0 + ZB;
+    float gxk = 2.0f * kx * zc0 * ZA, cxk = kx * (zc0 * zc0 - 2.0f * zc0 * ZA * d0);
+    float gyk = 2.0f * ky * zc0 * ZA, cyk = ky * (zc0 * zc0 - 2.0f * zc0 * ZA * d0);
+    const float *m = mv->m;
+    float *o = (float *)out;
+    for (int c = 0; c < 4; c++) {
+        float x = m[c * 3], y = m[c * 3 + 1], d = m[c * 3 + 2];
+        o[c * 4 + 0] = x + gxk * d + (c == 3 ? cxk : 0.0f);
+        o[c * 4 + 1] = y + gyk * d + (c == 3 ? cyk : 0.0f);
+        o[c * 4 + 2] = -d;
+        o[c * 4 + 3] = c == 3 ? 1.0f : 0.0f;
+    }
+}
+
+static void model_identity(void)
+{
+    if (!model_set) return;
+    ScePspFMatrix4 id;
+    memset(&id, 0, sizeof(id));
+    id.x.x = id.y.y = id.z.z = id.w.w = 1.0f;
+    sceGuSetMatrix(GU_MODEL, &id);
+    model_set = 0;
+}
+
+int r_stat_hw;
+
 static void transform_fast(OV *o, const MVert *src, int nv, const M34 *mv, float kx, float ky)
+{
+    if (use_vfpu) transform_vfpu(o, src, nv, mv, kx, ky);
+    else transform_fast_c(o, src, nv, mv, kx, ky);
+}
+
+/* comprueba al arrancar que la VFPU da lo mismo que la version en C */
+static void vfpu_selftest(void)
+{
+    MVert v[3] = {{0.1f, 0.2f, 3.0f, -4.0f, 50.0f}, {0.5f, 0.5f, -20.0f, 10.0f, 300.0f}, {0, 1, 7.5f, 2.5f, 900.0f}};
+    OV a[3], b[3];
+    M34 m;
+    m34_trs(&m, v3(1, -33, 33), qeuler(21.5f, 3.0f, 0), v3(1, 1, 1));
+    transform_fast_c(a, v, 3, &m, -0.0005f / P00, -0.0003f / P11);
+    transform_vfpu(b, v, 3, &m, -0.0005f / P00, -0.0003f / P11);
+    use_vfpu = 1;
+#ifdef AUTOTEST
+    {
+        FILE *f = fopen("vfpu.log", "w");
+        if (f) {
+            for (int i = 0; i < 3; i++) fprintf(f, "C %f %f %f %f %f | V %f %f %f %f %f\n", a[i].u, a[i].v, a[i].x, a[i].y, a[i].z,
+                                                b[i].u, b[i].v, b[i].x, b[i].y, b[i].z);
+            fclose(f);
+        }
+    }
+#endif
+    for (int i = 0; i < 3; i++)
+        if (fabsf(a[i].x - b[i].x) > 0.01f || fabsf(a[i].y - b[i].y) > 0.01f || fabsf(a[i].z - b[i].z) > 0.01f ||
+            a[i].u != b[i].u) use_vfpu = 0;
+}
+
+int r_using_vfpu(void) { return use_vfpu; }
+
+static void transform_fast_c(OV *o, const MVert *src, int nv, const M34 *mv, float kx, float ky)
 {
     const float *m = mv->m;
     const float m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5], m6 = m[6], m7 = m[7], m8 = m[8];
@@ -450,6 +597,7 @@ static void transform_into(Batch *b, const MVert *src, int nv, const M34 *mv, fl
 
 float r_mat_uoff[256];
 int r_mesh_verts[512];
+unsigned int r_prof[8];   /* microsegundos: 0 rapido, 1 recorte, 2 piel, 3 culling */
 
 static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, float amul)
 {
@@ -476,14 +624,36 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         MeshPart *pt = &me->parts[k];
         int mat = pt->sub < nmats ? mats[pt->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
         if (mat < 0) continue;
+        unsigned int tq0 = sceKernelGetSystemTimeLow();
         int vis = sky ? 2 : sphere_visible(m34_point(world, pt->center), pt->radius * sc);
+        r_prof[3] += sceKernelGetSystemTimeLow() - tq0;
         if (!vis) continue;
+        float d0 = vis == 1 ? m34_point(&mv, pt->center).z : 0;
+        float pr = pt->radius * sc;
+        /* objetos pequenos o bloques lejanos: el error de linealizar la curvatura es menor de un pixel */
+        if (vis == 1 && (pr <= 20.0f || (pr <= 64.0f && d0 - pr > 550.0f))) {
+            /* lo transforma el GE con la curvatura linealizada (sin trabajo de CPU) */
+            ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
+            bent_gumatrix(gm, &mv, d0, kx, ky);
+            sceGuSetMatrix(GU_MODEL, gm);
+            model_set = 1;
+            bind_material(mat, amul);
+            sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
+                           pt->ni, pt->idx, pt->verts);
+            r_stat_draws++;
+            r_stat_hw += pt->nv;
+            r_stat_tris += pt->ni / 3;
+            continue;
+        }
+        model_identity();
         if (vis == 1) {
             /* camino rapido: todo dentro de la banda de guarda, se usan los indices originales */
             int bytes = pt->nv * sizeof(OV);
             if (vpos + bytes + 64 > VRING_BYTES) break;
             OV *ov = (OV *)(vring + vpos);
+            unsigned int tp0 = sceKernelGetSystemTimeLow();
             transform_fast(ov, pt->verts, pt->nv, &mv, kx, ky);
+            r_prof[0] += sceKernelGetSystemTimeLow() - tp0;
             vpos += (bytes + 63) & ~63;
             r_stat_verts += pt->nv;
             if (mi < 512) r_mesh_verts[mi] += pt->nv;
@@ -496,10 +666,12 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         }
         Batch b;
         if (!batch_begin(&b, pt->nv, 256 + pt->ni / 3, pt->ni + 1024)) break;
+        unsigned int tc0 = sceKernelGetSystemTimeLow();
         transform_into(&b, pt->verts, pt->nv, &mv, kx, ky);
         r_stat_verts += pt->nv;
         if (mi < 512) r_mesh_verts[mi] += pt->nv;
         batch_tris(&b, pt->idx, pt->ni);
+        r_prof[1] += sceKernelGetSystemTimeLow() - tc0;
         if (b.ni > 0) {
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
@@ -546,6 +718,7 @@ static int cmp_defer(const void *a, const void *b)
 
 void r_flush_transparent(void)
 {
+    model_identity();
     qsort(defer, ndefer, sizeof(Deferred), cmp_defer);
     for (int i = 0; i < ndefer; i++)
         draw_mesh_now(defer[i].mesh, &defer[i].world, defer[i].mats, defer[i].nmats, defer[i].amul);
@@ -559,7 +732,57 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
     Mesh *me = &gd.meshes[mi];
     if (!me->skinned) return;
     static M34 vb[64];
+    unsigned int ts0 = sceKernelGetSystemTimeLow();
     int nb = nbones < 64 ? nbones : 64;
+    if (me->nbatches > 0 && nb > 0) {
+        /* centro aproximado: media de las posiciones de los huesos */
+        V3 c = v3(0, 0, 0);
+        for (int i = 0; i < nb; i++) c = v3add(c, m34_pos(&bones[i]));
+        c = v3scale(c, 1.0f / nb);
+        if (sphere_visible(c, 12.0f) == 1) {
+            float d0 = m34_point(&r_view, c).z;
+            M34 idm; m34_identity(&idm);
+            ScePspFMatrix4 bent;
+            bent_gumatrix(&bent, &r_view, d0, -0.0005f / P00, -0.0003f / P11);
+            /* la matriz "bent" (camara curvada) por cada hueso */
+            M34 bv;
+            const float *B = (const float *)&bent;
+            for (int c2 = 0; c2 < 4; c2++)
+                for (int r = 0; r < 3; r++) bv.m[c2 * 3 + r] = B[c2 * 4 + r];
+            /* bent tiene z = -d: el GE recibe directamente coordenadas de vista */
+            ScePspFMatrix4 id;
+            memset(&id, 0, sizeof(id));
+            id.x.x = id.y.y = id.z.z = id.w.w = 1.0f;
+            sceGuSetMatrix(GU_MODEL, &id);
+            model_set = 0;
+            for (int k = 0; k < me->nbatches; k++) {
+                SkinBatch *sb = &me->batches[k];
+                int mat = sb->sub < nmats ? mats[sb->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
+                if (mat < 0) continue;
+                for (int j = 0; j < sb->nb; j++) {
+                    int bi = sb->bones[j] < nb ? sb->bones[j] : 0;
+                    M34 r2;
+                    m34_mul(&r2, &bv, &bones[bi]);
+                    ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
+                    float *o = (float *)gm;
+                    for (int c2 = 0; c2 < 4; c2++) {
+                        o[c2 * 4 + 0] = r2.m[c2 * 3]; o[c2 * 4 + 1] = r2.m[c2 * 3 + 1]; o[c2 * 4 + 2] = r2.m[c2 * 3 + 2];
+                        o[c2 * 4 + 3] = c2 == 3 ? 1.0f : 0.0f;
+                    }
+                    sceGuBoneMatrix(j, gm);
+                }
+                bind_material(mat, 1.0f);
+                sceGuDrawArray(GU_TRIANGLES, GU_WEIGHTS(sb->nb) | GU_WEIGHT_32BITF | GU_TEXTURE_32BITF | GU_VERTEX_32BITF |
+                               GU_INDEX_16BIT | GU_TRANSFORM_3D, sb->ni, sb->idx, sb->verts);
+                r_stat_draws++;
+                r_stat_hw += sb->nv;
+                r_stat_tris += sb->ni / 3;
+            }
+            r_prof[2] += sceKernelGetSystemTimeLow() - ts0;
+            return;
+        }
+    }
+    model_identity();
     for (int i = 0; i < nb; i++) m34_mul(&vb[i], &r_view, &bones[i]);
     float kx = -0.0005f / P00, ky = -0.0003f / P11;
     for (int k = 0; k < me->nparts; k++) {
@@ -600,6 +823,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         }
         batch_commit(&b);
     }
+    r_prof[2] += sceKernelGetSystemTimeLow() - ts0;
 }
 
 /* --------------- 2D --------------- */
@@ -607,6 +831,7 @@ typedef struct { float u, v; unsigned int c; float x, y, z; } SV;
 
 void r_begin_2d(void)
 {
+    model_identity();
     set_blend(BLEND_ALPHA);
     sceGuDisable(GU_DEPTH_TEST);
     sceGuDisable(GU_CULL_FACE);

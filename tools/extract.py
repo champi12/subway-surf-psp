@@ -508,6 +508,49 @@ def export_meshes(ex):
             tv += len(order)
         if skin:
             bp = d.m_BindPose
+            # lotes para el skinning por hardware del GE (como mucho 8 huesos por lote)
+            bw, bi = h.m_BoneWeights, h.m_BoneIndices
+            batches = []
+            for si, sm in enumerate(subs):
+                cur, bones = [], []
+                for t in sm:
+                    tb = set()
+                    for i in t:
+                        for k in range(4):
+                            if bw[i][k] > 0.0001:
+                                tb.add(int(bi[i][k]))
+                    nb = sorted(set(bones) | tb)
+                    if len(nb) > 8 and cur:
+                        batches.append((si, bones, cur))
+                        cur, bones = [], []
+                        nb = sorted(tb)
+                    bones = nb
+                    cur.append(t)
+                if cur:
+                    batches.append((si, bones, cur))
+            body += struct.pack('<I', len(batches))
+            for si, bones, tris in batches:
+                remap = {}
+                idx = []
+                for t in tris:
+                    for i in t:
+                        if i not in remap:
+                            remap[i] = len(remap)
+                        idx.append(remap[i])
+                order = sorted(remap, key=remap.get)
+                nb = len(bones)
+                body += struct.pack('<HHHH', si, nb, len(order), 0) + struct.pack('<I', len(idx))
+                body += struct.pack('<8B', *(bones + [0] * (8 - nb)))
+                for i in order:
+                    w = [0.0] * nb
+                    for k in range(4):
+                        if bw[i][k] > 0.0001:
+                            w[bones.index(int(bi[i][k]))] += float(bw[i][k])
+                    body += struct.pack('<%df' % nb, *w)
+                    body += struct.pack('<5f', UV[i][0], 1.0 - UV[i][1], V[i][0], V[i][1], V[i][2])
+                body += struct.pack('<%dH' % len(idx), *idx)
+                if len(idx) % 2:
+                    body += b'\0\0'
             body += struct.pack('<I', len(bp))
             for m in bp:
                 body += struct.pack('<16f', *[m.e00, m.e10, m.e20, m.e30, m.e01, m.e11, m.e21, m.e31,

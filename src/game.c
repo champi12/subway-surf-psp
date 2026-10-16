@@ -1456,8 +1456,48 @@ static void running_begin(void)
     ginfo.state = GS_RUNNING;
 }
 
+#ifdef AUTOTEST
+/* piloto automatico para las pruebas: mira los obstaculos de cada carril y decide como el jugador */
+static float ap_next;
+static void autopilot(void)
+{
+    if (game_time < ap_next || ch.tc || ch.rolling) return;
+    float z = cc.pos.z, look = currentSpeed * 0.9f;
+    float firstz[3] = {1e9f, 1e9f, 1e9f};
+    int firstcol[3] = {-1, -1, -1};
+    for (int i = 0; i < ncols; i++) {
+        const Col *k = &cols[i];
+        if (k->layer != 10 || k->bmax.z < z || k->bmin.z > z + 400.0f) continue;
+        if (k->bmax.y < cc.pos.y + 1.0f || k->bmin.y > cc.pos.y + 9.0f) continue;
+        for (int L = 0; L < 3; L++) {
+            float lx = track_pos(track_get_x(L), 0).x;
+            if (k->bmax.x < lx - 6.0f || k->bmin.x > lx + 6.0f) continue;
+            if (k->bmin.z < firstz[L]) { firstz[L] = k->bmin.z; firstcol[L] = i; }
+        }
+    }
+    int L = ch.trackIndex;
+    float d = firstz[L] - z;
+    if (d > look) return;
+    const Col *k = &cols[firstcol[L]];
+    float h = k->bmax.y - cc.pos.y;
+    const char *nm = gd.strings[gd.nodes[k->node].name];
+    if (k->trigger || h < 13.0f || !strcmp(nm, "blocker_jump")) { if (d < 35.0f) { in_up = 1; ap_next = game_time + 0.3f; } return; }
+    if (k->bmin.y > cc.pos.y + 6.0f || !strcmp(nm, "blocker_roll")) { if (d < 35.0f) { in_down = 1; ap_next = game_time + 0.3f; } return; }
+    /* tren o pared: al carril con mas espacio */
+    int best = L;
+    for (int c = 0; c < 3; c++) if (firstz[c] > firstz[best] + 20.0f && abs(c - L) == 1) best = c;
+    if (best == L) for (int c = 0; c < 3; c++) if (firstz[c] > firstz[best] + 20.0f) best = c;
+    if (best < L) in_left = 1; else if (best > L) in_right = 1;
+    else if (d < 40.0f) in_up = 1;
+    ap_next = game_time + 0.25f;
+}
+#endif
+
 static void handle_controls_running(void)
 {
+#ifdef AUTOTEST
+    autopilot();
+#endif
     float dur = CHANGE_TRACK_LENGTH / (currentSpeed > 1 ? currentSpeed : 1);
     if (in_left) change_track(-1, dur);
     if (in_right) change_track(1, dur);

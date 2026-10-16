@@ -232,7 +232,7 @@ void perf_draw(float cpu_ms, float gpu_ms, float fps, unsigned int free_kb, int 
     r_begin_2d();
     r_rect(0, 0, 250, 74, 0xa0000000);
     unsigned int c = fps >= 29.5f ? 0xff40ff40 : (fps >= 24 ? 0xff40ffff : 0xff4040ff);
-    snprintf(buf, sizeof(buf), "FPS %.1f  CPU %.1f ms  GPU %.1f ms", fps, cpu_ms, gpu_ms);
+    snprintf(buf, sizeof(buf), "FPS %.1f  CPU %.1f ms  espera %.1f ms", fps, cpu_ms, gpu_ms);
     ui_text(f_small, 4, 2, 0.6f, c, 0, buf);
     snprintf(buf, sizeof(buf), "vert %d  tri %d  draw %d  clip %d", verts, tris, draws, clipped);
     ui_text(f_small, 4, 20, 0.6f, 0xffffffff, 0, buf);

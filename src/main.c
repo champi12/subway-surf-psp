@@ -100,11 +100,7 @@ int main(int argc, char **argv)
         frame_no++;
         if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
-        if (ginfo.state == GS_RUNNING && frame_no % 45 == 0) {
-            int r = rnd_u32() % 4;
-            if (r == 0) pr |= PSP_CTRL_LEFT; else if (r == 1) pr |= PSP_CTRL_RIGHT;
-            else if (r == 2) pr |= PSP_CTRL_UP; else pr |= PSP_CTRL_DOWN;
-        }
+
 #endif
         game_input((pr & PSP_CTRL_LEFT) || sl, (pr & PSP_CTRL_RIGHT) || sr,
                    (pr & (PSP_CTRL_UP | PSP_CTRL_CROSS)) || su, (pr & (PSP_CTRL_DOWN | PSP_CTRL_CIRCLE)) || sd,
@@ -119,6 +115,7 @@ int main(int argc, char **argv)
 
 #ifdef AUTOTEST
         { extern int r_mesh_verts[512]; memset(r_mesh_verts, 0, sizeof(r_mesh_verts)); }
+        { extern unsigned int r_prof[8]; memset(r_prof, 0, sizeof(r_prof)); }
 #endif
         r_begin_frame(0xfff6e6bc);   /* color de fondo de la camara (0.737, 0.902, 0.965) */
         game_draw();
@@ -127,15 +124,15 @@ int main(int argc, char **argv)
         if (show_perf)
             perf_draw(cpu_ms, gpu_ms, fps, heap_used_kb(), r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped);
         r_end_frame();
-        unsigned int t2 = sceKernelGetSystemTimeLow();
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
-        gpu_ms = gpu_ms * 0.9f + ((t2 - t1) / 1000.0f) * 0.1f;
+        gpu_ms = gpu_ms * 0.9f + r_wait_ms * 0.1f;
 #ifdef AUTOTEST
 #ifndef AT_SHOT
 #define AT_SHOT 150
 #endif
         if (frame_no % AT_SHOT == 0) {
             void *top; int bw, fmt;
+            r_present_last();
             sceDisplayGetFrameBuf(&top, &bw, &fmt, PSP_DISPLAY_SETBUF_NEXTFRAME);
             char fn[64];
             snprintf(fn, sizeof(fn), "shot%06d.raw", frame_no);
@@ -149,10 +146,15 @@ int main(int argc, char **argv)
         if (frame_no % 300 == 0) {
             FILE *f = fopen("perf.log", "a");
             if (f) {
-                fprintf(f, "update %.2f ms (input %.2f)\n", upd_ms, (tu0 - t0) / 1000.0f);
-                fprintf(f, "frame %d state %d fps %.1f cpu %.2f gpu+vsync %.2f verts %d tris %d draws %d clip %d heap %u KB z %.0f score %d\n",
+                extern int r_using_vfpu(void);
+                fprintf(f, "update %.2f ms vfpu %d\n", upd_ms, r_using_vfpu());
+                fprintf(f, "hw verts %d\n", r_stat_hw);
+                fprintf(f, "frame %d state %d fps %.1f cpu %.2f espera_GE+vsync %.2f verts %d tris %d draws %d clip %d heap %u KB z %.0f score %d\n",
                         frame_no, ginfo.state, fps, cpu_ms, gpu_ms, r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped,
                         heap_used_kb(), (double)scene_char_z, ginfo.score);
+                extern unsigned int r_prof[8];
+                fprintf(f, "   prof: rapido %.2f recorte %.2f piel %.2f culling %.2f ms\n", r_prof[0] / 1000.0f, r_prof[1] / 1000.0f,
+                        r_prof[2] / 1000.0f, r_prof[3] / 1000.0f);
                 extern int r_mesh_verts[512];
                 for (int k = 0; k < 8; k++) {
                     int best = 0;

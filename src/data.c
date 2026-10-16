@@ -112,6 +112,23 @@ static int load_meshes(void)
             if (ni & 1) p += 2;
             if (m->skinned) { pt->skin = (MSkin *)p; p += nv * sizeof(MSkin); }
         }
+        if (m->skinned) {
+            m->nbatches = rd32(p); p += 4;
+            m->batches = calloc(m->nbatches ? m->nbatches : 1, sizeof(SkinBatch));
+            for (int k = 0; k < m->nbatches; k++) {
+                SkinBatch *sb = &m->batches[k];
+                uint16_t hh[4];
+                memcpy(hh, p, 8); p += 8;
+                sb->sub = hh[0]; sb->nb = hh[1]; sb->nv = hh[2];
+                sb->ni = rd32(p); p += 4;
+                memcpy(sb->bones, p, 8); p += 8;
+                sb->verts = (float *)p;
+                p += sb->nv * (sb->nb + 5) * 4;
+                sb->idx = (uint16_t *)p;
+                p += sb->ni * 2;
+                if (sb->ni & 1) p += 2;
+            }
+        }
         m->nbind = rd32(p); p += 4;
         if (m->nbind) {
             m->bind = malloc(sizeof(M34) * m->nbind);

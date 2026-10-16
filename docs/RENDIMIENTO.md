@@ -27,12 +27,26 @@ El juego trae un medidor que se activa con **L + SELECT** (en la compilación de
 | `clip` | Triángulos recortados por software (cerca de la cámara) | Normalmente < 400 |
 | `RAM libre` | Memoria ocupada por el juego (montón de C) | La PSP-1000 tiene 24 MB para juegos: hay que quedar **por debajo de ~18 MB** |
 
-Medidas actuales en el emulador (tramos normales, a 30–60 FPS):
+Medidas actuales en el emulador (tramos normales):
 
-    CPU 9-11 ms   vert 35.000-50.000   tri 25.000-35.000   draw 350-500   memoria 11,8 MB
+    CPU 6-9 ms   vert CPU 17.000-27.000 (+17.000 por hardware)   tri 23.000-30.000   draw 380-470   memoria 13,2 MB
 
-La memoria está bien para una PSP-1000. Los vértices son lo que más pesa; el juego ya descarta por bloques lo que
-queda fuera de la cámara y usa un camino rápido para lo que no necesita recorte.
+La memoria está bien para una PSP-1000 (24 MB).
+
+## Optimizaciones que lleva el motor
+
+| Técnica | Qué ahorra |
+|---|---|
+| **CPU y GE en paralelo**: la lista de dibujo de cada fotograma se prepara mientras el GE dibuja el anterior (listas y búferes de vértices duplicados) | Casi todo el tiempo de CPU queda oculto detrás del dibujo |
+| **Escenario troceado** en bloques de 64 unidades: se descarta cada bloque fuera de cámara | ~40 % de los vértices |
+| **Camino rápido** sin recorte para los bloques que caben enteros en la banda de guarda del GE | Comprobaciones por vértice y por triángulo |
+| **VFPU**: la transformación de vértices usa la matriz 4×4 de la unidad vectorial (`vhtfm4.q`), comprobada al arrancar contra la versión en C | Cálculo por vértice |
+| **Curvatura linealizada en el GE** para objetos pequeños (monedas, power-ups, barreras) y bloques a más de 550 unidades: error < 1 píxel | ~17.000 vértices por fotograma que la CPU ya no toca |
+| **Skinning por hardware**: Jake, el inspector y el perro se dividen en lotes de ≤ 8 huesos y los deforma el GE | Toda la piel de los personajes |
+| Texturas del escenario y los trenes (16 bits) en la **VRAM**; el resto con paleta de 256 colores y *swizzled* | Ancho de banda de texturas |
+
+Antes de estas optimizaciones la CPU iba a ~15 ms por fotograma con 37.000–50.000 vértices transformados por
+software.
 
 ## Configurar PPSSPP para que se parezca a la consola
 

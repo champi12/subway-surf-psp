@@ -58,8 +58,17 @@ typedef struct {
 } MeshPart;
 
 typedef struct {
+    int sub, nb, nv, ni;
+    uint8_t bones[8];
+    float *verts;          /* por vertice: nb pesos, u, v, x, y, z */
+    uint16_t *idx;
+} SkinBatch;
+
+typedef struct {
     char name[32];
     int nparts, nsub, skinned;
+    int nbatches;
+    SkinBatch *batches;
     V3 center; float radius;
     V3 bmin, bmax;
     MeshPart *parts;
