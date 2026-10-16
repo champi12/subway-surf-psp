@@ -16,6 +16,7 @@
 #include "game.h"
 #include "audio.h"
 #include "hud.h"
+#include "devlog.h"
 
 PSP_MODULE_INFO("SubwaySurfers", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -41,6 +42,8 @@ static int cb_thread(SceSize a, void *p)
 
 static void fatal(const char *msg)
 {
+    dlog_error("%s", msg);
+    dlog_close();
     pspDebugScreenInit();
     pspDebugScreenPrintf("Subway Surfers PSP\n\nError: %s\n\n", msg);
     pspDebugScreenPrintf("Hay que generar la carpeta data/ con tools/extract.py\n");
@@ -54,19 +57,35 @@ unsigned int heap_used_kb(void) { struct mallinfo mi = mallinfo(); return mi.uor
 
 int main(int argc, char **argv)
 {
+    mem_init();
     SceUID th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
-    scePowerSetClockFrequency(333, 333, 166);
+    int clk = scePowerSetClockFrequency(333, 333, 166);
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     rng_state ^= sceKernelGetSystemTimeLow();
+    dlog_init();
+    if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
+    unsigned int tl = sceKernelGetSystemTimeLow();
     if (data_load("data") != 0) fatal(data_err());
-    ui_load("data");
+    if (ui_load("data") != 0) dlog_error("No se pudo cargar data/ui.bin: la interfaz no tendra textos");
+    dlog("Datos cargados en %.2f s: %d objetos, %d modelos, %d texturas, %d animaciones, %d sonidos",
+         (sceKernelGetSystemTimeLow() - tl) / 1000000.0f, gd.nnodes, gd.nmeshes, gd.ntex, gd.nclips, gd.nsfx);
     r_init();
+    {
+        extern int r_using_vfpu(void);
+        dlog("GE iniciado: VRAM framebuffers+Z %d KB, texturas hasta %d KB | VFPU %s", r_mem.vram_fb / 1024,
+             (R_VRAM_TOTAL - r_mem.vram_fb) / 1024, r_using_vfpu() ? "si (autotest correcto)" : "NO (autotest fallido, se usa la CPU)");
+    }
     audio_init();
     scene_init();
     game_load();
     game_init();
+    mem_query(&dbg_mem);
+    dlog("Arranque completo en %.2f s | monton %u/%u KB usado | libre fuera del monton %u KB",
+         (sceKernelGetSystemTimeLow() - tl) / 1000000.0f, dbg_mem.heap_used / 1024, dbg_mem.heap_total / 1024,
+         dbg_mem.sys_free / 1024);
+    dlog_flush();
 
     unsigned int prev_buttons = 0;
     int stick_state = 0;
@@ -94,10 +113,14 @@ int main(int argc, char **argv)
         int sl = 0, sr = 0, su = 0, sd = 0;
         if (sdir && sdir != stick_state) { sl = sdir == 1; sr = sdir == 2; su = sdir == 3; sd = sdir == 4; }
         if (!sdir || (abs(ax) < 40 && abs(ay) < 40)) stick_state = 0; else stick_state = sdir;
-        if ((b & PSP_CTRL_LTRIGGER) && (pr & PSP_CTRL_SELECT)) show_perf ^= 1;
+        /* SELECT: resumen -> memoria -> grafica de tiempos -> oculto */
+        if (pr & PSP_CTRL_SELECT) show_perf = (show_perf + 1) & 3;
 #ifdef AUTOTEST
         /* juego automatico para probar en el emulador sin mandos */
         frame_no++;
+#ifdef AT_PAGES
+        if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
+#endif
 #ifdef AT_UI
         if (frame_no == 40) pr |= PSP_CTRL_TRIANGLE;
         if (frame_no >= 60 && frame_no < 160 && frame_no % 10 == 0) pr |= PSP_CTRL_DOWN;   /* recorre toda la tienda */
@@ -146,10 +169,10 @@ int main(int argc, char **argv)
         game_draw();
         hud_draw();
         unsigned int t1 = sceKernelGetSystemTimeLow();
-        if (show_perf)
-            perf_draw(cpu_ms, gpu_ms, fps, heap_used_kb(), r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped);
+        if (show_perf) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
+        dbg_frame(dt * 1000.0f, (t1 - t0) / 1000.0f, r_wait_ms);
 #ifdef AUTOTEST
         static float cpu_max;
         if ((t1 - t0) / 1000.0f > cpu_max) cpu_max = (t1 - t0) / 1000.0f;
@@ -197,9 +220,13 @@ int main(int argc, char **argv)
                 fclose(f);
             }
         }
+        /* lo que tarda escribir capturas y perf.log no es del juego: no cuenta como tiron */
+        if (frame_no % AT_SHOT == 0 || frame_no % 300 == 0) last = sceKernelGetSystemTimeLow();
 #endif
     }
+    dlog("Salida desde el menu HOME");
     game_save();
+    dlog_close();
     audio_shutdown();
     sceGuTerm();
     sceKernelExitGame();

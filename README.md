@@ -72,6 +72,15 @@ Toolchain [pspdev](https://github.com/pspdev/pspdev):
     make                # genera EBOOT.PBP
     ./build_dist.sh     # arma dist/PSP/GAME/SUBWAY con el EBOOT y data/
 
+`make DEVLOG=0` quita el registro `devlog.txt` (ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)).
+
+### Actualizar y recompilar después de cada cambio
+
+    ./actualizar.sh subway.apk "/mnt/c/Users/<usuario>/Desktop"
+
+Baja los cambios (`git pull`), vuelve a generar `data/` **solo si cambió el extractor**, compila **solo los archivos
+modificados** y copia la carpeta `PSP` al destino que le indiques (opcional). La primera vez regenera `data/`.
+
 ## Instalar
 
 En la Memory Stick: `ms0:/PSP/GAME/SUBWAY/EBOOT.PBP` y `ms0:/PSP/GAME/SUBWAY/data/` (sin `wav/`, que solo sirve
@@ -90,7 +99,7 @@ El original se jugaba deslizando el dedo; en la PSP:
 | START | Pausa (al reanudar hay cuenta atrás "Starting in 3, 2, 1" como en el original) |
 | L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
 | L / R (en el menú) | Ver las misiones |
-| L + SELECT | Medidor de rendimiento |
+| SELECT | Medidor: resumen → memoria y VRAM → gráfica de tiempos → oculto |
 
 En el menú, △ o □ abren la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
 Headstart 1000 (2000), cajas misteriosas (500) y los 5 niveles de mejora del jetpack, las super zapatillas, el imán
@@ -100,5 +109,6 @@ terminar, con las probabilidades de `MysteryBox.Roll()`. La partida se guarda en
 
 ## Rendimiento y pruebas sin PSP
 
-Ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md): cómo medir en PPSSPP si el juego cabe en una PSP real (medidor
-interno, configuración del emulador y la prueba automática `tools/autotest.sh`).
+Ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md): el medidor de SELECT, el registro `devlog.txt` que el juego escribe en
+la Memory Stick, qué datos del emulador valen para la consola real, cómo configurar PPSSPP y la prueba automática
+`tools/autotest.sh`.

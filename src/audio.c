@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <malloc.h>
+#include "devlog.h"
 #include "audio.h"
 #include "data.h"
 #include "vmath.h"
@@ -189,11 +190,13 @@ static int music_thread(SceSize args, void *argp)
                                 sceAtracSetLoopNum(at3_id, mus_req_loop ? -1 : 0);
                                 if (at3_ch < 0) at3_ch = sceAudioChReserve(PSP_AUDIO_NEXT_CHANNEL, 2048, PSP_AUDIO_FORMAT_STEREO);
                                 mus_playing = 1;
-                            }
-                        }
-                    }
+                                dlog("MUSICA AT3 %s (%d KB)", mus_req_path, at3_size / 1024);
+                            } else dlog_error("AT3 no valido: %s (0x%08x)", mus_req_path, at3_id);
+                        } else dlog_error("Sin memoria para el AT3 %s (%d KB)", mus_req_path, at3_size / 1024);
+                    } else dlog_error("No se encuentra %s", mus_req_path);
                 } else if (mp3_ok) {
                     fd = sceIoOpen(mus_req_path, PSP_O_RDONLY, 0);
+                    if (fd < 0) dlog_error("No se encuentra %s", mus_req_path);
                     if (fd >= 0) {
                         SceMp3InitArg a;
                         a.mp3StreamStart = 0;
@@ -206,7 +209,9 @@ static int music_thread(SceSize args, void *argp)
                             rate = sceMp3GetSamplingRate(handle);
                             if (rate <= 0) rate = 44100;
                             mus_playing = 1;
+                            dlog("MUSICA MP3 %s (%d Hz)", mus_req_path, rate);
                         } else {
+                            dlog_error("No se pudo abrir la musica MP3 %s (handle 0x%08x)", mus_req_path, handle);
                             if (handle >= 0) sceMp3ReleaseMp3Handle(handle);
                             handle = -1; sceIoClose(fd); fd = -1;
                         }
@@ -277,10 +282,14 @@ int audio_init(void)
     /* los hilos no tienen directorio actual en la PSP: ruta absoluta */
     if (!getcwd(basedir, sizeof(basedir))) strcpy(basedir, "ms0:/PSP/GAME/SUBWAY");
     strncat(basedir, "/data", sizeof(basedir) - strlen(basedir) - 1);
-    sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC);
-    sceUtilityLoadModule(PSP_MODULE_AV_MP3);
-    at3_ok = sceUtilityLoadModule(PSP_MODULE_AV_ATRAC3PLUS) >= 0;
-    mp3_ok = sceMp3InitResource() >= 0;
+    int r1 = sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC), r2 = sceUtilityLoadModule(PSP_MODULE_AV_MP3);
+    int r3 = sceUtilityLoadModule(PSP_MODULE_AV_ATRAC3PLUS);
+    /* 0x80020139 = ya estaba cargado (normal en algunos CFW) */
+    at3_ok = r3 >= 0 || r3 == (int)0x80020139;
+    int r4 = sceMp3InitResource();
+    mp3_ok = r4 >= 0;
+    dlog("AUDIO modulos: avcodec 0x%08x mp3 0x%08x atrac3 0x%08x | sceMp3InitResource 0x%08x", r1, r2, r3, r4);
+    if (!mp3_ok) dlog_error("No se pudo iniciar el decodificador MP3: no habra musica");
     audio_running = 1;
     mix_thid = sceKernelCreateThread("sfx_mixer", mixer_thread, 0x12, 0x4000, PSP_THREAD_ATTR_USER, NULL);
     if (mix_thid >= 0) sceKernelStartThread(mix_thid, 0, NULL);

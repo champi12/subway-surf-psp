@@ -12,11 +12,15 @@
 #include <stdio.h>
 #include "render.h"
 #include "data.h"
+#include "devlog.h"
 
 #define BUF_W 512
-#define LIST_WORDS (256 * 1024)
-#define VRING_BYTES (2 * 1024 * 1024)
-#define IRING_BYTES (512 * 1024)
+/* tamanos medidos con el devlog: pico real ~140 KB de lista, ~480 KB de vertices y ~30 KB de indices.
+ * Van por duplicado y fuera del monton, asi que cada KB de mas es RAM que le falta al juego. */
+#define LIST_WORDS (128 * 1024)
+#define VRING_BYTES (1024 * 1024)
+#define IRING_BYTES (256 * 1024)
+#define LIST_RESERVE (24 * 1024)   /* hueco para el 2D y el final del fotograma */
 
 /* todo va por duplicado: la CPU prepara un fotograma mientras el GE dibuja el anterior */
 static unsigned int __attribute__((aligned(64))) dlists[2][LIST_WORDS];
@@ -59,6 +63,8 @@ static unsigned int cur_color = 0;
 static float cur_st[4] = {-1, -1, -1, -1};
 static int vram_tex_next;
 static void *vram_tex_ptr[64];
+static unsigned char *tex_failed;
+RMem r_mem;
 
 static void *vram_alloc(int bytes)
 {
@@ -79,7 +85,17 @@ void r_bind_texture(int t)
     sceGuEnable(GU_TEXTURE_2D);
     Texture *tx = &gd.tex[t];
     if (!tx->loaded) {
-        data_tex_load(t);
+        if (tex_failed && tex_failed[t]) { sceGuDisable(GU_TEXTURE_2D); cur_tex = -1; return; }
+        unsigned int t0 = sceKernelGetSystemTimeLow();
+        if (data_tex_load(t) < 0) {
+            /* sin memoria: se dibuja sin textura en lugar de leer basura */
+            dlog_error("Sin memoria para la textura %s (%d KB)", tx->name, (int)((tx->databytes + tx->palbytes) / 1024));
+            if (tex_failed) tex_failed[t] = 1;
+            sceGuDisable(GU_TEXTURE_2D);
+            cur_tex = -1;
+            return;
+        }
+        const char *where = "RAM";
         /* las texturas de 16 bits del escenario van a la VRAM si caben */
         if (tx->fmt != TEX_T8 && t < 64) {
             void *v = vram_alloc(tx->databytes);
@@ -89,9 +105,20 @@ void r_bind_texture(int t)
                 tx->data = v;
                 vram_tex_ptr[t] = v;
                 vram_tex_next++;
+                r_mem.vram_tex += (int)tx->databytes;
+                r_mem.vram_tex_n++;
+                where = "VRAM";
+            } else {
+                r_mem.vram_full++;
+                dlog("AVISO la textura %s (%d KB) no cabe en la VRAM: se queda en la RAM (mas lenta)", tx->name, (int)(tx->databytes / 1024));
             }
         }
+        if (where[0] == 'R') { r_mem.ram_tex += (int)(tx->databytes + tx->palbytes); r_mem.ram_tex_n++; }
         sceKernelDcacheWritebackAll();
+        r_mem.frame_texloads++;
+        dlog("TEXTURA %s %dx%d %s %d KB en %s (%.1f ms)", tx->name, tx->w, tx->h,
+             tx->fmt == TEX_T8 ? "paleta" : tx->fmt == TEX_4444 ? "4444" : tx->fmt == TEX_5650 ? "5650" : "8888",
+             (int)((tx->databytes + tx->palbytes) / 1024), where, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
     }
     switch (tx->fmt) {
     case TEX_T8:
@@ -186,6 +213,11 @@ void r_init(void)
     fbp0 = (void *)0;
     fbp1 = (void *)(BUF_W * SCR_H * 2);
     zbp = (void *)(BUF_W * SCR_H * 4);
+    r_mem.vram_fb = BUF_W * SCR_H * 2 * 3;
+    r_mem.dlist_max = LIST_WORDS * 4;
+    r_mem.vring_max = VRING_BYTES;
+    r_mem.iring_max = IRING_BYTES;
+    tex_failed = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
     sceGuInit();
     sceGuStart(GU_DIRECT, dlists[0]);
     sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);
@@ -226,6 +258,7 @@ void r_begin_frame(unsigned int clear)
     iring = irings[frame_par];
     dlist = dlists[frame_par];
     r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = 0;
+    r_mem.dropped = r_mem.frame_texloads = 0;
     model_set = 0;
     /* lista "llamable": se construye mientras el GE sigue con el fotograma anterior */
     sceGuStart(GU_CALL, dlist);
@@ -252,6 +285,12 @@ float r_wait_ms;
 
 void r_end_frame(void)
 {
+    r_mem.dlist_used = sceGuCheckList();
+    r_mem.vring_used = vpos;
+    r_mem.iring_used = ipos;
+    if (r_mem.dlist_used > r_mem.dlist_peak) r_mem.dlist_peak = r_mem.dlist_used;
+    if (vpos > r_mem.vring_peak) r_mem.vring_peak = vpos;
+    if (ipos > r_mem.iring_peak) r_mem.iring_peak = ipos;
     sceGuFinish();
     sceKernelDcacheWritebackAll();
     unsigned int t0 = sceKernelGetSystemTimeLow();
@@ -365,7 +404,7 @@ static int batch_begin(Batch *b, int nv, int extra_v, int maxi)
 {
     int vbytes = (nv + extra_v) * sizeof(OV);
     int ibytes = maxi * 2;
-    if (vpos + vbytes + 64 > VRING_BYTES || ipos + ibytes + 64 > IRING_BYTES) return 0;
+    if (vpos + vbytes + 64 > VRING_BYTES || ipos + ibytes + 64 > IRING_BYTES) { r_mem.dropped++; return 0; }
     b->verts = (OV *)(vring + vpos);
     b->nv = nv;
     b->maxv = nv + extra_v;
@@ -605,8 +644,17 @@ float r_mat_uoff[256];
 int r_mesh_verts[512];
 unsigned int r_prof[8];   /* microsegundos: 0 rapido, 1 recorte, 2 piel, 3 culling */
 
+/* si la lista del GE se llenara, el GE leeria comandos de memoria ajena: mejor no dibujar */
+static int list_full(int reserve)
+{
+    if (sceGuCheckList() + reserve < LIST_WORDS * 4) return 0;
+    r_mem.dropped++;
+    return 1;
+}
+
 static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, float amul)
 {
+    if (list_full(LIST_RESERVE)) return;
     Mesh *me = &gd.meshes[mi];
     if (me->nparts <= 0) return;
     M34 mv;
@@ -655,7 +703,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         if (vis == 1 && FAST_OK) {
             /* camino rapido: todo dentro de la banda de guarda, se usan los indices originales */
             int bytes = pt->nv * sizeof(OV);
-            if (vpos + bytes + 64 > VRING_BYTES) break;
+            if (vpos + bytes + 64 > VRING_BYTES) { r_mem.dropped++; break; }
             OV *ov = (OV *)(vring + vpos);
             unsigned int tp0 = sceKernelGetSystemTimeLow();
             transform_fast(ov, pt->verts, pt->nv, &mv, kx, ky);
@@ -734,7 +782,7 @@ void r_flush_transparent(void)
 
 void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int nmats)
 {
-    if (mi < 0 || mi >= gd.nmeshes) return;
+    if (mi < 0 || mi >= gd.nmeshes || list_full(LIST_RESERVE)) return;
     Mesh *me = &gd.meshes[mi];
     if (!me->skinned) return;
     static M34 vb[64];
@@ -848,6 +896,7 @@ void r_begin_2d(void)
 
 void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, float u1, float v1, unsigned int abgr)
 {
+    if (list_full(1024)) return;
     r_bind_texture(tex);
     SV *v = (SV *)sceGuGetMemory(2 * sizeof(SV));
     float tw = 1, th = 1;
@@ -859,6 +908,7 @@ void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, f
 
 void r_rect(float x, float y, float w, float h, unsigned int abgr)
 {
+    if (list_full(1024)) return;
     r_bind_texture(-1);
     SV *v = (SV *)sceGuGetMemory(2 * sizeof(SV));
     v[0].u = 0; v[0].v = 0; v[0].c = abgr; v[0].x = x; v[0].y = y; v[0].z = 0;

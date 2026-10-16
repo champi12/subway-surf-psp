@@ -8,6 +8,7 @@
 #include "scene.h"
 #include "render.h"
 #include "spawn.h"
+#include "devlog.h"
 
 NodeRT *nrt;
 
@@ -229,6 +230,8 @@ int coin_spawn(V3 pos, int owner)
         }
         return i;
     }
+    static int warned;
+    if (!warned++) dlog("AVISO se acabaron las %d monedas del pool: faltaran monedas en la via", MAX_COINS);
     return -1;
 }
 
@@ -698,6 +701,8 @@ static void lay_chunk(int ci)
     /* el padre de los tramos esta en el origen: la posicion local es la del mundo */
     track_chunk_z += c->zSize;
     if (track_nactive < MAX_ACTIVE_CHUNKS) track_active[track_nactive++] = ci;
+    else dlog("AVISO demasiados tramos activos (%d): el tramo %s no tendra colisiones", MAX_ACTIVE_CHUNKS, gd.strings[gd.nodes[n].name]);
+    dlog("TRAMO %s z=%.0f", gd.strings[gd.nodes[n].name], (double)track_chunk_z);
     restore_hidden(c);
     scene_update_world(n);
     recursive_selection(n, 1);

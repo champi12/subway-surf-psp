@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdarg.h>
 #include "hud.h"
 #include "render.h"
 #include "data.h"
 #include "game.h"
 #include "missions.h"
+#include "devlog.h"
 
 typedef struct { char name[32]; float ox, oy, ow, oh, ix, iy, iw, ih; } USprite;
 typedef struct { char name[32]; int tex, w, h; float pixel; int nsp; USprite *sp; } UAtlas;
@@ -472,19 +474,98 @@ void hud_draw(void)
     if (ginfo.state != GS_MENU) draw_mission_msg();
 }
 
-/* ------------------------------------------------------------ medidor de rendimiento */
-void perf_draw(float cpu_ms, float gpu_ms, float fps, unsigned int free_kb, int verts, int tris, int draws, int clipped)
+/* ------------------------------------------------------------ medidor de rendimiento (SELECT) */
+#define C_OK 0xff40ff40
+#define C_WARN 0xff40ffff
+#define C_BAD 0xff4040ff
+static unsigned int level_col(float frac, float warn, float bad) { return frac >= bad ? C_BAD : frac >= warn ? C_WARN : C_OK; }
+
+static void bar(float x, float y, float w, float h, float frac, unsigned int col)
+{
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    r_rect(x, y, w, h, 0xff404040);
+    if (frac > 0) r_rect(x, y, w * frac, h, col);
+}
+
+static void perf_line(float y, unsigned int col, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+static void perf_line(float y, unsigned int col, const char *fmt, ...)
+{
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    ui_text(f_small, 4, y, 0.6f, col, 0, buf);
+}
+
+static void perf_summary(float cpu_ms, float gpu_ms, float fps)
+{
+    const MemInfo *m = &dbg_mem;
+    float hf = m->heap_total ? (float)m->heap_used / m->heap_total : 0;
+    r_rect(0, 0, 268, 74, 0xa0000000);
+    perf_line(2, level_col(-fps, -29.5f, -24), "FPS %.1f  CPU %.1f ms  espera %.1f ms", fps, cpu_ms, gpu_ms);
+    perf_line(20, 0xffffffff, "vert %d  tri %d  draw %d  clip %d", r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped);
+    perf_line(38, level_col(hf, 0.75f, 0.9f), "RAM %.1f/%.1f MB   VRAM %d/2048 KB", m->heap_used / 1048576.0f,
+              m->heap_total / 1048576.0f, (r_mem.vram_fb + r_mem.vram_tex) / 1024);
+    perf_line(56, 0xffc0c0c0, "SELECT: memoria");
+}
+
+static void perf_memory(float fps)
+{
+    const MemInfo *m = &dbg_mem;
+    const RMem *r = &r_mem;
+    float hf = m->heap_total ? (float)m->heap_used / m->heap_total : 0;
+    float vf = (float)(r->vram_fb + r->vram_tex) / R_VRAM_TOTAL;
+    r_rect(0, 0, 330, 196, 0xc0000000);
+    perf_line(2, 0xffffffff, "MEMORIA   (FPS %.1f)", fps);
+    perf_line(20, level_col(hf, 0.75f, 0.9f), "RAM monton: %.2f / %.2f MB (%.0f%%) pico %.2f", m->heap_used / 1048576.0f,
+              m->heap_total / 1048576.0f, hf * 100, m->heap_peak / 1048576.0f);
+    bar(6, 36, 318, 5, hf, level_col(hf, 0.75f, 0.9f));
+    perf_line(44, m->sys_free < 256 * 1024 ? C_BAD : 0xffffffff, "Sistema libre: %u KB (bloque mayor %u KB)", m->sys_free / 1024,
+              m->sys_max_block / 1024);
+    perf_line(62, r->vram_full ? C_WARN : 0xffffffff, "VRAM: %d / 2048 KB  pantalla+Z %d  tex %d KB (%d)",
+              (r->vram_fb + r->vram_tex) / 1024, r->vram_fb / 1024, r->vram_tex / 1024, r->vram_tex_n);
+    bar(6, 78, 318, 5, vf, C_OK);
+    perf_line(86, 0xffffffff, "Texturas en RAM: %d KB (%d)   sin sitio en VRAM: %d", r->ram_tex / 1024, r->ram_tex_n, r->vram_full);
+    float lf = (float)r->dlist_peak / r->dlist_max, vrf = (float)r->vring_peak / r->vring_max, irf = (float)r->iring_peak / r->iring_max;
+    perf_line(104, level_col(lf, 0.6f, 0.8f), "Lista GE: %d%% (pico %d%%) de %d KB", r->dlist_used * 100 / r->dlist_max,
+              (int)(lf * 100), r->dlist_max / 1024);
+    perf_line(122, level_col(vrf > irf ? vrf : irf, 0.7f, 0.9f), "Buffer vert %d%% (pico %d%%)  ind %d%% (pico %d%%)",
+              r->vring_used * 100 / r->vring_max, (int)(vrf * 100), r->iring_used * 100 / r->iring_max, (int)(irf * 100));
+    perf_line(140, r->dropped ? C_BAD : 0xffffffff, "Dibujos perdidos: %d   tirones (>50 ms): %d", r->dropped, dbg_hitches);
+    if (dbg_bat_pct >= 0)
+        perf_line(158, dbg_bat_temp >= 45 ? C_BAD : 0xffffffff, "CPU %d MHz  bus %d MHz  bateria %d%% %d C%s", dbg_cpu_mhz,
+                  dbg_bus_mhz, dbg_bat_pct, dbg_bat_temp, dbg_plugged ? " (cargando)" : "");
+    else perf_line(158, 0xffffffff, "CPU %d MHz  bus %d MHz  sin bateria", dbg_cpu_mhz, dbg_bus_mhz);
+    perf_line(176, 0xffc0c0c0, "SELECT: grafica de tiempos");
+}
+
+static void perf_graph(float cpu_ms, float fps)
+{
+    /* tiempo de cada fotograma (ultimos 128): verde < 16,7 ms (60 FPS), amarillo < 33,3 ms (30 FPS), rojo mas */
+    const float x0 = 8, y0 = 30, w = 384, h = 100, scale = h / 66.6f;
+    r_rect(0, 0, x0 * 2 + w, y0 + h + 40, 0xc0000000);
+    perf_line(2, 0xffffffff, "TIEMPO POR FOTOGRAMA  FPS %.1f  CPU %.1f ms  tirones %d", fps, cpu_ms, dbg_hitches);
+    for (int i = 0; i < 128; i++) {
+        float ms = dbg_frame_hist[(dbg_hist_pos + i) & 127];
+        float bh = ms * scale;
+        if (bh > h) bh = h;
+        unsigned int c = ms < 17.5f ? C_OK : ms < 34.0f ? C_WARN : C_BAD;
+        r_rect(x0 + i * 3, y0 + h - bh, 2, bh, c);
+    }
+    r_rect(x0, y0 + h - 16.7f * scale, w, 1, 0x80ffffff);
+    r_rect(x0, y0 + h - 33.3f * scale, w, 1, 0x80ffffff);
+    ui_text(f_small, x0 + w - 2, y0 + h - 16.7f * scale - 12, 0.5f, 0xffc0c0c0, 2, "60 FPS");
+    ui_text(f_small, x0 + w - 2, y0 + h - 33.3f * scale - 12, 0.5f, 0xffc0c0c0, 2, "30 FPS");
+    perf_line(y0 + h + 6, 0xffc0c0c0, "SELECT: ocultar");
+}
+
+void perf_draw(int page, float cpu_ms, float gpu_ms, float fps)
 {
     hud_fonts();
-    char buf[128];
     r_begin_2d();
-    r_rect(0, 0, 250, 74, 0xa0000000);
-    unsigned int c = fps >= 29.5f ? 0xff40ff40 : (fps >= 24 ? 0xff40ffff : 0xff4040ff);
-    snprintf(buf, sizeof(buf), "FPS %.1f  CPU %.1f ms  espera %.1f ms", fps, cpu_ms, gpu_ms);
-    ui_text(f_small, 4, 2, 0.6f, c, 0, buf);
-    snprintf(buf, sizeof(buf), "vert %d  tri %d  draw %d  clip %d", verts, tris, draws, clipped);
-    ui_text(f_small, 4, 20, 0.6f, 0xffffffff, 0, buf);
-    snprintf(buf, sizeof(buf), "RAM libre %u KB", free_kb);
-    ui_text(f_small, 4, 38, 0.6f, free_kb > 2048 ? 0xffffffff : 0xff4040ff, 0, buf);
-    ui_text(f_small, 4, 56, 0.6f, 0xffc0c0c0, 0, "L+SELECT: ocultar");
+    if (page == 1) perf_summary(cpu_ms, gpu_ms, fps);
+    else if (page == 2) perf_memory(fps);
+    else if (page == 3) perf_graph(cpu_ms, fps);
 }

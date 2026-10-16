@@ -10,3 +10,5 @@ PARAM.SFO
 dist/
 autotest_out/
 __pycache__/
+src/*.d
+devlog*.txt

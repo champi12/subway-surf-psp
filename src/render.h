@@ -21,6 +21,21 @@ void r_draw_skinned(int mesh, const M34 *bones, int nbones, const int *mats, int
 void r_flush_transparent(void);
 /* estadisticas del ultimo frame */
 extern int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_hw;
+/* uso de memoria del dibujo (pantalla de depuracion y devlog) */
+typedef struct {
+    int vram_fb;                 /* 2 framebuffers + Z (fijo) */
+    int vram_tex, vram_tex_n;    /* texturas copiadas a la VRAM */
+    int vram_full;               /* texturas que no cupieron en la VRAM */
+    int ram_tex, ram_tex_n;      /* texturas cargadas en la RAM principal */
+    int dlist_used, dlist_peak, dlist_max;   /* lista de comandos del GE (bytes) */
+    int vring_used, vring_peak, vring_max;   /* buffer de vertices del fotograma */
+    int iring_used, iring_peak, iring_max;   /* buffer de indices */
+    int dropped;                 /* dibujos descartados este fotograma por falta de espacio */
+    int frame_texloads;          /* texturas leidas de la Memory Stick este fotograma */
+} RMem;
+extern RMem r_mem;
+#define R_VRAM_TOTAL 0x200000
+
 /* camara actual (para culling y para la logica) */
 extern M34 r_view;
 extern V3 r_cam_pos;

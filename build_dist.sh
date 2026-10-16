@@ -6,5 +6,5 @@ make
 rm -rf dist
 mkdir -p dist/PSP/GAME/SUBWAY
 cp EBOOT.PBP dist/PSP/GAME/SUBWAY/
-if [ -d data ]; then cp -r data dist/PSP/GAME/SUBWAY/; rm -rf dist/PSP/GAME/SUBWAY/data/wav dist/PSP/GAME/SUBWAY/data/meshes.txt; fi
+if [ -d data ]; then cp -r data dist/PSP/GAME/SUBWAY/; rm -rf dist/PSP/GAME/SUBWAY/data/wav dist/PSP/GAME/SUBWAY/data/meshes.txt dist/PSP/GAME/SUBWAY/data/.version; fi
 echo "Listo: dist/PSP/GAME/SUBWAY (copiala a la Memory Stick en ms0:/PSP/GAME/)"

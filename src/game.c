@@ -13,6 +13,7 @@
 #include "render.h"
 #include "audio.h"
 #include "spawn.h"
+#include "devlog.h"
 #include "data.h"
 #include "hud.h"
 #include "missions.h"
@@ -1733,6 +1734,9 @@ static void jetpack_tick(float dt)
 static void notify_critical_hit(void)
 {
     if (state != GS_RUNNING && state != GS_JETPACK) return;
+    dlog("CHOQUE contra %s en el carril %d a %d m (velocidad %.0f)%s", ch.lastHitTag == TAG_HITTRAIN ? "tren" :
+         ch.lastHitTag == TAG_HITMOVINGTRAIN ? "tren en marcha" : ch.lastHitTag == TAG_HITBARRIER ? "barrera" : "obstaculo",
+         ch.trackIndex, ginfo.meters, (double)currentSpeed, mods[MOD_HOVERBOARD].active ? " - salva la tabla" : "");
     play_ci(&snd_die);
     if (ch.lastHitTag == TAG_HITTRAIN) missions_did(M_CRASHTRAINS, 1);
     else if (ch.lastHitTag == TAG_HITBARRIER) missions_did(M_CRASHBARRIERS, 1);

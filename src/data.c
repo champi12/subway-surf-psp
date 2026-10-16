@@ -4,6 +4,8 @@
 #include <string.h>
 #include <malloc.h>
 #include "data.h"
+#include "devlog.h"
+#include <pspkernel.h>
 
 GameData gd;
 static char errbuf[128];
@@ -15,6 +17,7 @@ static void *load_file(const char *name, int *size)
 {
     char path[256];
     snprintf(path, sizeof(path), "%s/%s", basedir, name);
+    unsigned int t0 = sceKernelGetSystemTimeLow();
     FILE *f = fopen(path, "rb");
     if (!f) { snprintf(errbuf, sizeof(errbuf), "No se encuentra %s", path); return NULL; }
     fseek(f, 0, SEEK_END);
@@ -22,8 +25,10 @@ static void *load_file(const char *name, int *size)
     fseek(f, 0, SEEK_SET);
     void *buf = memalign(64, n + 16);
     if (!buf) { fclose(f); snprintf(errbuf, sizeof(errbuf), "Sin memoria para %s (%d KB)", name, n / 1024); return NULL; }
-    fread(buf, 1, n, f);
+    int got = fread(buf, 1, n, f);
     fclose(f);
+    if (got != n) { snprintf(errbuf, sizeof(errbuf), "Error leyendo %s (%d de %d bytes)", name, got, n); free(buf); return NULL; }
+    dlog("CARGA %-10s %6d KB en %4.0f ms", name, n / 1024, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
     if (size) *size = n;
     return buf;
 }

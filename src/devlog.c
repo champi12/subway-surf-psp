@@ -1,0 +1,295 @@
+/* devlog.c - registro de desarrollo (devlog.txt) y medidas de memoria para la consola real */
+#include <pspkernel.h>
+#include <psppower.h>
+#include <pspsysmem.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <malloc.h>
+#include <unistd.h>
+#include "devlog.h"
+#include "render.h"
+#include "game.h"
+#include "scene.h"
+
+MemInfo dbg_mem;
+int dbg_cpu_mhz, dbg_bus_mhz, dbg_bat_pct = -1, dbg_bat_temp, dbg_plugged;
+float dbg_frame_hist[128];
+int dbg_hist_pos;
+int dbg_hitches;
+
+/* ------------------------------------------------------------ memoria */
+extern SceUID __psp_heap_blockid;      /* bloque del monton que reserva la libc (libcglue) */
+static unsigned heap_total;
+
+void mem_init(void)
+{
+    /* la libc reserva el monton entero en el primer malloc; luego sbrk lo va entregando.
+     * Lo que queda por entregar se mide con sbrk(+n)/sbrk(-n) (sin malloc entre medias, no cambia nada). */
+    free(malloc(16));
+    char *brk = sbrk(0);
+    char *base = brk;
+    if (__psp_heap_blockid > 0) base = sceKernelGetBlockHeadAddr(__psp_heap_blockid);
+    unsigned lo = 0, hi = 64u << 20;
+    while (hi - lo > 4096) {
+        unsigned mid = ((lo + hi) / 2) & ~15u;
+        if (sbrk(mid) != (void *)-1) { sbrk(-(int)mid); lo = mid; }
+        else hi = mid;
+    }
+    heap_total = (unsigned)(brk - base) + lo;
+}
+
+void mem_query(MemInfo *m)
+{
+    struct mallinfo mi = mallinfo();
+    m->heap_total = heap_total;
+    m->heap_used = mi.uordblks;
+    if (m->heap_used > dbg_mem.heap_peak) dbg_mem.heap_peak = m->heap_used;
+    m->heap_peak = dbg_mem.heap_peak;
+    m->sys_free = sceKernelTotalFreeMemSize();
+    m->sys_max_block = sceKernelMaxFreeMemSize();
+}
+
+static void power_query(void)
+{
+    dbg_cpu_mhz = scePowerGetCpuClockFrequencyInt();
+    dbg_bus_mhz = scePowerGetBusClockFrequencyInt();
+    dbg_plugged = scePowerIsPowerOnline();
+    if (scePowerIsBatteryExist()) {
+        dbg_bat_pct = scePowerGetBatteryLifePercent();
+        dbg_bat_temp = scePowerGetBatteryTemp();
+    } else dbg_bat_pct = -1;
+}
+
+#if DEVLOG
+/* ------------------------------------------------------------ escritura en segundo plano */
+#define BUFSZ 16384
+static char bufs[2][BUFSZ];
+static int blen[2], bcur;
+static volatile int wpend = -1;        /* buffer que esta escribiendo el hilo */
+static volatile int wrun;
+static SceUID lock = -1, wsema = -1, wthid = -1;
+static char path[192];
+static int dropped;
+static unsigned long long t_start;
+
+static int writer_thread(SceSize a, void *p)
+{
+    while (wrun) {
+        sceKernelWaitSema(wsema, 1, 0);
+        int b = wpend;
+        if (b < 0) continue;
+        /* abrir, escribir y cerrar: si el juego se cuelga, lo escrito ya esta en la tarjeta */
+        SceUID fd = sceIoOpen(path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+        if (fd >= 0) { sceIoWrite(fd, bufs[b], blen[b]); sceIoClose(fd); }
+        blen[b] = 0;
+        wpend = -1;
+    }
+    return 0;
+}
+
+/* con el cerrojo cogido: pasa el buffer lleno al hilo escritor */
+static int swap_locked(void)
+{
+    if (!blen[bcur]) return 1;
+    if (wpend >= 0) return 0;
+    wpend = bcur;
+    bcur ^= 1;
+    blen[bcur] = 0;
+    sceKernelSignalSema(wsema, 1);
+    return 1;
+}
+
+static void put(const char *s, int n)
+{
+    if (lock < 0) return;
+    sceKernelWaitSema(lock, 1, 0);
+    if (blen[bcur] + n > BUFSZ && !swap_locked()) dropped++;
+    else { memcpy(bufs[bcur] + blen[bcur], s, n); blen[bcur] += n; }
+    sceKernelSignalSema(lock, 1);
+}
+
+static void vlog(const char *pre, const char *fmt, va_list ap)
+{
+    char line[320];
+    float t = (sceKernelGetSystemTimeWide() - t_start) / 1000000.0f;
+    int n = snprintf(line, sizeof(line), "[%8.2f] %s", t, pre);
+    n += vsnprintf(line + n, sizeof(line) - n - 2, fmt, ap);
+    if (n > (int)sizeof(line) - 2) n = sizeof(line) - 2;
+    line[n++] = '\r';   /* saltos de linea de Windows: se lee bien en el Bloc de notas */
+    line[n++] = '\n';
+    put(line, n);
+}
+
+void dlog(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vlog("", fmt, ap);
+    va_end(ap);
+}
+
+void dlog_error(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vlog("ERROR ", fmt, ap);
+    va_end(ap);
+    dlog_flush();
+}
+
+void dlog_flush(void)
+{
+    if (lock < 0) return;
+    sceKernelWaitSema(lock, 1, 0);
+    swap_locked();
+    sceKernelSignalSema(lock, 1);
+}
+
+void dlog_close(void)
+{
+    if (lock < 0) return;
+    dlog("Fin: %d tirones, %d lineas perdidas por buffer lleno", dbg_hitches, dropped);
+    for (int i = 0; i < 200 && wpend >= 0; i++) sceKernelDelayThread(10000);
+    dlog_flush();
+    for (int i = 0; i < 200 && wpend >= 0; i++) sceKernelDelayThread(10000);
+    wrun = 0;
+    sceKernelSignalSema(wsema, 1);
+    sceKernelWaitThreadEnd(wthid, NULL);
+    sceKernelDeleteThread(wthid);
+}
+
+static const char *fw_str(char *b, int n)
+{
+    int v = sceKernelDevkitVersion();
+    snprintf(b, n, "%d.%d%d (0x%08x)", (v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v);
+    return b;
+}
+
+void dlog_init(void)
+{
+    t_start = sceKernelGetSystemTimeWide();
+    /* los hilos no tienen directorio actual en la PSP: ruta absoluta */
+    char dir[160];
+    if (!getcwd(dir, sizeof(dir))) strcpy(dir, "ms0:/PSP/GAME/SUBWAY");
+    char prev[192];
+    snprintf(path, sizeof(path), "%s/devlog.txt", dir);
+    snprintf(prev, sizeof(prev), "%s/devlog_prev.txt", dir);
+    sceIoRemove(prev);
+    if (sceIoRename(path, prev) < 0) sceIoRemove(path);
+    lock = sceKernelCreateSema("dlog_lock", 0, 1, 1, NULL);
+    wsema = sceKernelCreateSema("dlog_write", 0, 0, 1, NULL);
+    wrun = 1;
+    /* prioridad baja (numero alto): solo escribe cuando el juego y el audio no necesitan la CPU */
+    wthid = sceKernelCreateThread("devlog", writer_thread, 0x30, 0x2000, PSP_THREAD_ATTR_USER, NULL);
+    if (wthid >= 0) sceKernelStartThread(wthid, 0, NULL);
+
+    char fw[32];
+    power_query();
+    mem_query(&dbg_mem);
+    dlog("===== Subway Surfers PSP - devlog =====");
+    dlog("Compilado: %s %s", __DATE__, __TIME__);
+    dlog("Firmware: %s", fw_str(fw, sizeof(fw)));
+    dlog("Carpeta: %s", dir);
+    dlog("CPU %d MHz, bus %d MHz | bateria %d%% %d C | cargador %s", dbg_cpu_mhz, dbg_bus_mhz, dbg_bat_pct,
+         dbg_bat_temp, dbg_plugged ? "si" : "no");
+    dlog("RAM: monton de C %u KB (lo que la consola le deja al juego para datos)", dbg_mem.heap_total / 1024);
+    dlog("RAM: libre fuera del monton %u KB (bloque mayor %u KB)", dbg_mem.sys_free / 1024, dbg_mem.sys_max_block / 1024);
+    dlog("Leyenda de STAT: fps media/min | cpu media/max ms | ge = espera al GE + VBlank | vert/tri/draw maximos "
+         "| heap usado/total | vram usada/2048 KB | lista GE, vertices e indices: %% usado (pico) | perd = dibujos perdidos");
+    dlog_flush();
+}
+
+/* ------------------------------------------------------------ estadisticas periodicas */
+static const char *state_name(int s)
+{
+    static const char *n[] = {"MENU", "INTRO", "CARRERA", "JETPACK", "CAYENDO", "MUERTE", "FIN", "CHECKPOINT", "TIENDA"};
+    return s >= 0 && s < 9 ? n[s] : "?";
+}
+
+static struct {
+    int frames, hitch_lines, verts, tris, draws, clip, dropped;
+    float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait;
+    unsigned long long t0;
+} win;
+static int last_state = -1;
+static float run_start_t;
+
+static void stat_line(void)
+{
+    float secs = (sceKernelGetSystemTimeWide() - win.t0) / 1000000.0f;
+    if (win.frames <= 0 || secs <= 0) return;
+    MemInfo *m = &dbg_mem;
+    const RMem *r = &r_mem;
+    dlog("STAT fps %.1f/%.1f | cpu %.1f/%.1f ms | ge %.1f ms | vert %d tri %d draw %d clip %d | "
+         "heap %u/%u KB (pico %u) sis %u KB | vram %u/2048 KB (tex %u KB, %d) | ram tex %u KB (%d) | "
+         "lista %d%% (%d%%) vert %d%% (%d%%) ind %d%% (%d%%) perd %d | %s %d m | %d MHz bat %d%% %d C",
+         win.frames / secs, win.max_ms > 0 ? 1000.0f / win.max_ms : 0, win.sum_cpu / win.frames, win.max_cpu,
+         win.sum_wait / win.frames, win.verts, win.tris, win.draws, win.clip,
+         m->heap_used / 1024, m->heap_total / 1024, m->heap_peak / 1024, m->sys_free / 1024,
+         (unsigned)(r->vram_fb + r->vram_tex) / 1024, (unsigned)r->vram_tex / 1024, r->vram_tex_n,
+         (unsigned)r->ram_tex / 1024, r->ram_tex_n,
+         r->dlist_used * 100 / r->dlist_max, r->dlist_peak * 100 / r->dlist_max,
+         r->vring_used * 100 / r->vring_max, r->vring_peak * 100 / r->vring_max,
+         r->iring_used * 100 / r->iring_max, r->iring_peak * 100 / r->iring_max, win.dropped,
+         state_name(ginfo.state), ginfo.meters, dbg_cpu_mhz, dbg_bat_pct, dbg_bat_temp);
+    /* avisos: lo que en la consola real acabaria en cuelgue o en tirones */
+    if (m->heap_total && m->heap_used > m->heap_total / 10 * 9)
+        dlog("AVISO memoria casi llena: %u de %u KB", m->heap_used / 1024, m->heap_total / 1024);
+    if (m->sys_free < 256 * 1024) dlog("AVISO poca memoria del sistema: %u KB", m->sys_free / 1024);
+    if (r->dlist_peak > r->dlist_max / 10 * 8) dlog("AVISO lista del GE al %d%%: si llega al 100%% se corrompe la memoria", r->dlist_peak * 100 / r->dlist_max);
+    if (win.dropped) dlog("AVISO %d dibujos descartados por falta de espacio en el buffer de vertices", win.dropped);
+    if (dbg_bat_temp >= 45) dlog("AVISO bateria a %d C", dbg_bat_temp);
+}
+
+#endif /* DEVLOG */
+
+void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
+{
+    static int n;
+    n++;
+    dbg_frame_hist[dbg_hist_pos] = frame_ms;
+    dbg_hist_pos = (dbg_hist_pos + 1) & 127;
+    if (n % 15 == 1) mem_query(&dbg_mem);       /* mallinfo recorre el monton: 4 veces por segundo basta */
+    if (n % 300 == 1) power_query();             /* la bateria se lee por el syscon: es lenta */
+    int hitch = n > 5 && frame_ms > 50.0f;
+    if (hitch) dbg_hitches++;
+#if DEVLOG
+    if (!win.t0) win.t0 = sceKernelGetSystemTimeWide();
+    win.frames++;
+    win.sum_ms += frame_ms;
+    if (frame_ms > win.max_ms && n > 5) win.max_ms = frame_ms;
+    win.sum_cpu += cpu_ms;
+    if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
+    win.sum_wait += wait_ms;
+    if (r_stat_verts > win.verts) win.verts = r_stat_verts;
+    if (r_stat_tris > win.tris) win.tris = r_stat_tris;
+    if (r_stat_draws > win.draws) win.draws = r_stat_draws;
+    if (r_stat_clipped > win.clip) win.clip = r_stat_clipped;
+    win.dropped += r_mem.dropped;
+
+    if (hitch && win.hitch_lines < 5) {
+        win.hitch_lines++;
+        dlog("TIRON %.0f ms (cpu %.1f ms, ge %.1f ms) en %s a %d m%s", frame_ms, cpu_ms, wait_ms,
+             state_name(ginfo.state), ginfo.meters,
+             r_mem.frame_texloads ? " - cargando texturas de la Memory Stick" : "");
+    }
+    if (ginfo.state != last_state) {
+        dlog("ESTADO %s -> %s", last_state < 0 ? "-" : state_name(last_state), state_name(ginfo.state));
+        if (ginfo.state == GS_INTRO || (ginfo.state == GS_RUNNING && last_state == GS_MENU)) run_start_t = ginfo.time;
+        if (ginfo.state == GS_GAMEOVER)
+            dlog("FIN DE CARRERA puntos %d (final %d) monedas %d metros %d duracion %.0f s", ginfo.score,
+                 ginfo.final_score, ginfo.gameover_coins, ginfo.meters, ginfo.time - run_start_t);
+        last_state = ginfo.state;
+    }
+    if ((sceKernelGetSystemTimeWide() - win.t0) >= 5000000ULL) {
+        stat_line();
+        if (dbg_hitches && win.hitch_lines >= 5) dlog("(mas tirones en este intervalo; total %d)", dbg_hitches);
+        memset(&win, 0, sizeof(win));
+        win.t0 = sceKernelGetSystemTimeWide();
+        dlog_flush();
+    }
+#else
+    (void)cpu_ms; (void)wait_ms;
+#endif
+}
