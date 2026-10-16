@@ -100,6 +100,11 @@ int main(int argc, char **argv)
         frame_no++;
         if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
+        {
+            extern void game_debug_powerup(int k);
+            static const int at_frames[] = {500, 1100, 1600, 2100, 3000};
+            for (int k = 0; k < 5; k++) if (frame_no == at_frames[k]) game_debug_powerup(k == 0 ? 0 : k == 1 ? 1 : k == 2 ? 3 : k == 3 ? 2 : 4);
+        }
 
 #endif
         game_input((pr & PSP_CTRL_LEFT) || sl, (pr & PSP_CTRL_RIGHT) || sr,
@@ -125,6 +130,12 @@ int main(int argc, char **argv)
             perf_draw(cpu_ms, gpu_ms, fps, heap_used_kb(), r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped);
         r_end_frame();
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
+#ifdef AUTOTEST
+        static float cpu_max;
+        if ((t1 - t0) / 1000.0f > cpu_max) cpu_max = (t1 - t0) / 1000.0f;
+        if (frame_no % 300 == 1) cpu_max = 0;
+        if (frame_no % 300 == 0) { FILE *f = fopen("perf.log", "a"); if (f) { fprintf(f, "   pico CPU %.2f ms\n", cpu_max); fclose(f); } }
+#endif
         gpu_ms = gpu_ms * 0.9f + r_wait_ms * 0.1f;
 #ifdef AUTOTEST
 #ifndef AT_SHOT

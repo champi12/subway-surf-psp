@@ -752,6 +752,10 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
             ci = jet_index_chunk(jet++);
         } else {
             ci = coll_random();
+#ifdef AT_CHUNK
+            for (int q = 0; q < nchunks; q++)
+                if (!strcmp(gd.strings[gd.nodes[chunks[q].node].name], AT_CHUNK) && !is_active_chunk(q) && track_chunk_z > 0) ci = q;
+#endif
             int tries = 0;
             while (ci >= 0 && is_active_chunk(ci) && tries < 1000) { ci = coll_random(); tries++; }
         }

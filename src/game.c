@@ -145,7 +145,7 @@ static void sounds_init(void)
 
 /* ------------------------------------------------------------ nodos usados */
 static int n_character, n_charModel, n_avatar, n_colChar, n_colMagnet, n_colSneakers, n_shadow, n_sprayCan;
-static int n_meshSneakers, n_meshHoverboard, n_meshMagnet, n_meshJetpack, n_spine, n_shoulder;
+static int n_jroot = -1, n_meshSneakers, n_meshHoverboard, n_meshMagnet, n_meshJetpack, n_spine, n_shoulder;
 static int n_enemies, n_guard, n_dog, n_camRig, n_mainCam, n_sky, n_intro_env, n_efx, n_jetParticles, n_ssRing;
 static V3 enemy_start[2];
 static int n_cloud[2] = {-1, -1}, n_cloud_tgt[2] = {-1, -1}, cloud_mat[2] = {-1, -1};
@@ -1792,6 +1792,7 @@ void game_init(void)
     n_shadow = find("Character/Character Model/shadowPlane_blob");
     n_spine = find("Character/Character Model/avatar_prefab/gSkeleton_game/jRoot/jLowerSpine");
     n_shoulder = node_find_path(n_spine, "jShoulder_R");
+    n_jroot = find("Character/Character Model/avatar_prefab/gSkeleton_game/jRoot");
     n_sprayCan = node_find_path(n_shoulder, "jElbow_R/jHand_R/sprayCan");
     n_meshMagnet = node_find_path(n_shoulder, "jElbow_R/jHand_R/magnetBooster");
     n_meshJetpack = node_find_path(n_spine, "sprayCanBooster");
@@ -1980,6 +1981,12 @@ void game_update(float dt)
     guard_late_update(dt);
     scene_update_world(n_camRig);
     jet_clouds_update();
+    /* PointConstraint de la sombra: debajo de jRoot, a la altura de los pies (+0.3 para no pelear con el suelo) */
+    if (n_shadow >= 0 && n_jroot >= 0) {
+        V3 jr = node_pos(n_jroot), cm = node_pos(n_charModel);
+        nrt[n_shadow].lpos = v3(jr.x - cm.x, 0.3f, jr.z - cm.z);
+        scene_update_world(n_shadow);
+    }
     camera_shake_tick(dt);
     /* datos para la interfaz */
     ginfo.score = score; ginfo.coins = coins_run; ginfo.meters = meters;
@@ -2044,3 +2051,18 @@ void game_load(void)
 }
 
 void scene_on_chunk_laid(int chunk) { (void)chunk; }
+
+#ifdef AUTOTEST
+/* para la prueba automatica: activar power-ups a voluntad */
+void game_debug_powerup(int k)
+{
+    if (state != GS_RUNNING) return;
+    switch (k) {
+    case 0: mod_add(MOD_MAGNET); break;
+    case 1: mod_add(MOD_SNEAKERS); break;
+    case 2: mod_add(MOD_DOUBLE); break;
+    case 3: start_jetpack(0, 0); break;
+    case 4: if (ginfo.hoverboards < 1) ginfo.hoverboards = 1; in_board = 1; break;
+    }
+}
+#endif

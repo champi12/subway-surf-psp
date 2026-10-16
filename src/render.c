@@ -42,6 +42,12 @@ float r_fov = 50.0f;
 /* constantes de la proyeccion de Unity (para calcular la curvatura igual que el original) */
 static float P00, P11, ZA, ZB;
 static float gx, gy;            /* banda de guarda en espacio de camara */
+#ifndef HW_OK
+#define HW_OK 1
+#endif
+#ifndef FAST_OK
+#define FAST_OK 1
+#endif
 #define CLIP_NEAR 4.0f          /* plano cercano real de recorte */
 #define GUARD 3.0f              /* en unidades NDC */
 
@@ -631,7 +637,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         float d0 = vis == 1 ? m34_point(&mv, pt->center).z : 0;
         float pr = pt->radius * sc;
         /* objetos pequenos o bloques lejanos: el error de linealizar la curvatura es menor de un pixel */
-        if (vis == 1 && (pr <= 20.0f || (pr <= 64.0f && d0 - pr > 550.0f))) {
+        if (vis == 1 && HW_OK && (pr <= 20.0f || (pr <= 64.0f && d0 - pr > 550.0f))) {
             /* lo transforma el GE con la curvatura linealizada (sin trabajo de CPU) */
             ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
             bent_gumatrix(gm, &mv, d0, kx, ky);
@@ -646,7 +652,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             continue;
         }
         model_identity();
-        if (vis == 1) {
+        if (vis == 1 && FAST_OK) {
             /* camino rapido: todo dentro de la banda de guarda, se usan los indices originales */
             int bytes = pt->nv * sizeof(OV);
             if (vpos + bytes + 64 > VRING_BYTES) break;

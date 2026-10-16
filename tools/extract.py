@@ -428,6 +428,30 @@ def subdivide(V, UV, tris, max_edge):
 CLUSTER = 64.0       # tamano de celda para trocear el escenario (culling por trozos)
 
 
+def mesh_triangles(mo, h):
+    """Triangulos por submalla. En Unity 3.5 cada submalla dice si es tira (isTriStrip != 0) o lista."""
+    tt = mo.read_typetree()
+    ib = list(h.m_IndexBuffer or [])
+    use16 = getattr(h, 'm_Use16BitIndices', True)
+    out = []
+    for sm in tt['m_SubMeshes']:
+        first = sm['firstByte'] // (2 if use16 else 4)
+        cnt = sm['indexCount']
+        idx = ib[first:first + cnt]
+        tris = []
+        if sm.get('isTriStrip', 1) == 0:
+            for i in range(0, len(idx) - 2, 3):
+                tris.append((idx[i], idx[i + 1], idx[i + 2]))
+        else:
+            for i in range(len(idx) - 2):
+                a, b, c = idx[i], idx[i + 1], idx[i + 2]
+                if a == b or a == c or b == c:
+                    continue
+                tris.append((b, a, c) if i & 1 else (a, b, c))
+        out.append(tris)
+    return out
+
+
 def make_parts(V, UV, subs, skin, world):
     """Divide la malla en trozos (submalla + celda espacial) con sus propios vertices."""
     parts = []
@@ -470,7 +494,7 @@ def export_meshes(ex):
         h.process()
         V = list(h.m_Vertices or [])
         UV = list(h.m_UV0 or [(0.0, 0.0)] * len(V))
-        subs = [[t for t in sm if len(t) == 3] for sm in h.get_triangles()]
+        subs = mesh_triangles(mo, h)
         skin = bool(h.m_BoneWeights) and len(h.m_BoneWeights) == len(V)
         if MAX_EDGE > 0 and ex.mesh_world[mi] and not skin:
             nsubs = []
