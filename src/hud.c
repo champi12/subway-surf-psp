@@ -7,6 +7,7 @@
 #include "render.h"
 #include "data.h"
 #include "game.h"
+#include "missions.h"
 
 typedef struct { char name[32]; float ox, oy, ow, oh, ix, iy, iw, ih; } USprite;
 typedef struct { char name[32]; int tex, w, h; float pixel; int nsp; USprite *sp; } UAtlas;
@@ -288,6 +289,60 @@ static void draw_ingame(void)
     }
 }
 
+/* ------------------------------------------------------------ misiones (UIMissionsHelper) */
+/* boton del menu: icono, multiplicador actual y misiones hechas */
+static void draw_missions_button(float x, float y)
+{
+    char buf[32];
+    int n = 0;
+    for (int i = 0; i < 3; i++) n += missions_done(i);
+    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 44, UIS, 0x99000000);
+    ui_sprite_wh(a_ui, "button_mission_firstscreen", x + 4, y + 4, 36, 36, 0xffffffff);
+    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, "Misiones");
+    snprintf(buf, sizeof(buf), "x%d", missions_multiplier());
+    text_shadow(f_big, x + 144, y + 2, 0.6f, 0xff00dbff, 2, buf);
+    snprintf(buf, sizeof(buf), "%d/3   L / R", n);
+    ui_text(f_small, x + 46, y + 25, 0.55f, 0xffc0c0c0, 0, buf);
+}
+
+/* ventana con las 3 misiones del grupo actual */
+static void draw_missions_popup(void)
+{
+    char buf[64];
+    r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
+    float x = 50, y = 36, w = SCR_W - 100;
+    ui_sliced(a_ui, "background_ingame_popup", x, y, w, 200, UIS, 0xffffffff);
+    text_shadow(f_big, SCR_W / 2, y + 10, 0.85f, 0xffffffff, 1, "Misiones");
+    snprintf(buf, sizeof(buf), "Multiplicador x%d", missions_multiplier());
+    text_shadow(f_mid, SCR_W / 2, y + 42, 0.7f, 0xff00dbff, 1, buf);
+    for (int i = 0; i < 3; i++) {
+        float ry = y + 72 + i * 34;
+        int done = missions_done(i);
+        ui_sprite_wh(a_ui, done ? "checkbox_checked_mission" : "checkbox_mission", x + 16, ry, 26, 26, 0xffffffff);
+        missions_text(i, buf, sizeof(buf));
+        text_shadow(f_mid, x + 50, ry + 4, 0.62f, done ? 0xff80ff80 : 0xffffffff, 0, buf);
+        if (!done) {
+            snprintf(buf, sizeof(buf), "%d/%d", missions_progress(i), missions_goal(i));
+            text_shadow(f_mid, x + w - 16, ry + 4, 0.62f, 0xff00dbff, 2, buf);
+        }
+    }
+    ui_text(f_small, SCR_W / 2, y + 180, 0.6f, 0xffc0c0c0, 1, "Completa las 3 para subir el multiplicador");
+}
+
+/* aviso de mision completada (UINotification) */
+static void draw_mission_msg(void)
+{
+    if (!mission_msg[0]) return;
+    float t = ginfo.time - mission_msg_t;
+    if (t < 0 || t > 3.0f) return;
+    float a = t < 0.2f ? t / 0.2f : t > 2.6f ? (3.0f - t) / 0.4f : 1.0f;
+    float w = ui_text_width(f_mid, 0.65f, mission_msg) + 50;
+    float x = (SCR_W - w) * 0.5f, y = 52;
+    ui_sliced(a_ui, "background_ingame_beatThis", x, y, w, 26, UIS, ((unsigned)(a * 0xc0) << 24));
+    ui_sprite_wh(a_ui, "icon_tick_small", x + 6, y + 4, 18, 18, ((unsigned)(a * 255) << 24) | 0xffffff);
+    ui_text(f_mid, x + 30, y + 4, 0.65f, ((unsigned)(a * 255) << 24) | 0x00dbff, 0, mission_msg);
+}
+
 /* ------------------------------------------------------------ menu principal (FrontUI) */
 static void draw_menu(void)
 {
@@ -308,6 +363,7 @@ static void draw_menu(void)
     tw = ui_text_width(f_mid, 0.6f, buf);
     ui_sliced(a_ui, "background_ingame_beatThis", 4, 4 + 34 * UIS, tw + 16, 24 * UIS, UIS, BOX_COL);
     ui_text(f_mid, 12, 4 + 36 * UIS, 0.6f, 0xff00dbff, 0, buf);
+    draw_missions_button(4, 4 + 64 * UIS);
     /* "Tap to play" */
     float a = 0.6f + 0.4f * sinf(ginfo.time * 4.0f);
     unsigned int col = ((unsigned)(a * 255) << 24) | 0xffffff;
@@ -318,6 +374,7 @@ static void draw_menu(void)
     ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
     text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, "Tienda");
     ui_text(f_small, sx + 65 * UIS, sy - 16, 0.55f, 0xffffffff, 1, "triangulo / cuadrado");
+    if (ginfo.missions_open) draw_missions_popup();
 }
 
 /* ------------------------------------------------------------ tienda */
@@ -331,8 +388,17 @@ static void draw_shop(void)
     ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - tw - 34 * UIS, 6, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
     ui_sprite_wh(a_ui, "coin2d", SCR_W - 8 - tw - 30 * UIS, 6 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
     ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
+    /* 7 filas visibles; la lista se desplaza con la seleccion */
+    static int top;
+    const int rows = 7;
+    if (ginfo.shop_sel < top) top = ginfo.shop_sel;
+    if (ginfo.shop_sel >= top + rows) top = ginfo.shop_sel - rows + 1;
+    if (top > shop_count - rows) top = shop_count - rows;
+    if (top < 0) top = 0;
     float y = 40;
-    for (int i = 0; i < shop_count; i++) {
+    if (top > 0) ui_text(f_small, SCR_W / 2, 30, 0.5f, 0xffc0c0c0, 1, "...");
+    if (top + rows < shop_count) ui_text(f_small, SCR_W / 2, 40 + rows * 28 - 4, 0.5f, 0xffc0c0c0, 1, "...");
+    for (int i = top; i < shop_count && i < top + rows; i++) {
         int sel = i == ginfo.shop_sel;
         ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 20, y, SCR_W - 40, 26, 0.5f,
                   sel ? 0xffffffff : 0xc0ffffff);
@@ -346,11 +412,21 @@ static void draw_shop(void)
         } else if (shop_items[i].kind == 0) {
             snprintf(buf, sizeof(buf), "x%d", am);
             ui_text(f_mid, 300, y + 4, 0.62f, 0xffffffff, 1, buf);
+        } else if (shop_items[i].kind == 3) {
+            /* saltar mision: progreso de la mision que se salta */
+            if (am) snprintf(buf, sizeof(buf), "Hecha");
+            else snprintf(buf, sizeof(buf), "%d/%d", missions_progress(shop_items[i].idx), missions_goal(shop_items[i].idx));
+            ui_text(f_mid, 300, y + 4, 0.62f, am ? 0xff80ff80 : 0xffffffff, 1, buf);
         }
         if (pr >= 0) snprintf(buf, sizeof(buf), "%d", pr); else snprintf(buf, sizeof(buf), "MAX");
         ui_sprite_wh(a_ui, "coin2d", SCR_W - 90, y + 5, 16, 16, 0xffffffff);
         ui_text(f_mid, SCR_W - 28, y + 4, 0.62f, pr >= 0 && ginfo.total_coins >= pr ? 0xffffffff : 0xff8080ff, 2, buf);
         y += 28;
+    }
+    if (shop_items[ginfo.shop_sel].kind == 3) {
+        /* texto de la mision seleccionada */
+        missions_text(shop_items[ginfo.shop_sel].idx, buf, sizeof(buf));
+        ui_text(f_small, SCR_W / 2, SCR_H - 32, 0.55f, 0xffffffff, 1, buf);
     }
     ui_text(f_small, SCR_W / 2, SCR_H - 16, 0.6f, 0xffc0c0c0, 1, "X comprar    O volver");
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
@@ -393,6 +469,7 @@ void hud_draw(void)
     case GS_GAMEOVER: draw_gameover(); break;
     default: draw_ingame(); break;
     }
+    if (ginfo.state != GS_MENU) draw_mission_msg();
 }
 
 /* ------------------------------------------------------------ medidor de rendimiento */

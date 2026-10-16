@@ -25,6 +25,8 @@ typedef struct {
     float headstart_until;        /* botones de headstart visibles hasta este momento */
     char reward[64]; float reward_t;
     int gameover_coins;
+    int tokens, character;
+    int missions_open;            /* ventana de misiones abierta en el menu */
 } GameInfo;
 
 typedef struct { const char *name, *icon; int kind, idx; } ShopItem;

@@ -20,10 +20,11 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `Jetpack`, `Hoverboard`, `SuperSneakers`, `CoinMagnet`, `DoubleScoreMultiplier` | `src/game.c` | Duraciones de `Upgrades.cs` |
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
 | `GameStats` | `src/game.c` | Puntos por metro × multiplicador, monedas, bonus de power-ups |
+| `Missions`, `PlayerInfo` | `src/missions.c` | Los 29 grupos de 3 misiones del original; cada grupo completado sube el multiplicador (hasta ×30) |
 | `RunnerAnimPlayer`, `CharacterPickupParticles` | `src/game.c` | Sonidos de pasos por fotograma y escala pentatónica de las monedas |
 | Componente `Animation` de Unity | `src/anim.c` | `CrossFade`, `PlayQueued`, capas, pesos y *mixing transforms* |
 | Shader `Custom/Distorted/*` (mundo curvado) | `src/render.c` | La misma fórmula del shader GLSL, calculada por vértice en la CPU |
-| NGUI (fuentes Lilita/Titan, atlas) | `src/hud.c` | Marcador con las fuentes originales |
+| NGUI (fuentes Lilita/Titan, atlas) | `src/hud.c` | Marcador, menú, tienda y misiones con las fuentes y sprites originales (9-slice) |
 | Audio (`So`, `AudioStateLoop`) | `src/audio.c` | Efectos con tono/volumen aleatorio como el original; música MP3 por hardware o AT3 |
 
 Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia del guardia 10–30, etc.) son los
@@ -31,7 +32,8 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 
 ### Pendiente
 
-* Misiones (el multiplicador sube con ellas), personajes desbloqueables y la palabra del día.
+* Personajes desbloqueables (las fichas de las cajas misteriosas ya se guardan) y la palabra del día.
+  Las misiones que necesitan conexión (ganar a amigos, retos diarios, letras del día) se dan por completadas.
 * Tutorial (el tramo existe; de momento se empieza como si ya se hubiera completado).
 * Partículas (chispas de la tabla, polvo del jetpack).
 
@@ -87,11 +89,13 @@ El original se jugaba deslizando el dedo; en la PSP:
 | □ o △ | Activar la tabla (hoverboard), equivale al doble toque |
 | START | Pausa (al reanudar hay cuenta atrás "Starting in 3, 2, 1" como en el original) |
 | L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
+| L / R (en el menú) | Ver las misiones |
 | L + SELECT | Medidor de rendimiento |
 
 En el menú, △ o □ abren la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
 Headstart 1000 (2000), cajas misteriosas (500) y los 5 niveles de mejora del jetpack, las super zapatillas, el imán
-y el multiplicador ×2 (500, 1500, 3000, 10000, 30000). Las cajas misteriosas recogidas en la carrera se abren al
+y el multiplicador ×2 (500, 1500, 3000, 10000, 30000), y saltar una misión (1500 + 100 por grupo completado).
+Al terminar la carrera las monedas suman 2 × el multiplicador de misiones a la puntuación final. Las cajas misteriosas recogidas en la carrera se abren al
 terminar, con las probabilidades de `MysteryBox.Roll()`. La partida se guarda en `save.dat`.
 
 ## Rendimiento y pruebas sin PSP

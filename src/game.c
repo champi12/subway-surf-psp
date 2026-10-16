@@ -15,6 +15,7 @@
 #include "spawn.h"
 #include "data.h"
 #include "hud.h"
+#include "missions.h"
 
 GameInfo ginfo;
 float game_time;
@@ -288,7 +289,7 @@ static float Speed(float t)
 static float normalized_speed(void) { return currentSpeed / SPEED_MIN; }
 static float jump_vs(float h) { return sqrtf(2.0f * h * GRAVITY); }
 static float jump_length(float speed, float h) { return speed * 2.0f * jump_vs(h) / GRAVITY; }
-static int score_multiplier(void) { return double_score ? 2 : 1; }
+static int score_multiplier(void) { return missions_multiplier() * (double_score ? 2 : 1); }
 static int mod_active(int m) { return mods[m].active; }
 static float bell(float x) { return smoothstepf(0, 1, 1.0f - fabsf(x - 0.5f) / 0.5f); }
 
@@ -461,6 +462,7 @@ static void guard_play_intro(void)
 
 static void guard_jump(void)
 {
+    if (gu.dist <= GUARD_DIST_MIN) missions_did(M_GUARDJUMP, 1);
     gu.jump_pending = 1;
     gu.jump_at = game_time + gu.dist / (currentSpeed > 1 ? currentSpeed : 1);
 }
@@ -574,8 +576,13 @@ static float trigger_powerup(int type, int pw_type)
     if (type == PT_HOVERBOARD) pw_left[type] = 30.0f;
     if (type == PT_HEADSTART) pw_left[type] = 0;
     /* AddScoreForPickup */
-    if (type == PT_JETPACK || type == PT_SNEAKERS || type == PT_MAGNET || type == PT_DOUBLE)
-        score += score_multiplier() * 50;
+    if (type == PT_JETPACK || type == PT_SNEAKERS || type == PT_MAGNET || type == PT_DOUBLE) {
+        int num = score_multiplier() * 50;
+        score += num;
+        missions_did(M_SCORE, num);
+        if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
+    }
+    if (type != PT_HEADSTART) missions_did(M_POWERUPS, 1);   /* GameStats.usePowerups */
     return pw_left[type];
 }
 
@@ -732,6 +739,7 @@ static void character_jump(void)
             ch.trainJumpSampleZ = ch.z + 10.0f;
         }
         if (gu.enabled) guard_jump();
+        missions_did(M_JUMP, 1);
     } else if (ch.verticalSpeed < 0) ch.inAirJump = 1;
 }
 
@@ -752,6 +760,8 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
+    missions_did(M_ROLL, 1);
+    missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
 
 static void roll_tick(void)
@@ -784,7 +794,7 @@ static void on_grounded(void) { update_ground_tag(); }
 static void apply_gravity(float dt)
 {
     if (ch.verticalSpeed < 0 && cc.grounded) {
-        ch.startedJumpFromGround = ch.startedJumpFromGround && 1;
+        if (ch.startedJumpFromGround && ch.trainJump && is_running_on_ground()) missions_did(M_JUMPTRAIN, 1);
         if (ch.runPosition != RP_AIR) ch.startedJumpFromGround = 0;
         ch.verticalSpeed = 0;
         ch.shadow_on = 1;
@@ -896,6 +906,10 @@ static void notify_stumble(const ClipInfo *snd, const char *name)
     if (state == GS_JETPACK) return;
     play_ci(snd);
     if (track_running_tutorial) return;
+    if (!strcmp(name, "lightSignal")) missions_did(M_BUMPLIGHTSIGNAL, 1);
+    else if (!strcmp(name, "bush") || !strcmp(name, "powerbox")) missions_did(M_BUMPBUSH, 1);
+    else if (!strncmp(name, "blocker_", 8)) missions_did(M_BUMPBARRIER, 1);
+    else if (strcmp(name, "side") && strcmp(name, "collider")) missions_did(M_BUMPTRAIN, 1);
     stumble_death_check();
     stumble_set(1);
 }
@@ -1003,6 +1017,14 @@ static void on_char_enter(const Col *c)
 static void on_char_exit(const Col *c)
 {
     if (c->tag == TAG_SUBWAY) { ch.isInsideSubway = 0; return; }
+    int ot = obstacle_type(c->tag);
+    if (ot != OB_NONE && ot == ch.lastObstacle && ch.lastObstacleTrack == ch.trackIndex) {
+        switch (ot) {
+        case OB_JUMP: case OB_JUMPHIGH: missions_did(M_JUMPBARRIERS, 1); missions_did(M_DODGEBARRIERS, 1); break;
+        case OB_JUMPTRAIN: missions_did(M_JUMPTRAIN, 1); break;
+        case OB_ROLL: missions_did(M_ROLLUNDERBARRIERS, 1); missions_did(M_DODGEBARRIERS, 1); break;
+        }
+    }
 }
 
 static void hit_by_train_sequence(void)
@@ -1076,6 +1098,8 @@ static void pickup_coin_effect(int ci)
 static void collect_coin(int i)
 {
     coins_run++;
+    missions_did(M_EARNCOIN, 1);
+    if (coins[i].pulling && mods[MOD_MAGNET].active) missions_did(M_COINSWITHMAGNET, 1);
     pickup_coin_effect(i);
     coins[i].visible = 0;
     coins[i].collider = 0;
@@ -1098,7 +1122,7 @@ static void coins_tick(float dt)
         if (k->pulling) {
             float t = (game_time - k->pull_t) / k->pull_dur;
             V3 dst = v3add(cc.pos, v3(0, 7, 2));   /* posicion del objeto del power-up */
-            if (t >= 1) { collect_coin(i); continue; }
+            if (t >= 1) { collect_coin(i); k->pulling = 0; continue; }
             V3 p = v3lerp(k->pull_from, dst, t * t);
             k->pivot = v3sub(p, k->pos);
             continue;
@@ -1155,14 +1179,16 @@ static void notify_pickup(int node)
     }
     nrt[node].picked = 1;
     switch (kind) {
-    case PK_MAGNET: mod_add(MOD_MAGNET); play_ci(&snd_powerup); break;
-    case PK_SNEAKERS: mod_add(MOD_SNEAKERS); play_ci(&snd_powerup); break;
-    case PK_DOUBLE: mod_add(MOD_DOUBLE); play_ci(&snd_powerup); break;
-    case PK_JETPACK: start_jetpack(0, 0); play_ci(&snd_powerup); break;
+    case PK_MAGNET: mod_add(MOD_MAGNET); play_ci(&snd_powerup); missions_did(M_MAGNETS, 1); break;
+    case PK_SNEAKERS: mod_add(MOD_SNEAKERS); play_ci(&snd_powerup); missions_did(M_SUPERSNEAKERS, 1); break;
+    case PK_DOUBLE: mod_add(MOD_DOUBLE); play_ci(&snd_powerup); missions_did(M_DOUBLEMULTIPLIER, 1); break;
+    case PK_JETPACK: start_jetpack(0, 0); play_ci(&snd_powerup); missions_did(M_JETPACK, 1); break;
     case PK_MYSTERY:
         /* MysteryBoxPickup: se abre al terminar la carrera */
         ginfo.boxes_pending++;
         score += score_multiplier() * 50;
+        missions_did(M_SCORE, score_multiplier() * 50);
+        missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
         break;
     default: break;
@@ -1202,6 +1228,7 @@ static void mod_begin(int m)
         float since = game_time - hb_last_end;
         if (since < HB_PARTICLE_DELAY + HB_COOLDOWN) { mods[m].active = 0; mods[m].phase = 99; return; }
         ginfo.hoverboards--;
+        missions_did(M_HOVERBOARD, 1);
         mods[m].paused = 0;
         stumble_set(0);
         mods[m].active = 1;
@@ -1260,7 +1287,7 @@ static void mods_update(float dt)
             if (mods[m].phase == 99 || (!mods[m].active && mods[m].phase == 0)) continue;
             if (mods[m].phase == 0) {
                 if (pw_left[PT_HOVERBOARD] > 0 && mods[m].stop == STOP_DONT) continue;
-                if (mods[m].stop == STOP_DONT) play_ci(&snd_powerdown);
+                if (mods[m].stop == STOP_DONT) { play_ci(&snd_powerdown); missions_did(M_HOVERBOARDEXPIRE, 1); }
                 set_node_active(n_meshHoverboard, 0);
                 ch.immune = 0;
                 mods[m].active = 0;
@@ -1425,6 +1452,7 @@ static void intro_tick(void)
     if (track_running_tutorial) { guard_reset_catch_up(); ch.stumble = 0; }
     running_begin();
     ginfo.headstart_until = (ginfo.hs500 > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
+    missions_run_start();
 }
 
 static void running_begin(void)
@@ -1526,7 +1554,10 @@ static void calculate_score(void)
     if (meters_last < meters) {
         float ms = meters - meters_last;
         meters_last = meters;
-        score += (int)(ms * score_multiplier());
+        int num = (int)(ms * score_multiplier());
+        score += num;
+        missions_did(M_SCORE, num);
+        if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
     }
 }
 
@@ -1703,6 +1734,9 @@ static void notify_critical_hit(void)
 {
     if (state != GS_RUNNING && state != GS_JETPACK) return;
     play_ci(&snd_die);
+    if (ch.lastHitTag == TAG_HITTRAIN) missions_did(M_CRASHTRAINS, 1);
+    else if (ch.lastHitTag == TAG_HITBARRIER) missions_did(M_CRASHBARRIERS, 1);
+    else if (ch.lastHitTag == TAG_HITMOVINGTRAIN) { missions_did(M_DIETOTRAIN, 1); missions_did(M_CRASHTRAINS, 1); }
     if (state == GS_RUNNING) { camera_shake(); game_die(); }
 }
 
@@ -1733,6 +1767,7 @@ static void game_die(void)
     if (track_running_tutorial) { back_to_checkpoint(); return; }
     clear_powerups();
     isDead = 1;
+    missions_did(M_TIMEDEATH, (int)(game_time - start_time));
     moving_autopilot(ch.z);
     if (gu.showing) {
         if (anim_is_playing(&anim_char, "death_movingTrain")) guard_hit_by_train();
@@ -1762,7 +1797,8 @@ static void die_tick(float dt)
         if (e < 2.0f && !in_up) return;
         in_up = 0;
         /* fin de la partida: puntuacion final = puntos + monedas*2*multiplicador */
-        ginfo.final_score = score + coins_run * 2 * 1;
+        missions_run_end();
+        ginfo.final_score = score + coins_run * 2 * missions_multiplier();
         ginfo.total_coins += coins_run;
         ginfo.gameover_coins = coins_run;
         ginfo.reward[0] = 0;
@@ -1883,7 +1919,7 @@ void game_init(void)
 }
 
 /* ------------------------------------------------------------ tienda (Upgrades.cs) */
-enum { SK_AMOUNT, SK_TIER, SK_BOX };
+enum { SK_AMOUNT, SK_TIER, SK_BOX, SK_SKIP };
 const ShopItem shop_items[] = {
     {"Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
     {"Headstart 250", "icon_upgrades_headstart500", SK_AMOUNT, 1},
@@ -1893,6 +1929,9 @@ const ShopItem shop_items[] = {
     {"Super Sneakers", "icon_upgrades_superSneakers", SK_TIER, PW_SNEAKERS},
     {"Coin Magnet", "icon_upgrades_coinMagnet", SK_TIER, PW_MAGNET},
     {"2x Multiplier", "icon_upgrades_doubleScore", SK_TIER, PW_DOUBLE},
+    {"Saltar mision 1", "icon_upgrades_skipMission1", SK_SKIP, 0},
+    {"Saltar mision 2", "icon_upgrades_skipMission2", SK_SKIP, 1},
+    {"Saltar mision 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
 };
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
 static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
@@ -1901,6 +1940,7 @@ int shop_price(int i)
 {
     const ShopItem *it = &shop_items[i];
     if (it->kind == SK_BOX) return 500;
+    if (it->kind == SK_SKIP) return missions_done(it->idx) ? -1 : missions_skip_price();
     if (it->kind == SK_AMOUNT) return it->idx == 0 ? 300 : it->idx == 1 ? 400 : 2000;
     int t = upgrade_tier[it->idx];
     return t >= 5 ? -1 : tier_prices[t + 1];
@@ -1911,6 +1951,7 @@ int shop_amount(int i)
     const ShopItem *it = &shop_items[i];
     if (it->kind == SK_AMOUNT) return it->idx == 0 ? ginfo.hoverboards : it->idx == 1 ? ginfo.hs500 : ginfo.hs2000;
     if (it->kind == SK_TIER) return upgrade_tier[it->idx];
+    if (it->kind == SK_SKIP) return missions_done(it->idx);
     return ginfo.boxes_pending;
 }
 
@@ -1920,13 +1961,13 @@ static void mystery_open(void)
     if (ginfo.boxes_pending <= 0) return;
     ginfo.boxes_pending--;
     ginfo.boxes_opened++;
-    int coins = 0, hb = 0, h5 = 0, h20 = 0;
-    if (ginfo.boxes_opened == 1) coins = 300;
+    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0;
+    if (ginfo.boxes_opened == 1) tok = 1;
     else if (ginfo.boxes_opened == 2) h5 = 1;
     else if (ginfo.boxes_opened == 3) coins = 600;
     else {
         float r = rnd01();
-        if (r < 0.40f) coins = 100;
+        if (r < 0.40f) tok = 1;
         else if (r < 0.45f) coins = 100;
         else if (r < 0.69f) coins = rnd_range(200, 300);
         else if (r < 0.73f) h5 = 1;
@@ -1942,8 +1983,11 @@ static void mystery_open(void)
         else if (r < 0.998f) h20 = 3;
         else coins = 10000;
     }
-    ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20;
-    if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d monedas", coins);
+    ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
+    if (coins) missions_did(M_EARNCOIN, coins);
+    if (tok) missions_did(M_TOKENS, 1);
+    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "Ficha de personaje");
+    else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d monedas", coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
@@ -1957,13 +2001,15 @@ static void shop_buy(int i)
     int price = shop_price(i);
     if (price < 0 || ginfo.total_coins < price) { snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0); return; }
     ginfo.total_coins -= price;
+    missions_did(M_SPENDCOIN, price);
     const ShopItem *it = &shop_items[i];
     if (it->kind == SK_AMOUNT) {
         if (it->idx == 0) ginfo.hoverboards++;
         else if (it->idx == 1) ginfo.hs500++;
         else ginfo.hs2000++;
     } else if (it->kind == SK_TIER) upgrade_tier[it->idx]++;
-    else { ginfo.boxes_pending++; mystery_open(); }
+    else if (it->kind == SK_SKIP) missions_skip(it->idx);
+    else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); mystery_open(); }
     snd_play(sfx_find("Hr_gui_coin"), 0.8f, 1.0f, 0);
     game_save();
 }
@@ -1977,6 +2023,7 @@ static void use_headstart(int big)
     ginfo.headstart_until = 0;
     /* Game.StartHeadStart500/2000: distancia = duracion (metros) * 8, velocidad 1000 */
     start_jetpack(1, (big ? 1000.0f : 250.0f) * DISTANCE_PER_METER);
+    missions_did(M_HEADSTART, 1);
     game_save();
 }
 
@@ -1997,7 +2044,12 @@ void game_input(unsigned in)
     }
     switch (state) {
     case GS_MENU:
-        if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
+        if (ginfo.missions_open) {
+            if (in & (IN_L | IN_R | IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 0; }
+            break;
+        }
+        if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
+        else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & (IN_TRIANGLE | IN_SQUARE)) { snd_play(sfx_tap, 1, 1, 0); ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
         break;
     case GS_SHOP:
@@ -2157,9 +2209,10 @@ void game_save(void)
 {
     FILE *f = fopen("save.dat", "wb");
     if (!f) return;
-    int d[16] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
+    int d[20] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
                  ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
-                 upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, 0, 0, 0};
+                 upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
+                 mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2168,16 +2221,20 @@ void game_load(void)
 {
     FILE *f = fopen("save.dat", "rb");
     if (!f) return;
-    int d[16];
+    int d[20];
     memset(d, 0, sizeof(d));
-    int n = fread(d, 4, 16, f);
+    int n = fread(d, 4, 20, f);
     fclose(f);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; return; }
-    if (n < 16 || d[0] != SAVE_MAGIC) return;
+    if (n < 13 || d[0] != SAVE_MAGIC) return;
     ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; ginfo.hs500 = d[4]; ginfo.hs2000 = d[5];
     ginfo.boxes_pending = d[6]; ginfo.boxes_opened = d[7];
     upgrade_tier[PW_JETPACK] = d[8]; upgrade_tier[PW_SNEAKERS] = d[9]; upgrade_tier[PW_MAGNET] = d[10]; upgrade_tier[PW_DOUBLE] = d[11];
     tutorial_completed = d[12] ? 1 : 1;
+    if (n >= 20) {
+        mission_set = d[13]; ginfo.tokens = d[14];
+        mission_progress[0] = d[15]; mission_progress[1] = d[16]; mission_progress[2] = d[17]; ginfo.character = d[18];
+    }
 }
 
 void scene_on_chunk_laid(int chunk) { (void)chunk; }

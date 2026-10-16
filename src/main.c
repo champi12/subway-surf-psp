@@ -100,9 +100,10 @@ int main(int argc, char **argv)
         frame_no++;
 #ifdef AT_UI
         if (frame_no == 40) pr |= PSP_CTRL_TRIANGLE;
-        if (frame_no == 70 || frame_no == 80) pr |= PSP_CTRL_DOWN;
-        if (frame_no == 100) pr |= PSP_CTRL_CIRCLE;
-        if (ginfo.state == GS_MENU && frame_no > 120) pr |= PSP_CTRL_CROSS;
+        if (frame_no >= 60 && frame_no < 160 && frame_no % 10 == 0) pr |= PSP_CTRL_DOWN;   /* recorre toda la tienda */
+        if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 200 || frame_no == 240) pr |= PSP_CTRL_RTRIGGER;           /* ventana de misiones */
+        if (ginfo.state == GS_MENU && frame_no > 260) pr |= PSP_CTRL_CROSS;
         if (frame_no == 700) { pr |= PSP_CTRL_START; }
         if (frame_no == 740) { pr |= PSP_CTRL_START; }
 #else
