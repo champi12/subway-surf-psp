@@ -287,7 +287,8 @@ void coins_draw(void)
 }
 
 /* ------------------------------------------------------------ MovingTrain / MovingCoin */
-#define MAX_MOVING 64
+/* el peor caso medido son ~120 (trainTops_moving_multiple + bridge_various, con sus monedas) */
+#define MAX_MOVING 256
 static int moving_nodes[MAX_MOVING];
 static int moving_auto[MAX_MOVING];
 static int nmoving;
@@ -295,7 +296,18 @@ static int nmoving;
 static void moving_add(int n)
 {
     for (int i = 0; i < nmoving; i++) if (moving_nodes[i] == n) { moving_auto[i] = 0; return; }
-    if (nmoving < MAX_MOVING) { moving_auto[nmoving] = 0; moving_nodes[nmoving++] = n; }
+    static int peak, warned;
+    if (nmoving < MAX_MOVING) {
+        moving_auto[nmoving] = 0;
+        moving_nodes[nmoving++] = n;
+        nrt[n].col = 1;
+        if (nmoving > peak && nmoving > MAX_MOVING * 3 / 4) dlog("Objetos en movimiento: nuevo pico %d de %d", peak = nmoving, MAX_MOVING);
+        return;
+    }
+    /* sin sitio: el tren se quedaria escondido bajo la via con el collider activo (obstaculo invisible).
+     * Mejor quitarle tambien el collider. */
+    nrt[n].col = 0;
+    if (!warned++) dlog("AVISO lista de objetos en movimiento llena (%d): %s se desactiva", MAX_MOVING, gd.strings[gd.nodes[n].name]);
 }
 
 static void moving_remove(int n)
@@ -345,7 +357,7 @@ void moving_autopilot(float charZ)
 }
 
 /* ------------------------------------------------------------ PickupRotate */
-#define MAX_ROT 128
+#define MAX_ROT 256
 static int rot_nodes[MAX_ROT], nrot;
 
 void pickups_update(float t)
@@ -364,6 +376,7 @@ static void rot_add(int n)
 {
     for (int i = 0; i < nrot; i++) if (rot_nodes[i] == n) return;
     if (nrot < MAX_ROT) rot_nodes[nrot++] = n;
+    else { static int warned; if (!warned++) dlog("AVISO demasiados power-ups girando (%d)", MAX_ROT); }
 }
 
 static void rot_remove(int n)
@@ -760,6 +773,11 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
 #ifdef AT_CHUNK
             for (int q = 0; q < nchunks; q++)
                 if (!strcmp(gd.strings[gd.nodes[chunks[q].node].name], AT_CHUNK) && !is_active_chunk(q) && track_chunk_z > 0) ci = q;
+#ifdef AT_CHUNK2
+            if (is_active_chunk(ci) || strcmp(gd.strings[gd.nodes[chunks[ci].node].name], AT_CHUNK))
+                for (int q = 0; q < nchunks; q++)
+                    if (!strcmp(gd.strings[gd.nodes[chunks[q].node].name], AT_CHUNK2) && !is_active_chunk(q) && track_chunk_z > 0) ci = q;
+#endif
 #endif
             int tries = 0;
             while (ci >= 0 && is_active_chunk(ci) && tries < 1000) { ci = coll_random(); tries++; }

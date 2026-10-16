@@ -768,6 +768,7 @@ void r_draw_mesh(int mi, const M34 *world, const int *mats, int nmats, float amu
     for (int s = 0; s < nmats && !transp; s++)
         if (mats[s] >= 0 && mats[s] < gd.nmats && gd.mats[mats[s]].blend != BLEND_OPAQUE) transp = 1;
     if (transp) {
+        if (ndefer >= MAX_DEFER) { static int warned; if (!warned++) dlog("AVISO demasiados objetos transparentes (%d): algunos no se dibujan", MAX_DEFER); }
         if (ndefer < MAX_DEFER) {
             Deferred *d = &defer[ndefer++];
             d->mesh = mi; d->world = *world; d->nmats = nmats > 4 ? 4 : nmats;

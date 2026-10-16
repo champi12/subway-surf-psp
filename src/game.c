@@ -1734,6 +1734,9 @@ static void jetpack_tick(float dt)
 static void notify_critical_hit(void)
 {
     if (state != GS_RUNNING && state != GS_JETPACK) return;
+#ifdef AT_GOD
+    return;   /* prueba automatica: invencible para recorrer tramos dificiles */
+#endif
     dlog("CHOQUE contra %s en el carril %d a %d m (velocidad %.0f)%s", ch.lastHitTag == TAG_HITTRAIN ? "tren" :
          ch.lastHitTag == TAG_HITMOVINGTRAIN ? "tren en marcha" : ch.lastHitTag == TAG_HITBARRIER ? "barrera" : "obstaculo",
          ch.trackIndex, ginfo.meters, (double)currentSpeed, mods[MOD_HOVERBOARD].active ? " - salva la tabla" : "");
@@ -2121,7 +2124,11 @@ void game_update(float dt)
     if (ch.stumble && game_time >= ch.stumble_end) { ch.stumble = 0; guard_reset_catch_up(); }
     if (stumble_pending && game_time >= stumble_pending_t) {
         stumble_pending = 0;
+#ifdef AT_GOD
+        if (0) {
+#else
         if (state == GS_RUNNING) {
+#endif
             dlog("MUERTE por tropezar dos veces seguidas: te atrapa el inspector a %d m", ginfo.meters);
             anim_crossfade(&anim_char, "stumbleFall", 0.2f);
             game_die();

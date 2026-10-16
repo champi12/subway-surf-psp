@@ -75,7 +75,7 @@ cuelga, en la tarjeta queda todo menos los últimos segundos. Los errores se esc
 | `STAT` (cada 5 s) | FPS medios y mínimos; CPU media y máxima; espera al GE; máximos de vértices, triángulos y dibujos; memoria; VRAM; ocupación de las listas del GE con su pico; dibujos perdidos; estado, metros, MHz, batería y temperatura |
 | `ESTADO`, `TRAMO`, `CHOQUE`, `FIN DE CARRERA`, `MUSICA` | Qué estaba pasando: si el juego se cuelga, las últimas líneas dicen dónde |
 | `TIRON` | Fotograma de más de 50 ms, con su CPU, su espera de GE, el tiempo "otros" (fuera del juego: otros hilos, la Memory Stick) y si coincidió con una carga de la Memory Stick |
-| `AVISO` | Memoria por encima del 90 %, lista del GE por encima del 80 %, dibujos perdidos, textura sin sitio en VRAM, batería caliente, pool de monedas agotado |
+| `AVISO` | Memoria por encima del 90 %, lista del GE por encima del 80 %, dibujos perdidos, textura sin sitio en VRAM, batería caliente, y cualquier lista interna llena (monedas, objetos en movimiento, colliders, objetos transparentes) |
 | `ERROR` | Archivo que falta, sin memoria, fallo de la música |
 
 Para no generarlo (versión final): `make clean && make DEVLOG=0`. El medidor de SELECT sigue funcionando.
@@ -159,7 +159,9 @@ si el juego se cuelga, la dirección exacta del fallo. No hace falta para usar e
 
     PPSSPP_HEADLESS=/ruta/a/PPSSPPHeadless tools/autotest.sh 60 salida data
 
-Con `XFLAGS=-DAT_PAGES` las capturas muestran las páginas del medidor.
+Con `XFLAGS=-DAT_PAGES` las capturas muestran las páginas del medidor. Para probar un tramo concreto:
+`XFLAGS='-DAT_GOD -DAT_CHUNK=\"bridge_various\"'` (invencible y forzando ese tramo; `AT_CHUNK2` añade un segundo
+tramo que se alterna con el primero).
 
 ## 7. Optimizaciones del motor
 

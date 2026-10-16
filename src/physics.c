@@ -4,6 +4,7 @@
  * - Physics.Raycast hacia abajo (etiqueta del suelo, saltos sobre trenes)
  */
 #include <string.h>
+#include "devlog.h"
 #include "physics.h"
 #include "scene.h"
 
@@ -95,6 +96,8 @@ void phys_build(const int *extra, int nextra)
         add_subtree(track_chunk_node(track_active[i]));
     }
     for (int i = 0; i < nextra; i++) if (extra[i] >= 0) add_subtree(extra[i]);
+    static int warned;
+    if (ncols >= MAX_COLS && !warned++) dlog("AVISO demasiados colliders (%d): algunos obstaculos no chocaran", MAX_COLS);
 }
 
 /* --------- consultas geometricas --------- */
