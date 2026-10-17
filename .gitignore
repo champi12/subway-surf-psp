@@ -16,3 +16,7 @@ exhandler/*.prx
 exhandler/*.elf
 exhandler/*.o
 crash*.txt
+exhandler/loader/*.prx
+exhandler/loader/*.elf
+exhandler/loader/*.o
+trace.txt

@@ -298,7 +298,7 @@ static float bell(float x) { return smoothstepf(0, 1, 1.0f - fabsf(x - 0.5f) / 0
 
 static void set_node_active(int n, int on) { if (n >= 0) nrt[n].active = on; }
 
-static void play_ci(const ClipInfo *c) { snd_clip(c); }
+static void play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); snd_clip(c); }
 
 /* ------------------------------------------------------------ animaciones del personaje */
 static int rnd_i(int n) { return rnd_range(0, n); }
@@ -766,6 +766,7 @@ static void character_roll(void)
     /* (diagnostico del cuelgue al rodar en la consola real: se escribe en la tarjeta al momento) */
     dlog("RUEDA carril %d altura %d en el aire %d a %d m", ch.trackIndex, (int)cc.pos.y, !cc.grounded, ginfo.meters);
     dlog_flush();
+    dbg_trace_start("rodada", 20);
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -775,19 +776,27 @@ static void roll_tick(void)
     if (!ch.rolling) return;
     if (!ch.roll_started) {
         ch.roll_started = 1;
+        DBG_PHASE(main, "roll_tick: anim_crossfade(roll)");
         anim_crossfade(&anim_char, an.roll, 0.1f);
+        DBG_PHASE(main, "roll_tick: SetRunAnim");
         SetRunAnim();
         ch.fallAnim = 0;
+        DBG_PHASE(main, "roll_tick: anim_crossfade_queued(run)");
         anim_crossfade_queued(&anim_char, an.run, mods[MOD_HOVERBOARD].active ? 0.2f : 0.0f);
+        DBG_PHASE(main, "roll_tick: set_char_capsules(1)");
         set_char_capsules(1);
         ch.verticalSpeed = -jump_vs(ch.jumpHeight);
+        DBG_PHASE(main, "roll_tick: anim_length");
         ch.roll_end = game_time + anim_length(&anim_char, an.roll);
+        DBG_PHASE(main, "roll_tick: inicio hecho");
         return;
     }
     AnimState *rs = anim_get(&anim_char, an.roll);
     if (game_time < ch.roll_end && rs && rs->enabled) return;
+    DBG_PHASE(main, "roll_tick: fin de la rodada, cc_move arriba");
     if (cc.enabled) cc_move(&cc, v3(0, 2, 0));
     set_char_capsules(0);
+    DBG_PHASE(main, "roll_tick: fin de la rodada, cc_move abajo");
     if (cc.enabled) cc_move(&cc, v3(0, -2, 0));
     ch.rolling = 0;
     ch.fallAnim = 1;
@@ -1425,6 +1434,7 @@ static void game_top_menu(void)
 
 static void game_start_run(void)
 {
+    dbg_trace_start("inicio de la carrera", 15);
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
     music_set_volume(0.3f);
@@ -2180,12 +2190,16 @@ void game_update(float dt)
     /* animaciones */
     DBG_PHASE(main, "game_update: animaciones");
     anim_update(&anim_char, dt);
+    DBG_PHASE(main, "game_update: anim_update guardia/perro/camara");
     anim_update(&anim_guard, dt);
     anim_update(&anim_dog, dt);
     anim_update(&anim_cam, dt);
+    DBG_PHASE(main, "game_update: anim_apply Jake");
     anim_apply(&anim_char);
+    DBG_PHASE(main, "game_update: anim_apply guardia/perro");
     anim_apply(&anim_guard);
     anim_apply(&anim_dog);
+    DBG_PHASE(main, "game_update: despues de las animaciones");
     if (!cam_follow) anim_apply(&anim_cam);
     scene_update_world(n_character);
     guard_late_update(dt);

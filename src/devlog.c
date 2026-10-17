@@ -20,6 +20,35 @@ float dbg_upd_ms, dbg_phys_ms, dbg_draw_ms;
 float dbg_sect_ms[8];
 volatile const char *dbg_phase_main = "arranque", *dbg_phase_music = "sin iniciar", *dbg_phase_mixer = "sin iniciar";
 volatile unsigned int dbg_count_music, dbg_count_mixer;
+volatile int dbg_tracing;
+static int trace_frames_left, trace_runs;
+static char trace_path[192];
+static unsigned long long trace_t0;
+
+/* solo hilo principal; formatos enteros */
+static void trace_write(const char *s)
+{
+    if (!trace_path[0]) return;
+    char line[160];
+    unsigned long long us = sceKernelGetSystemTimeWide() - trace_t0;
+    int n = snprintf(line, sizeof(line), "[%5u.%03u] %s\r\n", (unsigned int)(us / 1000000ULL), (unsigned int)((us / 1000ULL) % 1000), s);
+    if (n > (int)sizeof(line)) n = sizeof(line);
+    SceUID fd = sceIoOpen(trace_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+    if (fd >= 0) { sceIoWrite(fd, line, n); sceIoClose(fd); }
+}
+
+void dbg_trace(const char *phase) { trace_write(phase); }
+
+void dbg_trace_start(const char *why, int frames)
+{
+    if (trace_runs >= 4 || !trace_path[0]) return;     /* como mucho 4 rastreos por partida */
+    trace_runs++;
+    char b[96];
+    snprintf(b, sizeof(b), "===== RASTREO %d: %s =====", trace_runs, why);
+    trace_write(b);
+    trace_frames_left = frames;
+    dbg_tracing = 1;
+}
 static volatile unsigned int dbg_count_main;
 int dbg_hist_pos;
 int dbg_hitches;
@@ -255,6 +284,9 @@ void dlog_init(void)
     if (!getcwd(dir, sizeof(dir))) strcpy(dir, "ms0:/PSP/GAME/SUBWAY");
     /* se guardan los 3 ultimos: devlog.txt (este), devlog_prev.txt y devlog_prev2.txt */
     char prev[192], prev2[192];
+    snprintf(trace_path, sizeof(trace_path), "%s/trace.txt", dir);
+    sceIoRemove(trace_path);
+    trace_t0 = sceKernelGetSystemTimeWide();
     snprintf(path, sizeof(path), "%s/devlog.txt", dir);
     snprintf(prev, sizeof(prev), "%s/devlog_prev.txt", dir);
     snprintf(prev2, sizeof(prev2), "%s/devlog_prev2.txt", dir);
@@ -348,6 +380,12 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     n++;
 #if DEVLOG
     dbg_count_main++;
+    if (dbg_tracing) {
+        char b[64];
+        snprintf(b, sizeof(b), "--- fotograma %d (%d ms) ---", n, (int)frame_ms);
+        trace_write(b);
+        if (--trace_frames_left <= 0) { dbg_tracing = 0; trace_write("===== fin del rastreo ====="); }
+    }
 #endif
     dbg_frame_hist[dbg_hist_pos] = frame_ms;
     dbg_hist_pos = (dbg_hist_pos + 1) & 127;

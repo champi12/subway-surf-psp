@@ -68,12 +68,34 @@ static void load_exhandler(void)
     a.phase_main = &dbg_phase_main;
     a.phase_music = &dbg_phase_music;
     a.phase_mixer = &dbg_phase_mixer;
+#ifdef EXH_FORCE_KUBRIDGE
+    SceUID m = -1;   /* prueba del plan B */
+#else
     SceUID m = sceKernelLoadModule(prx, 0, NULL);
-    if (m < 0) { dlog("Capturador de excepciones: no se pudo cargar %s (0x%08x)", prx, m); return; }
-    int st = 0;
-    int r = sceKernelStartModule(m, sizeof(a), &a, &st, NULL);
-    dlog("Capturador de excepciones: %s (carga 0x%08x, inicio 0x%08x, estado %d)",
-         r >= 0 && st == 0 ? "activo, un cuelgue escribira crash.txt" : "NO activo", m, r, st);
+#endif
+    if (m >= 0) {
+        int st = 0;
+        int r = sceKernelStartModule(m, sizeof(a), &a, &st, NULL);
+        dlog("Capturador de excepciones: %s (carga 0x%08x, inicio 0x%08x, estado %d)",
+             r >= 0 && st == 0 ? "activo, un cuelgue escribira crash.txt" : "NO activo", m, r, st);
+        return;
+    }
+    dlog("Capturador de excepciones: sceKernelLoadModule no pudo (0x%08x); se prueba con kubridge", m);
+    /* plan B: exloader.prx (modulo de usuario) lo carga con kubridge */
+    static ExLoaderArgs la;
+    static int res[3] = {-1, -1, -1};
+    snprintf(la.prx_path, sizeof(la.prx_path), "%s", prx);
+    la.exh = a;
+    la.result = res;
+    char ldr[200];
+    snprintf(ldr, sizeof(ldr), "%s/exloader.prx", dir);
+    SceUID lm = sceKernelLoadModule(ldr, 0, NULL);
+    ExLoaderArgs *lp = &la;      /* se le pasa el puntero: comparte la memoria de usuario con el juego */
+    int lst = 0, lr = lm >= 0 ? sceKernelStartModule(lm, sizeof(lp), &lp, &lst, NULL) : lm;
+    if (lr >= 0 && la.load) la.load(&la);   /* ya fuera del module_start de exloader */
+    dlog("Capturador de excepciones (kubridge): %s (exloader 0x%08x/0x%08x, carga 0x%08x, inicio 0x%08x, estado %d)",
+         res[0] >= 0 && res[1] >= 0 && res[2] == 0 ? "activo, un cuelgue escribira crash.txt" : "NO activo",
+         lm, lr, res[0], res[1], res[2]);
 }
 
 extern void game_load(void);

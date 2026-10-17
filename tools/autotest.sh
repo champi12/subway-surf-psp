@@ -11,6 +11,7 @@ make clean >/dev/null
 make -j4 AUTOTEST=1 EXTRA="-DAT_SHOT=${SHOT:-150} $XFLAGS" 2>&1 | grep -E "error" || true
 rm -rf "$OUT"; mkdir -p "$OUT"
 make -C exhandler >/dev/null 2>&1 || true
+make -C exhandler/loader >/dev/null 2>&1 || true
 cp EBOOT.PBP "$OUT/"; cp exhandler/exhandler.prx "$OUT/" 2>/dev/null || true; ln -s "$DATA" "$OUT/data"
 make clean >/dev/null   # los .o de prueba no deben mezclarse con la compilacion normal
 (cd "$OUT" && timeout $((SECS * 20)) "$PPSSPP_HEADLESS" $PPSSPP_ARGS "$OUT/EBOOT.PBP" --graphics=${GFX:-software} --timeout=$SECS -l 2>&1 \

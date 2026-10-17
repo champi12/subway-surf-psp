@@ -81,8 +81,16 @@ Para traducir las direcciones a función y línea del código hace falta el `sub
     Fallo en                     0x0880B0E8  r_draw_skinned at src/render.c:863
     Llamado desde (RA)           0x0881D438  game_update at src/game.c:2140
 
-Al arrancar, el devlog dice si el capturador quedó activo (`Capturador de excepciones: activo`). En PPSSPP sale
-"NO activo": el emulador no implementa esa parte del kernel.
+Al arrancar, el devlog dice si el capturador quedó activo (`Capturador de excepciones: activo`). Primero se carga
+con `sceKernelLoadModule`; si el CFW no lo permite, se prueba con `exloader.prx`, un módulo de usuario que lo carga
+con `kubridge` (PRO y ARK lo traen). En PPSSPP sale "NO activo": el emulador no implementa esa parte del kernel.
+
+### El modo rastreo (`trace.txt`)
+
+Para cuelgues que congelan toda la consola sin pasar por el capturador (por ejemplo, si el chip gráfico bloquea
+el bus), al empezar la carrera y en las primeras rodadas el juego escribe **cada paso del bucle principal** en
+`trace.txt`, abriendo y cerrando el archivo cada vez. Durante esos fotogramas el juego va muy lento. Si se cuelga,
+**la última línea de `trace.txt` es el último paso que llegó a ejecutarse**.
 
 ### Diferencias entre PPSSPP y la consola que pueden colgar el juego
 

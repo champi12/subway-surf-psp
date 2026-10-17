@@ -10,4 +10,14 @@ typedef struct {
     volatile const char **phase_mixer;
 } ExhArgs;
 
+/* argumentos de exloader.prx (plan B con kubridge) */
+typedef struct {
+    char prx_path[192];      /* ruta de exhandler.prx */
+    ExhArgs exh;             /* lo que recibira exhandler.prx */
+    int *result;             /* resultado: carga, inicio, estado */
+    /* la rellena exloader: el juego la llama DESPUES de arrancarlo (cargar otro modulo dentro de module_start
+     * bloquea el gestor de modulos) */
+    void (*load)(void *self);
+} ExLoaderArgs;
+
 #endif
