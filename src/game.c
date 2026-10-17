@@ -3,6 +3,7 @@
  * SuperSneakers, CoinMagnet, DoubleScoreMultiplier, GameStats, CharacterPickupParticles, RunnerAnimPlayer.
  * Los valores numericos son los guardados en la escena del juego (level0), no los de por defecto del codigo.
  */
+#include <pspkernel.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -762,6 +763,9 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
+#ifdef AT_ROLL
+    dlog("RUEDA carril %d altura %.1f en el aire %d", ch.trackIndex, (double)cc.pos.y, !cc.grounded);
+#endif
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -2205,6 +2209,10 @@ void game_draw(void)
     } else if (n_mainCam >= 0) {
         r_set_camera_matrix(&nrt[n_mainCam].world, 60.0f);
     }
+    /* cronometro por bloques para el devlog (pocas lecturas del reloj por fotograma) */
+    unsigned int tsec = sceKernelGetSystemTimeLow(), tnow;
+#define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow)
+    SECT(0);   /* camara */
     /* el cielo va pegado a la camara: se dibuja primero */
     if (n_sky >= 0) {
         if (cam_follow) {
@@ -2215,16 +2223,23 @@ void game_draw(void)
         }
         scene_draw_subtree(n_sky);
     }
+    SECT(1);
     if (state != GS_MENU) for (int i = 0; i < track_nactive; i++) {
         extern int track_chunk_node(int ci);
         scene_draw_subtree(track_chunk_node(track_active[i]));
     }
+    SECT(2);
     if (n_intro_env >= 0) scene_draw_subtree(n_intro_env);
+    SECT(3);
     coins_draw();
+    SECT(4);
     scene_draw_subtree(n_character);
     if (gu.showing || state == GS_DIE || state == GS_DIEFALL) scene_draw_subtree(n_enemies);
+    SECT(5);
     if (n_efx >= 0) scene_draw_subtree(n_efx);
     r_flush_transparent();
+    SECT(6);
+#undef SECT
 }
 
 /* ------------------------------------------------------------ partida guardada */

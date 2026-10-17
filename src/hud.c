@@ -186,16 +186,22 @@ float ui_text(int fi, float x, float y, float scale, unsigned int col, int align
     if (align == 1) x -= w * 0.5f;
     else if (align == 2) x -= w;
     if (snap) { x = floorf(x + 0.5f); y = floorf(y + 0.5f); r_set_nearest(1); }
+    /* todas las letras de la frase en una sola llamada de dibujo */
+    static float q[64 * 8];
+    int nq = 0;
     for (; *s; s++) {
         UGlyph *g = t->map[(unsigned char)*s];
         if (!g) { if (*s == ' ') x += t->size * 0.3f * scale; continue; }
         if (g->w > 0 && g->h > 0) {
-            float u0 = (t->sx + g->x) / a->w, v0 = (t->sy + g->y) / a->h;
-            float u1 = (t->sx + g->x + g->w) / a->w, v1 = (t->sy + g->y + g->h) / a->h;
-            r_sprite(a->tex, x + g->ox * scale, y + g->oy * scale, g->w * scale, g->h * scale, u0, v0, u1, v1, col);
+            float *o = &q[nq * 8];
+            o[0] = x + g->ox * scale; o[1] = y + g->oy * scale; o[2] = g->w * scale; o[3] = g->h * scale;
+            o[4] = (t->sx + g->x) / a->w; o[5] = (t->sy + g->y) / a->h;
+            o[6] = (t->sx + g->x + g->w) / a->w; o[7] = (t->sy + g->y + g->h) / a->h;
+            if (++nq == 64) { r_sprites(a->tex, q, nq, col); nq = 0; }
         }
         x += (g->adv + t->spacing) * scale;
     }
+    r_sprites(a->tex, q, nq, col);
     if (snap) r_set_nearest(0);
     return w;
 }

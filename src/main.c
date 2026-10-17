@@ -131,6 +131,20 @@ int main(int argc, char **argv)
             for (int k = 0; k < 50; k++) sceKernelDelayThread(100000);
         }
 #endif
+#ifdef AT_UNALIGN
+        if (frame_no == 300) { static int buf[8]; static volatile int off = 2; volatile int *bad = (volatile int *)((char *)buf + off); dlog("leyendo %d", *bad); }
+#endif
+#ifdef AT_BADMEM
+        if (frame_no == 300) { volatile int *bad = (volatile int *)0x00000010; dlog("leyendo %d", *bad); }
+#endif
+#ifdef AT_ROLL
+        /* prueba de rodar: en el suelo cada 45 fotogramas y, cada 90, saltar y rodar en el aire */
+        if (ginfo.state == GS_RUNNING) {
+            if (frame_no % 45 == 0) pr |= PSP_CTRL_DOWN;
+            if (frame_no % 90 == 20) pr |= PSP_CTRL_UP;
+            if (frame_no % 90 == 26) pr |= PSP_CTRL_DOWN;
+        }
+#endif
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
@@ -184,7 +198,9 @@ int main(int argc, char **argv)
         r_begin_frame(0xfff6e6bc);   /* color de fondo de la camara (0.737, 0.902, 0.965) */
         game_draw();
         DBG_PHASE(main, "hud_draw (interfaz)");
+        unsigned int th0 = sceKernelGetSystemTimeLow();
         hud_draw();
+        dbg_sect_ms[7] = (sceKernelGetSystemTimeLow() - th0) / 1000.0f;
         unsigned int t1 = sceKernelGetSystemTimeLow();
         if (show_perf) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();

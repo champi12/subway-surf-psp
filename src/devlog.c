@@ -17,6 +17,7 @@ MemInfo dbg_mem;
 int dbg_cpu_mhz, dbg_bus_mhz, dbg_bat_pct = -1, dbg_bat_temp, dbg_plugged;
 float dbg_frame_hist[128];
 float dbg_upd_ms, dbg_phys_ms, dbg_draw_ms;
+float dbg_sect_ms[8];
 volatile const char *dbg_phase_main = "arranque", *dbg_phase_music = "sin iniciar", *dbg_phase_mixer = "sin iniciar";
 volatile unsigned int dbg_count_music, dbg_count_mixer;
 static volatile unsigned int dbg_count_main;
@@ -107,25 +108,28 @@ static int swap_locked(void)
     return 1;
 }
 
-static void put(const char *s, int n)
-{
-    if (lock < 0) return;
-    sceKernelWaitSema(lock, 1, 0);
-    if (blen[bcur] + n > BUFSZ && !swap_locked()) dropped++;
-    else { memcpy(bufs[bcur] + blen[bcur], s, n); blen[bcur] += n; }
-    sceKernelSignalSema(lock, 1);
-}
-
+/* IMPORTANTE (consola real): newlib tiene una sola estructura global (_impure_ptr) para todos los hilos y al
+ * formatear numeros decimales (%f) usa una lista de memoria interna sin cerrojo. Si dos hilos formatean %f a la
+ * vez, esa lista se corrompe y el juego se cuelga mas tarde en cualquier sitio. PPSSPP no lo reproduce porque solo
+ * cambia de hilo en las llamadas al sistema. Por eso:
+ *   - la marca de tiempo se escribe con enteros,
+ *   - todo el formateo del devlog se hace dentro del cerrojo,
+ *   - los hilos que no son el principal (musica, vigilante) solo usan formatos enteros (%d, %s, %x). */
 static void vlog(const char *pre, const char *fmt, va_list ap)
 {
-    char line[320];
-    float t = (sceKernelGetSystemTimeWide() - t_start) / 1000000.0f;
-    int n = snprintf(line, sizeof(line), "[%8.2f] %s", t, pre);
+    if (lock < 0) return;
+    static char line[320];          /* protegida por el cerrojo */
+    unsigned long long us = sceKernelGetSystemTimeWide() - t_start;
+    unsigned int sec = (unsigned int)(us / 1000000ULL), cs = (unsigned int)((us / 10000ULL) % 100);
+    sceKernelWaitSema(lock, 1, 0);
+    int n = snprintf(line, sizeof(line), "[%5u.%02u] %s", sec, cs, pre);
     n += vsnprintf(line + n, sizeof(line) - n - 2, fmt, ap);
     if (n > (int)sizeof(line) - 2) n = sizeof(line) - 2;
     line[n++] = '\r';   /* saltos de linea de Windows: se lee bien en el Bloc de notas */
     line[n++] = '\n';
-    put(line, n);
+    if (blen[bcur] + n > BUFSZ && !swap_locked()) dropped++;
+    else { memcpy(bufs[bcur] + blen[bcur], line, n); blen[bcur] += n; }
+    sceKernelSignalSema(lock, 1);
 }
 
 void dlog(const char *fmt, ...)
@@ -185,14 +189,16 @@ static void write_direct(const char *s, int n)
     if (fd >= 0) { sceIoWrite(fd, s, n); sceIoClose(fd); }
 }
 
-static void watchdog_report(float secs, int music_moving, int mixer_moving)
+/* este hilo no es el principal: solo formatos enteros (ver vlog) */
+static void watchdog_report(int half_secs, int music_moving, int mixer_moving)
 {
     char line[512];
-    float t = (sceKernelGetSystemTimeWide() - t_start) / 1000000.0f;
+    unsigned long long us = sceKernelGetSystemTimeWide() - t_start;
+    unsigned int sec = (unsigned int)(us / 1000000ULL), cs = (unsigned int)((us / 10000ULL) % 100);
     int n = snprintf(line, sizeof(line),
-                     "[%8.2f] BLOQUEO el bucle principal lleva %.1f s parado en: %s | hilo de musica: %s (%s) | "
+                     "[%5u.%02u] BLOQUEO el bucle principal lleva %d.%d s parado en: %s | hilo de musica: %s (%s) | "
                      "mezclador de sonidos: %s (%s) | GE: %s | estado %s, %d m\r\n",
-                     t, secs, (const char *)dbg_phase_main, (const char *)dbg_phase_music,
+                     sec, cs, half_secs / 2, (half_secs & 1) * 5, (const char *)dbg_phase_main, (const char *)dbg_phase_music,
                      music_moving ? "avanza" : "parado", (const char *)dbg_phase_mixer, mixer_moving ? "avanza" : "parado",
                      ge_state(), ginfo.state >= 0 && ginfo.state < 9 ? state_name_pub(ginfo.state) : "?", ginfo.meters);
     if (n > (int)sizeof(line)) n = sizeof(line);
@@ -216,14 +222,17 @@ static int watchdog_thread(SceSize a, void *p)
         int mus_moving = mu != last_mus, mix_moving = mx != last_mix;
         last_mus = mu; last_mix = mx;
         if (m != last_main) {
-            if (reported) dlog("RECUPERADO el bucle principal vuelve a avanzar tras %.1f s", stuck * 0.5f);
+            if (reported) dlog("RECUPERADO el bucle principal vuelve a avanzar tras %d.%d s", stuck / 2, (stuck & 1) * 5);
             last_main = m; stuck = reported = 0;
             continue;
         }
         stuck++;
+        /* al terminar el arranque se empieza a contar de cero (la carga inicial no es un bloqueo) */
+        static int was_boot_done;
+        if (boot_done && !was_boot_done) { was_boot_done = 1; stuck = 0; continue; }
         if (!reported && stuck >= (boot_done ? 6 : 20)) {
             reported = 1;
-            watchdog_report(stuck * 0.5f, mus_moving, mix_moving);
+            watchdog_report(stuck, mus_moving, mix_moving);
         }
     }
     return 0;
@@ -289,6 +298,7 @@ static struct {
     int frames, hitch_lines, verts, tris, draws, clip, dropped;
     float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait, sum_upd, sum_phys, sum_draw;
     int sum_vcpu, sum_vhw;
+    float sum_sect[8];
     unsigned long long t0;
 } win;
 static int last_state = -1;
@@ -316,6 +326,11 @@ static void stat_line(void)
     dlog("PERFIL logica %.1f ms (fisica %.1f) | dibujo %.1f ms | vertices por fotograma: CPU %d, GE %d",
          win.sum_upd / win.frames, win.sum_phys / win.frames, win.sum_draw / win.frames,
          win.sum_vcpu / win.frames, win.sum_vhw / win.frames);
+    float f = 1.0f / win.frames;
+    dlog("DIBUJO via %.1f | personajes %.1f | monedas %.1f | efectos y transparentes %.1f | entorno menu %.1f | "
+         "cielo %.1f | interfaz %.1f ms | recorte por software: %d triangulos",
+         win.sum_sect[2] * f, win.sum_sect[5] * f, win.sum_sect[4] * f, win.sum_sect[6] * f, win.sum_sect[3] * f,
+         win.sum_sect[1] * f, win.sum_sect[7] * f, win.clip);
     /* avisos: lo que en la consola real acabaria en cuelgue o en tirones */
     if (m->heap_total && m->heap_used > m->heap_total / 10 * 9)
         dlog("AVISO memoria casi llena: %u de %u KB", m->heap_used / 1024, m->heap_total / 1024);
@@ -351,6 +366,7 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     win.sum_draw += dbg_draw_ms;
     win.sum_vcpu += r_stat_verts;
     win.sum_vhw += r_stat_hw;
+    for (int k = 0; k < 8; k++) win.sum_sect[k] += dbg_sect_ms[k];
     if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
     win.sum_wait += wait_ms;
     if (r_stat_verts > win.verts) win.verts = r_stat_verts;

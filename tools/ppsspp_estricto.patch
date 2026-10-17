@@ -1,0 +1,106 @@
+diff --git a/Core/MIPS/MIPSInt.cpp b/Core/MIPS/MIPSInt.cpp
+index 5a04ff2..b6889c5 100644
+--- a/Core/MIPS/MIPSInt.cpp
++++ b/Core/MIPS/MIPSInt.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <cstdio>
+ // Copyright (c) 2012- PPSSPP Project.
+ 
+ // This program is free software: you can redistribute it and/or modify
+@@ -91,6 +93,18 @@ int MIPS_SingleStep()
+ 	return 1;
+ }
+ 
++
++// --- comprobacion de alineacion (como la CPU real de la PSP) si PPSSPP_STRICT_ALIGN esta definido ---
++static inline void SS_AlignCheck(u32 addr, u32 a, const char *what) {
++	static int strict = -1;
++	if (strict < 0) { strict = getenv("PPSSPP_STRICT_ALIGN") != nullptr; fprintf(stderr, "SS_AlignCheck activo=%d\n", strict); }
++	if (strict && (addr & (a - 1))) {
++		fprintf(stderr, "UNALIGNED %s addr %08x PC %08x RA %08x\n", what, addr, currentMIPS->pc, currentMIPS->r[MIPS_REG_RA]);
++		fflush(stderr);
++		Core_Break(currentMIPS->pc);
++	}
++}
++
+ namespace MIPSInt
+ {
+ 	void Int_Cache(MIPSOpcode op)
+@@ -429,6 +443,10 @@ namespace MIPSInt
+ 			PC += 4;
+ 			return;
+ 		}
++		switch (op >> 26) {
++		case 33: case 37: case 41: SS_AlignCheck(addr, 2, "lh/sh"); break;
++		case 35: case 43: SS_AlignCheck(addr, 4, "lw/sw"); break;
++		}
+ 
+ 		switch (op >> 26)
+ 		{
+@@ -493,6 +511,7 @@ namespace MIPSInt
+ 		int ft = _FT;
+ 		int rs = _RS;
+ 		u32 addr = R(rs) + offset;
++		SS_AlignCheck(addr, 4, "lwc1/swc1");
+ 
+ 		switch(op >> 26)
+ 		{
+diff --git a/Core/MIPS/MIPSIntVFPU.cpp b/Core/MIPS/MIPSIntVFPU.cpp
+index f0ae68a..b2b1314 100644
+--- a/Core/MIPS/MIPSIntVFPU.cpp
++++ b/Core/MIPS/MIPSIntVFPU.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <cstdio>
+ // Copyright (c) 2012- PPSSPP Project.
+ 
+ // This program is free software: you can redistribute it and/or modify
+@@ -188,6 +190,18 @@ void EatPrefixes()
+ 	currentMIPS->vfpuCtrl[VFPU_CTRL_DPREFIX] = 0;
+ }
+ 
++
++// --- comprobacion de alineacion (como la CPU real de la PSP) si PPSSPP_STRICT_ALIGN esta definido ---
++static inline void SS_AlignCheck(u32 addr, u32 a, const char *what) {
++	static int strict = -1;
++	if (strict < 0) { strict = getenv("PPSSPP_STRICT_ALIGN") != nullptr; fprintf(stderr, "SS_AlignCheck activo=%d\n", strict); }
++	if (strict && (addr & (a - 1))) {
++		fprintf(stderr, "UNALIGNED %s addr %08x PC %08x RA %08x\n", what, addr, currentMIPS->pc, currentMIPS->r[MIPS_REG_RA]);
++		fflush(stderr);
++		Core_Break(currentMIPS->pc);
++	}
++}
++
+ namespace MIPSInt
+ {
+ 	void Int_VPFX(MIPSOpcode op)
+@@ -209,6 +223,7 @@ namespace MIPSInt
+ 		u32 addr = R(rs) + imm;
+ 		float *f;
+ 		const float *cf;
++		if ((op >> 26) == 54 || (op >> 26) == 62) SS_AlignCheck(addr, 16, "lv.q/sv.q");
+ 
+ 		switch (op >> 26)
+ 		{
+@@ -1753,6 +1768,7 @@ namespace MIPSInt
+ 		int vt = ((op >> 16) & 0x1f) | ((op & 3) << 5);
+ 		int rs = _RS;
+ 		u32 addr = R(rs) + imm;
++		SS_AlignCheck(addr, 4, "lv.s/sv.s");
+ 
+ 		switch (op >> 26)
+ 		{
+diff --git a/headless/Headless.cpp b/headless/Headless.cpp
+index f2ee68a..80fc972 100644
+--- a/headless/Headless.cpp
++++ b/headless/Headless.cpp
+@@ -466,7 +466,7 @@ int main(int argc, const char* argv[])
+ 
+ 	g_Config.bEnableSound = false;
+ 	g_Config.bFirstRun = false;
+-	g_Config.bIgnoreBadMemAccess = true;
++	g_Config.bIgnoreBadMemAccess = getenv("PPSSPP_STRICT_MEM") == nullptr;
+ 	// Never report from tests.
+ 	g_Config.sReportHost.clear();
+ 	g_Config.bAutoSaveSymbolMap = false;

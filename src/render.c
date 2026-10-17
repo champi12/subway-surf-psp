@@ -61,7 +61,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #ifndef HW_TOL
 #define HW_TOL 0.75f            /* error maximo (pixeles) de la curvatura linealizada en los bloques grandes */
 #endif
-#define GUARD 3.0f              /* en unidades NDC */
+/* banda de guarda en NDC: el GE admite coordenadas de pantalla de 0 a 4096 (+-2048 px desde el centro, es decir
+ * +-8,5 NDC en horizontal y +-15 en vertical); con 6 queda margen y mas trozos van por el camino rapido */
+#define GUARD 6.0f
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 
@@ -521,9 +523,9 @@ static int ndefer;
 static unsigned char codebuf[65536 + 4096];
 
 /* 0 = fuera, 1 = dentro de la banda de guarda (no hace falta recortar), 2 = hay que recortar */
-static int sphere_visible(V3 c, float r)
+/* esfera ya en coordenadas de camara (p = centro * vista) */
+static int sphere_visible_v(V3 p, float r)
 {
-    V3 p = m34_point(&r_view, c);
     float d = p.z;
     if (d + r < r_near) return 0;
     if (d - r > r_far) return 0;
@@ -543,6 +545,8 @@ static int sphere_visible(V3 c, float r)
     if ((gyn * y + d) * igll < rr || (-gyn * y + d) * igll < rr) return 2;
     return 1;
 }
+
+static int sphere_visible(V3 c, float r) { return sphere_visible_v(m34_point(&r_view, c), r); }
 
 /* Version VFPU: la matriz 4x4 entera en un registro de matriz, una instruccion por vertice */
 static int use_vfpu = 0;
@@ -736,10 +740,12 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         int mat = pt->sub < nmats ? mats[pt->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
         if (mat < 0) continue;
         PT_START(tq0);
-        int vis = sky ? 2 : sphere_visible(m34_point(world, pt->center), pt->radius * sc);
+        /* centro del trozo en coordenadas de camara: una sola multiplicacion (mv = vista * mundo) */
+        V3 pc = m34_point(&mv, pt->center);
+        int vis = sky ? 2 : sphere_visible_v(pc, pt->radius * sc);
         PT_ADD(3, tq0);
         if (!vis) continue;
-        float d0 = vis == 1 ? m34_point(&mv, pt->center).z : 0;
+        float d0 = vis == 1 ? pc.z : 0;
         float pr = pt->radius * sc;
         /* Curvatura linealizada en el GE: el error en pantalla de un trozo de radio pr cuyo punto mas cercano
          * esta a dmin es |k|*pr^2/dmin (en NDC). Se usa el GE si queda por debajo de HW_TOL pixeles, o si es un
@@ -966,6 +972,23 @@ void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, f
     v[0].u = u0 * tw; v[0].v = v0 * th; v[0].c = abgr; v[0].x = x; v[0].y = y; v[0].z = 0;
     v[1].u = u1 * tw; v[1].v = v1 * th; v[1].c = abgr; v[1].x = x + w; v[1].y = y + h; v[1].z = 0;
     sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, 2, 0, v);
+}
+
+/* varios sprites con la misma textura y color en una sola llamada de dibujo (el texto: una por frase, no por letra).
+ * q: n grupos de 8 floats (x, y, w, h, u0, v0, u1, v1) con uv normalizadas */
+void r_sprites(int tex, const float *q, int n, unsigned int abgr)
+{
+    if (n <= 0 || list_full(1024 + n * 2 * (int)sizeof(SV))) return;
+    r_bind_texture(tex);
+    SV *v = (SV *)sceGuGetMemory(n * 2 * sizeof(SV));
+    float tw = 1, th = 1;
+    if (tex >= 0) { tw = gd.tex[tex].w; th = gd.tex[tex].h; }
+    for (int i = 0; i < n; i++, q += 8) {
+        SV *a = &v[i * 2], *b = &v[i * 2 + 1];
+        a->u = q[4] * tw; a->v = q[5] * th; a->c = abgr; a->x = q[0]; a->y = q[1]; a->z = 0;
+        b->u = q[6] * tw; b->v = q[7] * th; b->c = abgr; b->x = q[0] + q[2]; b->y = q[1] + q[3]; b->z = 0;
+    }
+    sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, n * 2, 0, v);
 }
 
 void r_rect(float x, float y, float w, float h, unsigned int abgr)

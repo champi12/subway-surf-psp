@@ -26,6 +26,9 @@ extern int dbg_hist_pos;
 extern int dbg_hitches;             /* fotogramas de mas de 50 ms desde el arranque */
 /* desglose del ultimo fotograma (lo rellena main antes de dbg_frame) */
 extern float dbg_upd_ms, dbg_phys_ms, dbg_draw_ms;
+/* dibujo por bloques: 0 camara, 1 cielo, 2 via, 3 entorno del menu, 4 monedas, 5 personajes, 6 efectos y
+ * transparentes, 7 interfaz */
+extern float dbg_sect_ms[8];
 
 void mem_init(void);                /* lo primero en main: mide el tamano real del monton */
 void mem_query(MemInfo *m);

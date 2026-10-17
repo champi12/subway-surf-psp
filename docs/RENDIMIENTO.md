@@ -60,7 +60,20 @@ parado** (10 s durante la carga inicial), escribe al momento una línea así:
 
 Dice en qué fase está cada hilo y si avanza, y el estado del GE. Si el juego se recupera, añade `RECUPERADO`.
 **Si después de un cuelgue no hay ninguna línea `BLOQUEO`**, la consola entera se detuvo por una excepción de la CPU
-(un acceso a memoria inválido): eso también es una pista.
+(un acceso a memoria inválido o desalineado, o una corrupción de memoria): eso también es una pista.
+
+### Diferencias entre PPSSPP y la consola que pueden colgar el juego
+
+| En la consola real | En PPSSPP (por defecto) |
+|---|---|
+| Leer un `int`/`float` de una dirección no múltiplo de 4 (o `lv.q` no múltiplo de 16) cuelga la consola | Funciona |
+| Leer una dirección inválida cuelga la consola | Se ignora |
+| Un hilo de más prioridad puede interrumpir a otro en mitad de cualquier función | Los hilos solo cambian en las llamadas al sistema |
+
+Para la prueba automática hay un parche para PPSSPPHeadless 1.18.1 (`tools/ppsspp_estricto.patch`) que detecta los dos primeros casos (`PPSSPP_STRICT_ALIGN=1
+PPSSPP_STRICT_MEM=1 PPSSPP_ARGS=-i`), parcheando el intérprete. El tercero no se puede emular: por eso solo el hilo
+principal formatea números decimales (`%f`), ya que la libc de la PSP (newlib) comparte entre hilos la memoria que usa
+para formatearlos.
 
 ### Qué contiene
 
@@ -87,6 +100,7 @@ Dice en qué fase está cada hilo y si avanza, y el estado del GE. Si el juego s
 | `CARGA` | Cada archivo de `data/`, su tamaño y lo que tardó en leerse de la Memory Stick |
 | `TEXTURA` | Cada textura cuando se carga por primera vez: tamaño, formato, si fue a VRAM o a RAM y cuánto tardó |
 | `PERFIL` (cada 5 s) | En qué se va la CPU por fotograma: lógica (con la física dentro) y preparar el dibujo, y cuántos vértices transforma la CPU y cuántos el GE |
+| `DIBUJO` (cada 5 s) | El dibujo por bloques: vía, personajes, monedas, efectos y transparentes, entorno del menú, cielo e interfaz, y los triángulos recortados por software |
 | `STAT` (cada 5 s) | FPS medios y mínimos; CPU media y máxima; espera al GE; máximos de vértices, triángulos y dibujos; memoria; VRAM; ocupación de las listas del GE con su pico; dibujos perdidos; estado, metros, MHz, batería y temperatura |
 | `ESTADO`, `TRAMO`, `CHOQUE`, `FIN DE CARRERA`, `MUSICA` | Qué estaba pasando: si el juego se cuelga, las últimas líneas dicen dónde |
 | `TIRON` | Fotograma de más de 50 ms, con su CPU, su espera de GE, el tiempo "otros" (fuera del juego: otros hilos, la Memory Stick) y si coincidió con una carga de la Memory Stick |
@@ -196,7 +210,7 @@ tramo que se alterna con el primero).
 | Técnica | Qué ahorra |
 |---|---|
 | **CPU y GE en paralelo**: cada fotograma se prepara mientras el GE dibuja el anterior | Casi todo el tiempo de CPU queda oculto detrás del dibujo |
-| **Escenario troceado** en bloques de 64 unidades; se descartan los que quedan fuera de cámara | ~40 % de los vértices |
+| **Escenario troceado** en bloques de 32 unidades; se descartan los que quedan fuera de cámara, y los bloques pequeños pueden curvarse en el GE | En la consola real el coste va con los vértices que transforma la CPU (~2,5 µs cada uno): de ~12.500 a ~3.500 por fotograma |
 | **Camino rápido** sin recorte para los bloques que caben enteros en la banda de guarda del GE | Comprobaciones por vértice |
 | **VFPU** para transformar vértices, comprobada al arrancar contra la versión en C | Cálculo por vértice |
 | **Curvatura linealizada en el GE** para objetos pequeños y bloques lejanos (error < 1 píxel) | ~17.000 vértices por fotograma |
@@ -208,6 +222,8 @@ tramo que se alterna con el primero).
 | Componentes de dibujo y de colisión de cada nodo calculados al arrancar; las ramas sin nada que dibujar o chocar se saltan | Recorrer la escena |
 | Sin lecturas del reloj por cada trozo de modelo (en la PSP real cada una es una llamada al sistema) | Varios ms por fotograma en la consola |
 | **30 FPS fijos**, como el original | Ritmo estable en vez de saltar entre 60, 30 y 20 |
+| Texto: una llamada de dibujo por frase (no por letra); centro de cada trozo calculado una vez | Llamadas de dibujo y cálculo por trozo |
+| Banda de guarda de 6 (el GE admite hasta 8,5 en horizontal) | Menos triángulos recortados por software |
 
 ## 8. Si en la consola real fuera lento
 

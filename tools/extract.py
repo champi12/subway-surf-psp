@@ -426,7 +426,7 @@ def subdivide(V, UV, tris, max_edge):
     return V, UV, out
 
 
-CLUSTER = 64.0       # tamano de celda para trocear el escenario (culling por trozos)
+CLUSTER = 32.0       # tamano de celda para trocear el escenario (culling por trozos y curvatura en el GE)
 
 
 def mesh_triangles(mo, h):
