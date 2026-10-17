@@ -42,6 +42,8 @@ static int mixer_thread(SceSize args, void *argp)
     int cur = 0;
     static int acc[MIX_SAMPLES];
     while (audio_running) {
+        dbg_count_mixer++;
+        DBG_PHASE(mixer, "mezclando");
         memset(acc, 0, sizeof(acc));
         if (!audio_paused) {
             for (int vi = 0; vi < MAX_VOICES; vi++) {
@@ -68,6 +70,7 @@ static int mixer_thread(SceSize args, void *argp)
             if (s > 32767) s = 32767; else if (s < -32768) s = -32768;
             out[i * 2] = out[i * 2 + 1] = (int16_t)s;
         }
+        DBG_PHASE(mixer, "sceAudioOutputBlocking");
         sceAudioOutputBlocking(ch, PSP_AUDIO_VOLUME_MAX, out);
         cur ^= 1;
     }
@@ -88,6 +91,8 @@ int snd_play(int id, float vol, float pitch, int loop)
     }
     Voice *v = &voices[best];
     v->active = 0;
+    /* el mezclador (prioridad mas alta) puede interrumpir aqui: que vea la voz apagada hasta que este completa */
+    __asm__ volatile("" ::: "memory");
     v->pcm = gd.sfx[id].pcm;
     v->n = gd.sfx[id].n;
     v->pos = 0;
@@ -96,6 +101,7 @@ int snd_play(int id, float vol, float pitch, int loop)
     v->vol = (int)(clamp01(vol) * 256.0f);
     v->loop = loop;
     v->gen = (v->gen + 1) & 0xffff;
+    __asm__ volatile("" ::: "memory");
     v->active = 1;
     return best | (v->gen << 8);
 }
@@ -162,7 +168,10 @@ static int music_thread(SceSize args, void *argp)
     int at3_size = 0;
     static short __attribute__((aligned(64))) at3_out[2048 * 2];
     while (audio_running) {
+        dbg_count_music++;
+        DBG_PHASE(music, "esperando");
         if (mus_req || mus_stop_req || mus_restart_req) {
+            DBG_PHASE(music, "cambiando de cancion (abrir/cerrar MP3)");
             if (mus_restart_req && !mus_req && !mus_stop_req) {
                 /* volver al principio: se vuelve a abrir */
                 mus_req = 1;
@@ -224,6 +233,7 @@ static int music_thread(SceSize args, void *argp)
         if (at3_id >= 0) {
             int samples = 0, end = 0, remain = 0;
             memset(at3_out, 0, sizeof(at3_out));
+            DBG_PHASE(music, "sceAtracDecodeData");
             int r = sceAtracDecodeData(at3_id, (u16 *)at3_out, &samples, &end, &remain);
             if (r < 0 || samples <= 0) {
                 if (end && mus_req_loop) { mus_restart_req = 1; continue; }
@@ -234,8 +244,10 @@ static int music_thread(SceSize args, void *argp)
             continue;
         }
         if (handle < 0) { sceKernelDelayThread(10000); continue; }
+        DBG_PHASE(music, "leyendo el MP3 de la Memory Stick");
         if (sceMp3CheckStreamDataNeeded(handle) > 0) fill_stream(fd, handle);
         short *buf;
+        DBG_PHASE(music, "sceMp3Decode");
         int bytes = sceMp3Decode(handle, &buf);
         if (bytes <= 0) {
             sceMp3ReleaseMp3Handle(handle); handle = -1; sceIoClose(fd); fd = -1; mus_playing = 0;
@@ -247,6 +259,7 @@ static int music_thread(SceSize args, void *argp)
             src_ch = sceAudioSRCChReserve(samples, rate, 2);
             last_samples = samples;
         }
+        DBG_PHASE(music, "sceAudioSRCOutputBlocking");
         sceAudioSRCOutputBlocking(vol, buf);
     }
     if (handle >= 0) sceMp3ReleaseMp3Handle(handle);
@@ -267,7 +280,10 @@ void music_play(const char *name, int loop)
         if (f >= 0) sceIoClose(f);
         snprintf(path, sizeof(path), "%s/music/%s.mp3", basedir, name);
     }
+    volatile const char *ph = dbg_phase_main;
+    DBG_PHASE(main, "music_play: esperando al hilo de musica");
     while (mus_req) sceKernelDelayThread(1000);
+    dbg_phase_main = ph;
     snprintf(mus_req_path, sizeof(mus_req_path), "%s", path);
     mus_req_loop = loop;
     mus_req = 1;

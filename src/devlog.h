@@ -24,6 +24,8 @@ extern int dbg_cpu_mhz, dbg_bus_mhz, dbg_bat_pct, dbg_bat_temp, dbg_plugged;
 extern float dbg_frame_hist[128];   /* ms de cada fotograma (grafica) */
 extern int dbg_hist_pos;
 extern int dbg_hitches;             /* fotogramas de mas de 50 ms desde el arranque */
+/* desglose del ultimo fotograma (lo rellena main antes de dbg_frame) */
+extern float dbg_upd_ms, dbg_phys_ms, dbg_draw_ms;
 
 void mem_init(void);                /* lo primero en main: mide el tamano real del monton */
 void mem_query(MemInfo *m);
@@ -34,14 +36,22 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms);
 #define DEVLOG 1
 #endif
 
+/* fase en la que esta cada hilo y contador de vueltas, para el vigilante (watchdog): si el bucle principal deja
+ * de avanzar 3 s, escribe en el devlog donde se quedo cada hilo */
+extern volatile const char *dbg_phase_main, *dbg_phase_music, *dbg_phase_mixer;
+extern volatile unsigned int dbg_count_music, dbg_count_mixer;
+#define DBG_PHASE(thread, s) (dbg_phase_##thread = (s))
+
 #if DEVLOG
 void dlog_init(void);
+void dlog_boot_done(void);       /* fin del arranque: el vigilante pasa de 10 s a 3 s de margen */
 void dlog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void dlog_error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));   /* se escribe al momento */
 void dlog_flush(void);
 void dlog_close(void);
 #else
 #define dlog_init() ((void)0)
+#define dlog_boot_done() ((void)0)
 #define dlog(...) ((void)0)
 #define dlog_error(...) ((void)0)
 #define dlog_flush() ((void)0)

@@ -10,6 +10,7 @@
 #include "game.h"
 #include "missions.h"
 #include "devlog.h"
+#include "lang.h"
 
 typedef struct { char name[32]; float ox, oy, ow, oh, ix, iy, iw, ih; } USprite;
 typedef struct { char name[32]; int tex, w, h; float pixel; int nsp; USprite *sp; } UAtlas;
@@ -100,9 +101,61 @@ int ui_atlas(const char *name)
     return -1;
 }
 
-float ui_text_width(int fi, float scale, const char *s)
+/* Fuentes pre-escaladas por el conversor ("Lilita@20" = Lilita a 20 px exactos). Para cada texto se usa la del
+ * tamano mas cercano y se dibuja 1:1 en pixeles enteros: nitido en la pantalla de la PSP. */
+static int baked_ready;
+static struct { char family[16]; int px, fi; } baked[24];
+static int nbaked;
+static char font_family[48][16];
+
+static void baked_init(void)
 {
-    if (fi < 0) return strlen(s) * 8 * scale;
+    if (baked_ready) return;
+    baked_ready = 1;
+    for (int i = 0; i < nfnt; i++) {
+        const char *n = fnt[i].name;
+        int k = 0;
+        while (n[k] && ((n[k] >= 'A' && n[k] <= 'Z') || (n[k] >= 'a' && n[k] <= 'z')) && k < 15) { font_family[i][k] = n[k]; k++; }
+        font_family[i][k] = 0;
+        const char *at = strchr(n, '@');
+        if (at && nbaked < 24) {
+            snprintf(baked[nbaked].family, sizeof(baked[nbaked].family), "%s", font_family[i]);
+            baked[nbaked].px = atoi(at + 1);
+            baked[nbaked].fi = i;
+            nbaked++;
+        }
+    }
+}
+
+/* fuente y escala con las que se dibuja realmente; snap = a tamano exacto (1:1 y pixeles enteros) */
+static void resolve_font(int *fi, float *scale, int *snap)
+{
+    *snap = 0;
+    baked_init();
+    if (*fi < 0 || strchr(fnt[*fi].name, '@')) return;
+    float want = fnt[*fi].size * *scale;
+    int best = -1;
+    float bd = 1e9f;
+    for (int i = 0; i < nbaked; i++) {
+        if (strcmp(baked[i].family, font_family[*fi])) continue;
+        float d = fabsf(baked[i].px - want);
+        if (d < bd) { bd = d; best = i; }
+    }
+    if (best < 0) return;
+    float ratio = want / baked[best].px;
+    if (ratio < 0.8f || ratio > 1.3f) {
+        /* mucho mas grande o pequeno (cuenta atras animada): la mas cercana, escalada con filtro */
+        *fi = baked[best].fi;
+        *scale = ratio;
+        return;
+    }
+    *fi = baked[best].fi;
+    if (ratio > 0.88f && ratio < 1.14f) { *scale = 1.0f; *snap = 1; }
+    else *scale = ratio;
+}
+
+static float text_width_raw(int fi, float scale, const char *s)
+{
     UFont *t = &fnt[fi];
     float w = 0;
     for (; *s; s++) {
@@ -113,23 +166,37 @@ float ui_text_width(int fi, float scale, const char *s)
     return w;
 }
 
+float ui_text_width(int fi, float scale, const char *s)
+{
+    if (fi < 0) return strlen(s) * 8 * scale;
+    int snap;
+    resolve_font(&fi, &scale, &snap);
+    return text_width_raw(fi, scale, s);
+}
+
 float ui_text(int fi, float x, float y, float scale, unsigned int col, int align, const char *s)
 {
     if (fi < 0) return 0;
+    int snap;
+    resolve_font(&fi, &scale, &snap);
     UFont *t = &fnt[fi];
     if (t->atlas < 0) return 0;
     UAtlas *a = &atl[t->atlas];
-    float w = ui_text_width(fi, scale, s);
+    float w = text_width_raw(fi, scale, s);
     if (align == 1) x -= w * 0.5f;
     else if (align == 2) x -= w;
+    if (snap) { x = floorf(x + 0.5f); y = floorf(y + 0.5f); r_set_nearest(1); }
     for (; *s; s++) {
         UGlyph *g = t->map[(unsigned char)*s];
         if (!g) { if (*s == ' ') x += t->size * 0.3f * scale; continue; }
-        float u0 = (t->sx + g->x) / a->w, v0 = (t->sy + g->y) / a->h;
-        float u1 = (t->sx + g->x + g->w) / a->w, v1 = (t->sy + g->y + g->h) / a->h;
-        r_sprite(a->tex, x + g->ox * scale, y + g->oy * scale, g->w * scale, g->h * scale, u0, v0, u1, v1, col);
+        if (g->w > 0 && g->h > 0) {
+            float u0 = (t->sx + g->x) / a->w, v0 = (t->sy + g->y) / a->h;
+            float u1 = (t->sx + g->x + g->w) / a->w, v1 = (t->sy + g->y + g->h) / a->h;
+            r_sprite(a->tex, x + g->ox * scale, y + g->oy * scale, g->w * scale, g->h * scale, u0, v0, u1, v1, col);
+        }
         x += (g->adv + t->spacing) * scale;
     }
+    if (snap) r_set_nearest(0);
     return w;
 }
 
@@ -285,8 +352,8 @@ static void draw_ingame(void)
             float sc = 0.8f * ((1.0f - frac) * 0.5f + 1.0f);
             text_shadow(f_titan, SCR_W / 2, SCR_H / 2 - 20, sc, 0xffffffff, 1, buf);
         } else {
-            text_shadow(f_big, SCR_W / 2, SCR_H / 2 - 40, 1.0f, 0xffffffff, 1, "PAUSA");
-            text_shadow(f_small, SCR_W / 2, SCR_H / 2 + 10, 0.8f, 0xffc0c0c0, 1, "START o X para seguir");
+            text_shadow(f_big, SCR_W / 2, SCR_H / 2 - 40, 1.0f, 0xffffffff, 1, TR("PAUSA", "PAUSED"));
+            text_shadow(f_small, SCR_W / 2, SCR_H / 2 + 10, 0.8f, 0xffc0c0c0, 1, TR("START o X para seguir", "START or X to resume"));
         }
     }
 }
@@ -300,7 +367,7 @@ static void draw_missions_button(float x, float y)
     for (int i = 0; i < 3; i++) n += missions_done(i);
     ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 44, UIS, 0x99000000);
     ui_sprite_wh(a_ui, "button_mission_firstscreen", x + 4, y + 4, 36, 36, 0xffffffff);
-    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, "Misiones");
+    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, TR("Misiones", "Missions"));
     snprintf(buf, sizeof(buf), "x%d", missions_multiplier());
     text_shadow(f_big, x + 144, y + 2, 0.6f, 0xff00dbff, 2, buf);
     snprintf(buf, sizeof(buf), "%d/3   L / R", n);
@@ -314,8 +381,8 @@ static void draw_missions_popup(void)
     r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
     float x = 50, y = 36, w = SCR_W - 100;
     ui_sliced(a_ui, "background_ingame_popup", x, y, w, 200, UIS, 0xffffffff);
-    text_shadow(f_big, SCR_W / 2, y + 10, 0.85f, 0xffffffff, 1, "Misiones");
-    snprintf(buf, sizeof(buf), "Multiplicador x%d", missions_multiplier());
+    text_shadow(f_big, SCR_W / 2, y + 10, 0.85f, 0xffffffff, 1, TR("Misiones", "Missions"));
+    snprintf(buf, sizeof(buf), TR("Multiplicador x%d", "Multiplier x%d"), missions_multiplier());
     text_shadow(f_mid, SCR_W / 2, y + 42, 0.7f, 0xff00dbff, 1, buf);
     for (int i = 0; i < 3; i++) {
         float ry = y + 72 + i * 34;
@@ -328,7 +395,7 @@ static void draw_missions_popup(void)
             text_shadow(f_mid, x + w - 16, ry + 4, 0.62f, 0xff00dbff, 2, buf);
         }
     }
-    ui_text(f_small, SCR_W / 2, y + 180, 0.6f, 0xffc0c0c0, 1, "Completa las 3 para subir el multiplicador");
+    ui_text(f_small, SCR_W / 2, y + 180, 0.6f, 0xffc0c0c0, 1, TR("Completa las 3 para subir el multiplicador", "Complete all 3 to raise your multiplier"));
 }
 
 /* aviso de mision completada (UINotification) */
@@ -361,7 +428,7 @@ static void draw_menu(void)
     ui_sliced(a_ui, "background_ingame_beatThis", 4, 4, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
     ui_sprite_wh(a_ui, "coin2d", 4 + 5 * UIS, 4 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
     ui_text(f_big, 4 + 26 * UIS, 4 + 3 * UIS, LBL, 0xffffffff, 0, buf);
-    snprintf(buf, sizeof(buf), "Record %d", ginfo.highscore);
+    snprintf(buf, sizeof(buf), TR("Record %d", "Best %d"), ginfo.highscore);
     tw = ui_text_width(f_mid, 0.6f, buf);
     ui_sliced(a_ui, "background_ingame_beatThis", 4, 4 + 34 * UIS, tw + 16, 24 * UIS, UIS, BOX_COL);
     ui_text(f_mid, 12, 4 + 36 * UIS, 0.6f, 0xff00dbff, 0, buf);
@@ -369,13 +436,13 @@ static void draw_menu(void)
     /* "Tap to play" */
     float a = 0.6f + 0.4f * sinf(ginfo.time * 4.0f);
     unsigned int col = ((unsigned)(a * 255) << 24) | 0xffffff;
-    text_shadow(f_big, SCR_W / 2, SCR_H - 70, 0.85f, col, 1, "Pulsa X para jugar");
+    text_shadow(f_big, SCR_W / 2, SCR_H - 70, 0.85f, col, 1, TR("Pulsa X para jugar", "Press X to play"));
     /* boton de la tienda (abajo a la derecha) */
     float sx = SCR_W - 4 - 130 * UIS, sy = SCR_H - 4 - 44 * UIS;
     ui_sliced(a_ui, "button_fill_menuShop", sx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
     ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
-    text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, "Tienda");
-    ui_text(f_small, sx + 65 * UIS, sy - 16, 0.55f, 0xffffffff, 1, "triangulo / cuadrado");
+    text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Tienda", "Shop"));
+    ui_text(f_small, sx + 65 * UIS, sy - 16, 0.55f, 0xffffffff, 1, TR("triangulo / cuadrado", "triangle / square"));
     if (ginfo.missions_open) draw_missions_popup();
 }
 
@@ -384,7 +451,7 @@ static void draw_shop(void)
 {
     char buf[64];
     r_rect(0, 0, SCR_W, SCR_H, 0x90000000);
-    text_shadow(f_big, SCR_W / 2, 6, 0.8f, 0xffffffff, 1, "Tienda");
+    text_shadow(f_big, SCR_W / 2, 6, 0.8f, 0xffffffff, 1, TR("Tienda", "Shop"));
     snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
     float tw = ui_text_width(f_big, LBL, buf);
     ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - tw - 34 * UIS, 6, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
@@ -405,7 +472,7 @@ static void draw_shop(void)
         ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 20, y, SCR_W - 40, 26, 0.5f,
                   sel ? 0xffffffff : 0xc0ffffff);
         ui_sprite_wh(a_ui, shop_items[i].icon, 24, y + 1, 24, 24, 0xffffffff);
-        ui_text(f_mid, 54, y + 4, 0.62f, 0xffffffff, 0, shop_items[i].name);
+        ui_text(f_mid, 54, y + 4, 0.62f, 0xffffffff, 0, TR(shop_items[i].name, shop_items[i].name_en));
         int am = shop_amount(i), pr = shop_price(i);
         if (shop_items[i].kind == 1) {
             /* barra de nivel (5 niveles) */
@@ -416,7 +483,7 @@ static void draw_shop(void)
             ui_text(f_mid, 300, y + 4, 0.62f, 0xffffffff, 1, buf);
         } else if (shop_items[i].kind == 3) {
             /* saltar mision: progreso de la mision que se salta */
-            if (am) snprintf(buf, sizeof(buf), "Hecha");
+            if (am) snprintf(buf, sizeof(buf), "%s", TR("Hecha", "Done"));
             else snprintf(buf, sizeof(buf), "%d/%d", missions_progress(shop_items[i].idx), missions_goal(shop_items[i].idx));
             ui_text(f_mid, 300, y + 4, 0.62f, am ? 0xff80ff80 : 0xffffffff, 1, buf);
         }
@@ -430,7 +497,7 @@ static void draw_shop(void)
         missions_text(shop_items[ginfo.shop_sel].idx, buf, sizeof(buf));
         ui_text(f_small, SCR_W / 2, SCR_H - 32, 0.55f, 0xffffffff, 1, buf);
     }
-    ui_text(f_small, SCR_W / 2, SCR_H - 16, 0.6f, 0xffc0c0c0, 1, "X comprar    O volver");
+    ui_text(f_small, SCR_W / 2, SCR_H - 16, 0.6f, 0xffc0c0c0, 1, TR("X comprar    O volver", "X buy    O back"));
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
         r_rect(90, 110, 300, 50, 0xd0000000);
         text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
@@ -442,19 +509,19 @@ static void draw_gameover(void)
 {
     char buf[64];
     ui_sliced(a_ui, "background_ingame_popup", 80, 30, 320, 210, UIS, 0xffffffff);
-    text_shadow(f_big, SCR_W / 2, 42, 0.85f, 0xffffffff, 1, "Fin de la carrera");
+    text_shadow(f_big, SCR_W / 2, 42, 0.85f, 0xffffffff, 1, TR("Fin de la carrera", "Game Over"));
     snprintf(buf, sizeof(buf), "%d", ginfo.final_score);
     text_shadow(f_titan, SCR_W / 2, 80, 0.75f, 0xff00dbff, 1, buf);
     snprintf(buf, sizeof(buf), "%d", ginfo.gameover_coins);
     float tw = ui_text_width(f_big, 0.7f, buf);
     ui_sprite_wh(a_ui, "coin2d", SCR_W / 2 - tw / 2 - 26, 138, 20, 20, 0xffffffff);
     text_shadow(f_big, SCR_W / 2, 134, 0.7f, 0xffffffff, 1, buf);
-    snprintf(buf, sizeof(buf), "Record %d", ginfo.highscore);
+    snprintf(buf, sizeof(buf), TR("Record %d", "Best %d"), ginfo.highscore);
     text_shadow(f_mid, SCR_W / 2, 170, 0.7f, 0xffffffff, 1, buf);
     if (ginfo.boxes_pending > 0) {
-        snprintf(buf, sizeof(buf), "X: abrir caja misteriosa (%d)", ginfo.boxes_pending);
+        snprintf(buf, sizeof(buf), TR("X: abrir caja misteriosa (%d)", "X: open Mystery Box (%d)"), ginfo.boxes_pending);
         text_shadow(f_small, SCR_W / 2, 205, 0.7f, 0xff40e0ff, 1, buf);
-    } else text_shadow(f_small, SCR_W / 2, 205, 0.7f, 0xffc0c0c0, 1, "Pulsa X para continuar");
+    } else text_shadow(f_small, SCR_W / 2, 205, 0.7f, 0xffc0c0c0, 1, TR("Pulsa X para continuar", "Press X to continue"));
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
         r_rect(90, 110, 300, 50, 0xd0000000);
         text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
@@ -504,11 +571,11 @@ static void perf_summary(float cpu_ms, float gpu_ms, float fps)
     const MemInfo *m = &dbg_mem;
     float hf = m->heap_total ? (float)m->heap_used / m->heap_total : 0;
     r_rect(0, 0, 268, 74, 0xa0000000);
-    perf_line(2, level_col(-fps, -29.5f, -24), "FPS %.1f  CPU %.1f ms  espera %.1f ms", fps, cpu_ms, gpu_ms);
+    perf_line(2, level_col(-fps, -29.0f, -24), TR("FPS %.1f  CPU %.1f ms  espera %.1f ms", "FPS %.1f  CPU %.1f ms  wait %.1f ms"), fps, cpu_ms, gpu_ms);
     perf_line(20, 0xffffffff, "vert %d  tri %d  draw %d  clip %d", r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped);
     perf_line(38, level_col(hf, 0.75f, 0.9f), "RAM %.1f/%.1f MB   VRAM %d/2048 KB", m->heap_used / 1048576.0f,
               m->heap_total / 1048576.0f, (r_mem.vram_fb + r_mem.vram_tex) / 1024);
-    perf_line(56, 0xffc0c0c0, "SELECT: memoria");
+    perf_line(56, 0xffc0c0c0, TR("SELECT: memoria", "SELECT: memory"));
 }
 
 static void perf_memory(float fps)
@@ -518,27 +585,27 @@ static void perf_memory(float fps)
     float hf = m->heap_total ? (float)m->heap_used / m->heap_total : 0;
     float vf = (float)(r->vram_fb + r->vram_tex) / R_VRAM_TOTAL;
     r_rect(0, 0, 330, 196, 0xc0000000);
-    perf_line(2, 0xffffffff, "MEMORIA   (FPS %.1f)", fps);
-    perf_line(20, level_col(hf, 0.75f, 0.9f), "RAM monton: %.2f / %.2f MB (%.0f%%) pico %.2f", m->heap_used / 1048576.0f,
+    perf_line(2, 0xffffffff, TR("MEMORIA   (FPS %.1f)", "MEMORY   (FPS %.1f)"), fps);
+    perf_line(20, level_col(hf, 0.75f, 0.9f), TR("RAM monton: %.2f / %.2f MB (%.0f%%) pico %.2f", "RAM heap: %.2f / %.2f MB (%.0f%%) peak %.2f"), m->heap_used / 1048576.0f,
               m->heap_total / 1048576.0f, hf * 100, m->heap_peak / 1048576.0f);
     bar(6, 36, 318, 5, hf, level_col(hf, 0.75f, 0.9f));
-    perf_line(44, m->sys_free < 256 * 1024 ? C_BAD : 0xffffffff, "Sistema libre: %u KB (bloque mayor %u KB)", m->sys_free / 1024,
+    perf_line(44, m->sys_free < 256 * 1024 ? C_BAD : 0xffffffff, TR("Sistema libre: %u KB (bloque mayor %u KB)", "System free: %u KB (largest block %u KB)"), m->sys_free / 1024,
               m->sys_max_block / 1024);
-    perf_line(62, r->vram_full ? C_WARN : 0xffffffff, "VRAM: %d / 2048 KB  pantalla+Z %d  tex %d KB (%d)",
+    perf_line(62, r->vram_full ? C_WARN : 0xffffffff, TR("VRAM: %d / 2048 KB  pantalla+Z %d  tex %d KB (%d)", "VRAM: %d / 2048 KB  screen+Z %d  tex %d KB (%d)"),
               (r->vram_fb + r->vram_tex) / 1024, r->vram_fb / 1024, r->vram_tex / 1024, r->vram_tex_n);
     bar(6, 78, 318, 5, vf, C_OK);
-    perf_line(86, 0xffffffff, "Texturas en RAM: %d KB (%d)   sin sitio en VRAM: %d", r->ram_tex / 1024, r->ram_tex_n, r->vram_full);
+    perf_line(86, 0xffffffff, TR("Texturas en RAM: %d KB (%d)   sin sitio en VRAM: %d", "Textures in RAM: %d KB (%d)   no room in VRAM: %d"), r->ram_tex / 1024, r->ram_tex_n, r->vram_full);
     float lf = (float)r->dlist_peak / r->dlist_max, vrf = (float)r->vring_peak / r->vring_max, irf = (float)r->iring_peak / r->iring_max;
-    perf_line(104, level_col(lf, 0.6f, 0.8f), "Lista GE: %d%% (pico %d%%) de %d KB", r->dlist_used * 100 / r->dlist_max,
+    perf_line(104, level_col(lf, 0.6f, 0.8f), TR("Lista GE: %d%% (pico %d%%) de %d KB", "GE list: %d%% (peak %d%%) of %d KB"), r->dlist_used * 100 / r->dlist_max,
               (int)(lf * 100), r->dlist_max / 1024);
-    perf_line(122, level_col(vrf > irf ? vrf : irf, 0.7f, 0.9f), "Buffer vert %d%% (pico %d%%)  ind %d%% (pico %d%%)",
+    perf_line(122, level_col(vrf > irf ? vrf : irf, 0.7f, 0.9f), TR("Buffer vert %d%% (pico %d%%)  ind %d%% (pico %d%%)", "Vert buffer %d%% (peak %d%%)  idx %d%% (peak %d%%)"),
               r->vring_used * 100 / r->vring_max, (int)(vrf * 100), r->iring_used * 100 / r->iring_max, (int)(irf * 100));
-    perf_line(140, r->dropped ? C_BAD : 0xffffffff, "Dibujos perdidos: %d   tirones (>50 ms): %d", r->dropped, dbg_hitches);
+    perf_line(140, r->dropped ? C_BAD : 0xffffffff, TR("Dibujos perdidos: %d   tirones (>50 ms): %d", "Dropped draws: %d   hitches (>50 ms): %d"), r->dropped, dbg_hitches);
     if (dbg_bat_pct >= 0)
-        perf_line(158, dbg_bat_temp >= 45 ? C_BAD : 0xffffffff, "CPU %d MHz  bus %d MHz  bateria %d%% %d C%s", dbg_cpu_mhz,
-                  dbg_bus_mhz, dbg_bat_pct, dbg_bat_temp, dbg_plugged ? " (cargando)" : "");
-    else perf_line(158, 0xffffffff, "CPU %d MHz  bus %d MHz  sin bateria", dbg_cpu_mhz, dbg_bus_mhz);
-    perf_line(176, 0xffc0c0c0, "SELECT: grafica de tiempos");
+        perf_line(158, dbg_bat_temp >= 45 ? C_BAD : 0xffffffff, TR("CPU %d MHz  bus %d MHz  bateria %d%% %d C%s", "CPU %d MHz  bus %d MHz  battery %d%% %d C%s"), dbg_cpu_mhz,
+                  dbg_bus_mhz, dbg_bat_pct, dbg_bat_temp, dbg_plugged ? TR(" (cargando)", " (charging)") : "");
+    else perf_line(158, 0xffffffff, TR("CPU %d MHz  bus %d MHz  sin bateria", "CPU %d MHz  bus %d MHz  no battery"), dbg_cpu_mhz, dbg_bus_mhz);
+    perf_line(176, 0xffc0c0c0, TR("SELECT: grafica de tiempos", "SELECT: frame time graph"));
 }
 
 static void perf_graph(float cpu_ms, float fps)
@@ -546,7 +613,7 @@ static void perf_graph(float cpu_ms, float fps)
     /* tiempo de cada fotograma (ultimos 128): verde < 16,7 ms (60 FPS), amarillo < 33,3 ms (30 FPS), rojo mas */
     const float x0 = 8, y0 = 30, w = 384, h = 100, scale = h / 66.6f;
     r_rect(0, 0, x0 * 2 + w, y0 + h + 40, 0xc0000000);
-    perf_line(2, 0xffffffff, "TIEMPO POR FOTOGRAMA  FPS %.1f  CPU %.1f ms  tirones %d", fps, cpu_ms, dbg_hitches);
+    perf_line(2, 0xffffffff, TR("TIEMPO POR FOTOGRAMA  FPS %.1f  CPU %.1f ms  tirones %d", "FRAME TIME  FPS %.1f  CPU %.1f ms  hitches %d"), fps, cpu_ms, dbg_hitches);
     for (int i = 0; i < 128; i++) {
         float ms = dbg_frame_hist[(dbg_hist_pos + i) & 127];
         float bh = ms * scale;
@@ -558,7 +625,7 @@ static void perf_graph(float cpu_ms, float fps)
     r_rect(x0, y0 + h - 33.3f * scale, w, 1, 0x80ffffff);
     ui_text(f_small, x0 + w - 2, y0 + h - 16.7f * scale - 12, 0.5f, 0xffc0c0c0, 2, "60 FPS");
     ui_text(f_small, x0 + w - 2, y0 + h - 33.3f * scale - 12, 0.5f, 0xffc0c0c0, 2, "30 FPS");
-    perf_line(y0 + h + 6, 0xffc0c0c0, "SELECT: ocultar");
+    perf_line(y0 + h + 6, 0xffc0c0c0, TR("SELECT: ocultar", "SELECT: hide"));
 }
 
 void perf_draw(int page, float cpu_ms, float gpu_ms, float fps)

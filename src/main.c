@@ -17,6 +17,7 @@
 #include "audio.h"
 #include "hud.h"
 #include "devlog.h"
+#include "lang.h"
 
 PSP_MODULE_INFO("SubwaySurfers", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -46,8 +47,8 @@ static void fatal(const char *msg)
     dlog_close();
     pspDebugScreenInit();
     pspDebugScreenPrintf("Subway Surfers PSP\n\nError: %s\n\n", msg);
-    pspDebugScreenPrintf("Hay que generar la carpeta data/ con tools/extract.py\n");
-    pspDebugScreenPrintf("a partir del APK original (ver README.md).\n");
+    pspDebugScreenPrintf("%s", TR("Hay que generar la carpeta data/ con tools/extract.py\na partir del APK original (ver README.md).\n",
+                                  "The data/ folder must be generated with tools/extract.py\nfrom the original APK (see README.md).\n"));
     while (running) sceDisplayWaitVblankStart();
     sceKernelExitGame();
 }
@@ -65,6 +66,7 @@ int main(int argc, char **argv)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     rng_state ^= sceKernelGetSystemTimeLow();
     dlog_init();
+    lang_init();
     if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
     unsigned int tl = sceKernelGetSystemTimeLow();
     if (data_load("data") != 0) fatal(data_err());
@@ -85,6 +87,7 @@ int main(int argc, char **argv)
     game_load();
     game_init();
     mem_query(&dbg_mem);
+    dlog_boot_done();
     dlog("Arranque completo en %.2f s | monton %u/%u KB usado | libre fuera del monton %u KB",
          (sceKernelGetSystemTimeLow() - tl) / 1000000.0f, dbg_mem.heap_used / 1024, dbg_mem.heap_total / 1024,
          dbg_mem.sys_free / 1024);
@@ -106,6 +109,7 @@ int main(int argc, char **argv)
         if (dt <= 0 || dt > 0.25f) dt = 1.0f / 30.0f;
         fps = fps * 0.9f + (1.0f / dt) * 0.1f;
 
+        DBG_PHASE(main, "leyendo los botones");
         SceCtrlData pad;
         sceCtrlPeekBufferPositive(&pad, 1);
         unsigned int b = pad.Buttons, pr = b & ~prev_buttons;
@@ -121,6 +125,12 @@ int main(int argc, char **argv)
 #ifdef AUTOTEST
         /* juego automatico para probar en el emulador sin mandos */
         frame_no++;
+#ifdef AT_HANG
+        if (frame_no == 400) {   /* prueba del vigilante: el bucle principal se queda parado 5 s */
+            DBG_PHASE(main, "prueba de bloqueo (AT_HANG)");
+            for (int k = 0; k < 50; k++) sceKernelDelayThread(100000);
+        }
+#endif
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
@@ -156,9 +166,11 @@ int main(int argc, char **argv)
         if (pr & PSP_CTRL_SQUARE) in |= IN_SQUARE;
         if (pr & PSP_CTRL_LTRIGGER) in |= IN_L;
         if (pr & PSP_CTRL_RTRIGGER) in |= IN_R;
+        DBG_PHASE(main, "game_input (menus, tienda)");
         game_input(in);
 
         unsigned int tu0 = sceKernelGetSystemTimeLow();
+        DBG_PHASE(main, "game_update (logica, fisica, tramos)");
         game_update(dt);
         unsigned int tu1 = sceKernelGetSystemTimeLow();
         static float upd_ms;
@@ -168,13 +180,22 @@ int main(int argc, char **argv)
         { extern int r_mesh_verts[512]; memset(r_mesh_verts, 0, sizeof(r_mesh_verts)); }
         { extern unsigned int r_prof[8]; memset(r_prof, 0, sizeof(r_prof)); }
 #endif
+        DBG_PHASE(main, "game_draw (preparar el dibujo)");
         r_begin_frame(0xfff6e6bc);   /* color de fondo de la camara (0.737, 0.902, 0.965) */
         game_draw();
+        DBG_PHASE(main, "hud_draw (interfaz)");
         hud_draw();
         unsigned int t1 = sceKernelGetSystemTimeLow();
         if (show_perf) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
+        {
+            extern float phys_ms;
+            dbg_upd_ms = (tu1 - tu0) / 1000.0f;
+            dbg_draw_ms = (t1 - tu1) / 1000.0f;
+            dbg_phys_ms = phys_ms;
+            phys_ms = 0;
+        }
         dbg_frame(dt * 1000.0f, (t1 - t0) / 1000.0f, r_wait_ms);
 #ifdef AUTOTEST
         static float cpu_max;

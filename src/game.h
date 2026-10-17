@@ -29,7 +29,7 @@ typedef struct {
     int missions_open;            /* ventana de misiones abierta en el menu */
 } GameInfo;
 
-typedef struct { const char *name, *icon; int kind, idx; } ShopItem;
+typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
 extern const ShopItem shop_items[];
 extern const int shop_count;
 int shop_price(int i);

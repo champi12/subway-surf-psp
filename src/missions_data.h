@@ -95,3 +95,66 @@ static const struct { int type, goal; } mission_sets[MISSION_SETS][3] = {
     {{MS_JumpSingleRun, 50}, {MS_HoverBoard, 12}, {MS_HoverBoardExpire, 4}},
     {{MS_EarnCoinSingleRun, 750}, {MS_BumpBarrier, 25}, {MS_ScoreSingleRun, 250000}},
 };
+
+/* textos originales en ingles (Missions.cs: descriptionSingle / description sin ". {1} left") */
+static const char *const mission_en[MS_COUNT][2] = {
+    {"", ""},   /* none */
+    {"Collect {0} coin", "Collect {0} coins"},   /* EarnCoin */
+    {"Collect {0} coin in a one run", "Collect {0} coins in a one run"},   /* EarnCoinSingleRun */
+    {"Spend {0} coin", "Spend {0} coins"},   /* SpendCoin */
+    {"Collect {0} point", "Collect {0} points"},   /* ScoreCumulative */
+    {"Jump over {0} train", "Jump over {0} trains"},   /* JumpTrain */
+    {"Jump over {0} train in one run", "Jump over {0} trains in one run"},   /* JumpTrainSingleRun */
+    {"Jump {0} time", "Jump {0} times"},   /* Jump */
+    {"Jump {0} time in one run", "Jump {0} times in one run"},   /* JumpSingleRun */
+    {"Roll {0} time", "Roll {0} times in total"},   /* Roll */
+    {"Roll {0} time in a single run", "Roll {0} times in a single run"},   /* RollSingleRun */
+    {"Roll {0} time in left lane", "Roll {0} times in left lane"},   /* RollLeft */
+    {"Roll {0} time in center lane", "Roll {0} times in center lane"},   /* RollCenter */
+    {"Roll {0} time in right lane", "Roll {0} times in right lane"},   /* RollRight */
+    {"Roll under {0} barrier", "Roll under {0} barriers"},   /* RollUnderBarriers */
+    {"Jump over {0} barrier", "Jump over {0} barriers"},   /* JumpBarriers */
+    {"Get run over by {0} train", "Get run over by {0} trains"},   /* DieToTrain */
+    {"Pick up {0} Jetpack", "Pick up {0} Jetpacks"},   /* Jetpack */
+    {"Pick up {0} Jetpack in one run", "Pick up {0} Jetpacks in one run"},   /* JetpackSingleRun */
+    {"Pick up {0} Super Sneaker", "Pick up {0} Super Sneakers"},   /* SuperSneakers */
+    {"Pick up {0} Super Sneaker in one run", "Pick up {0} Super Sneakers in one run"},   /* SuperSneakersSingleRun */
+    {"Pick up {0} Daily Letter", "Pick up {0} Daily Letters"},   /* Letters */
+    {"Pick up {0} Coin Magnet", "Pick up {0} Coin Magnets"},   /* Magnets */
+    {"Pick up {0} Magnet in one run", "Pick up {0} Magnets in one run"},   /* MagnetsSingleRun */
+    {"Pickup {0} Mystery box", "Pickup {0} Mystery boxes"},   /* MysteryBoxes */
+    {"Beat {0} friend", "Beat {0} friends"},   /* BeatFriends */
+    {"Beat {0} friend in one run", "Beat {0} friends in one run"},   /* BeatFriendsSingleRun */
+    {"Complete {0} Daily Challenge", "Complete {0} Daily Challenges"},   /* DailyQuests */
+    {"Get {0} character token", "Get {0} character tokens"},   /* Tokens */
+    {"Dodge {0} barrier", "Dodge {0} barriers"},   /* DodgeBarriers */
+    {"Crash into {0} barrier", "Crash into {0} barriers"},   /* CrashBarriers */
+    {"Crash into {0} barrier in one run", "Crash into {0} barriers in one run"},   /* CrashBarriersSingleRun */
+    {"Crash into {0} train", "Crash into {0} trains"},   /* CrashTrains */
+    {"Bump into {0} train in one run", "Bump into {0} trains in one run"},   /* BumpTrainsSingleRun */
+    {"Pickup {0} powerup", "Pickup {0} powerups"},   /* Powerups */
+    {"Use {0} Headstart", "Use {0} Headstarts"},   /* Headstart */
+    {"Pickup {0} coin with a Magnet", "Pickup {0} coins with a Magnet"},   /* CoinsWithMagnet */
+    {"Buy {0} Mystery box", "Buy {0} Mystery boxes"},   /* BuyMysterybox */
+    {"Pickup {0} coin pouch", "Pickup {0} coin pouches in total"},   /* CollectCoinPouch */
+    {"Get caught in first {0} second of run", "Get caught in first {0} seconds of run"},   /* TimeDeath */
+    {"Bump {0} train", "Bump {0} trains"},   /* BumpTrain */
+    {"Bump {0} bush", "Bump {0} bushes"},   /* BumpBush */
+    {"Bump into {0} Light Signal", "Bump into {0} Light Signals"},   /* BumpLightSignal */
+    {"Stumble into {0} Barrier", "Stumble into {0} Barriers"},   /* BumpBarrier */
+    {"Score {0} point in single run", "Score {0} points in single run"},   /* ScoreSingleRun */
+    {"Use {0} Hoverboard", "Use {0} Hoverboards"},   /* HoverBoard */
+    {"Use {0} Hoverboard without crashing", "Use {0} Hoverboards without crashing"},   /* HoverBoardExpire */
+    {"Score {0} point without collecting coins", "Score {0} points without collecting coins"},   /* NoCoinsBeforeScore */
+    {"", ""},   /* DoubleMultiplierSingleRun */
+    {"", ""},   /* ReachMissionSet */
+    {"", ""},   /* GuardJump */
+    {"", ""},   /* HaveUpgrades */
+    {"", ""},   /* HaveHeadStartLarge */
+    {"", ""},   /* HaveKing */
+    {"", ""},   /* HavePinkGirl */
+    {"", ""},   /* HaveNinja */
+    {"", ""},   /* HaveFrank */
+    {"", ""},   /* HaveBlackGirl */
+    {"", ""},   /* PokeFriend */
+};

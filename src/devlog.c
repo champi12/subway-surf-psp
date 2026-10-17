@@ -2,6 +2,7 @@
 #include <pspkernel.h>
 #include <psppower.h>
 #include <pspsysmem.h>
+#include <pspge.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -15,6 +16,10 @@
 MemInfo dbg_mem;
 int dbg_cpu_mhz, dbg_bus_mhz, dbg_bat_pct = -1, dbg_bat_temp, dbg_plugged;
 float dbg_frame_hist[128];
+float dbg_upd_ms, dbg_phys_ms, dbg_draw_ms;
+volatile const char *dbg_phase_main = "arranque", *dbg_phase_music = "sin iniciar", *dbg_phase_mixer = "sin iniciar";
+volatile unsigned int dbg_count_music, dbg_count_mixer;
+static volatile unsigned int dbg_count_main;
 int dbg_hist_pos;
 int dbg_hitches;
 
@@ -72,6 +77,8 @@ static SceUID lock = -1, wsema = -1, wthid = -1;
 static char path[192];
 static int dropped;
 static unsigned long long t_start;
+static SceUID wdthid = -1;
+static volatile int boot_done;
 
 static int writer_thread(SceSize a, void *p)
 {
@@ -157,7 +164,72 @@ void dlog_close(void)
     sceKernelSignalSema(wsema, 1);
     sceKernelWaitThreadEnd(wthid, NULL);
     sceKernelDeleteThread(wthid);
+    if (wdthid >= 0) { sceKernelWaitThreadEnd(wdthid, NULL); sceKernelDeleteThread(wdthid); }
 }
+
+static const char *state_name(int s);
+#define state_name_pub state_name
+
+/* ------------------------------------------------------------ vigilante (watchdog) */
+static const char *ge_state(void)
+{
+    /* sceGeDrawSync(1) solo consulta: 0 terminado, 1 en cola, 2 dibujando, 3 parado esperando datos, 4 en pausa */
+    static const char *n[] = {"terminado", "en cola", "dibujando", "atascado (stall)", "en pausa"};
+    int s = sceGeDrawSync(1);
+    return s >= 0 && s <= 4 ? n[s] : "error";
+}
+
+static void write_direct(const char *s, int n)
+{
+    SceUID fd = sceIoOpen(path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+    if (fd >= 0) { sceIoWrite(fd, s, n); sceIoClose(fd); }
+}
+
+static void watchdog_report(float secs, int music_moving, int mixer_moving)
+{
+    char line[512];
+    float t = (sceKernelGetSystemTimeWide() - t_start) / 1000000.0f;
+    int n = snprintf(line, sizeof(line),
+                     "[%8.2f] BLOQUEO el bucle principal lleva %.1f s parado en: %s | hilo de musica: %s (%s) | "
+                     "mezclador de sonidos: %s (%s) | GE: %s | estado %s, %d m\r\n",
+                     t, secs, (const char *)dbg_phase_main, (const char *)dbg_phase_music,
+                     music_moving ? "avanza" : "parado", (const char *)dbg_phase_mixer, mixer_moving ? "avanza" : "parado",
+                     ge_state(), ginfo.state >= 0 && ginfo.state < 9 ? state_name_pub(ginfo.state) : "?", ginfo.meters);
+    if (n > (int)sizeof(line)) n = sizeof(line);
+    /* las lineas que aun no se habian escrito van primero: dicen que estaba pasando justo antes */
+    SceUInt to = 300000;
+    int locked = sceKernelWaitSema(lock, 1, &to) >= 0;
+    if (locked) {
+        if (wpend < 0 && blen[bcur]) { write_direct(bufs[bcur], blen[bcur]); blen[bcur] = 0; }
+        write_direct(line, n);
+        sceKernelSignalSema(lock, 1);
+    } else write_direct(line, n);
+}
+
+static int watchdog_thread(SceSize a, void *p)
+{
+    unsigned int last_main = dbg_count_main, last_mus = dbg_count_music, last_mix = dbg_count_mixer;
+    int stuck = 0, reported = 0;
+    while (wrun) {
+        sceKernelDelayThread(500000);
+        unsigned int m = dbg_count_main, mu = dbg_count_music, mx = dbg_count_mixer;
+        int mus_moving = mu != last_mus, mix_moving = mx != last_mix;
+        last_mus = mu; last_mix = mx;
+        if (m != last_main) {
+            if (reported) dlog("RECUPERADO el bucle principal vuelve a avanzar tras %.1f s", stuck * 0.5f);
+            last_main = m; stuck = reported = 0;
+            continue;
+        }
+        stuck++;
+        if (!reported && stuck >= (boot_done ? 6 : 20)) {
+            reported = 1;
+            watchdog_report(stuck * 0.5f, mus_moving, mix_moving);
+        }
+    }
+    return 0;
+}
+
+void dlog_boot_done(void) { boot_done = 1; }
 
 static const char *fw_str(char *b, int n)
 {
@@ -172,10 +244,13 @@ void dlog_init(void)
     /* los hilos no tienen directorio actual en la PSP: ruta absoluta */
     char dir[160];
     if (!getcwd(dir, sizeof(dir))) strcpy(dir, "ms0:/PSP/GAME/SUBWAY");
-    char prev[192];
+    /* se guardan los 3 ultimos: devlog.txt (este), devlog_prev.txt y devlog_prev2.txt */
+    char prev[192], prev2[192];
     snprintf(path, sizeof(path), "%s/devlog.txt", dir);
     snprintf(prev, sizeof(prev), "%s/devlog_prev.txt", dir);
-    sceIoRemove(prev);
+    snprintf(prev2, sizeof(prev2), "%s/devlog_prev2.txt", dir);
+    sceIoRemove(prev2);
+    sceIoRename(prev, prev2);
     if (sceIoRename(path, prev) < 0) sceIoRemove(path);
     lock = sceKernelCreateSema("dlog_lock", 0, 1, 1, NULL);
     wsema = sceKernelCreateSema("dlog_write", 0, 0, 1, NULL);
@@ -183,6 +258,9 @@ void dlog_init(void)
     /* prioridad baja (numero alto): solo escribe cuando el juego y el audio no necesitan la CPU */
     wthid = sceKernelCreateThread("devlog", writer_thread, 0x30, 0x2000, PSP_THREAD_ATTR_USER, NULL);
     if (wthid >= 0) sceKernelStartThread(wthid, 0, NULL);
+    /* vigilante: prioridad mas alta que el juego y que el audio, para poder avisar aunque alguno se quede colgado */
+    wdthid = sceKernelCreateThread("watchdog", watchdog_thread, 0x10, 0x2000, PSP_THREAD_ATTR_USER, NULL);
+    if (wdthid >= 0) sceKernelStartThread(wdthid, 0, NULL);
 
     char fw[32];
     power_query();
@@ -209,7 +287,8 @@ static const char *state_name(int s)
 
 static struct {
     int frames, hitch_lines, verts, tris, draws, clip, dropped;
-    float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait;
+    float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait, sum_upd, sum_phys, sum_draw;
+    int sum_vcpu, sum_vhw;
     unsigned long long t0;
 } win;
 static int last_state = -1;
@@ -233,6 +312,10 @@ static void stat_line(void)
          r->vring_used * 100 / r->vring_max, r->vring_peak * 100 / r->vring_max,
          r->iring_used * 100 / r->iring_max, r->iring_peak * 100 / r->iring_max, win.dropped,
          state_name(ginfo.state), ginfo.meters, dbg_cpu_mhz, dbg_bat_pct, dbg_bat_temp);
+    /* en que se va la CPU: logica (con la fisica dentro) y preparar el dibujo (transformar vertices) */
+    dlog("PERFIL logica %.1f ms (fisica %.1f) | dibujo %.1f ms | vertices por fotograma: CPU %d, GE %d",
+         win.sum_upd / win.frames, win.sum_phys / win.frames, win.sum_draw / win.frames,
+         win.sum_vcpu / win.frames, win.sum_vhw / win.frames);
     /* avisos: lo que en la consola real acabaria en cuelgue o en tirones */
     if (m->heap_total && m->heap_used > m->heap_total / 10 * 9)
         dlog("AVISO memoria casi llena: %u de %u KB", m->heap_used / 1024, m->heap_total / 1024);
@@ -248,6 +331,9 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
 {
     static int n;
     n++;
+#if DEVLOG
+    dbg_count_main++;
+#endif
     dbg_frame_hist[dbg_hist_pos] = frame_ms;
     dbg_hist_pos = (dbg_hist_pos + 1) & 127;
     if (n % 15 == 1) mem_query(&dbg_mem);       /* mallinfo recorre el monton: 4 veces por segundo basta */
@@ -260,6 +346,11 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     win.sum_ms += frame_ms;
     if (frame_ms > win.max_ms && n > 5) win.max_ms = frame_ms;
     win.sum_cpu += cpu_ms;
+    win.sum_upd += dbg_upd_ms;
+    win.sum_phys += dbg_phys_ms;
+    win.sum_draw += dbg_draw_ms;
+    win.sum_vcpu += r_stat_verts;
+    win.sum_vhw += r_stat_hw;
     if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
     win.sum_wait += wait_ms;
     if (r_stat_verts > win.verts) win.verts = r_stat_verts;
@@ -289,7 +380,11 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
                  ginfo.final_score, ginfo.gameover_coins, ginfo.meters, ginfo.time - run_start_t);
         last_state = ginfo.state;
     }
-    if ((sceKernelGetSystemTimeWide() - win.t0) >= 5000000ULL) {
+    /* lo escrito llega a la tarjeta cada segundo: si la consola se cuelga se pierde como mucho 1 s */
+    static unsigned long long last_flush;
+    unsigned long long now = sceKernelGetSystemTimeWide();
+    if (now - last_flush >= 1000000ULL) { last_flush = now; dlog_flush(); }
+    if ((now - win.t0) >= 5000000ULL) {
         stat_line();
         if (dbg_hitches && win.hitch_lines >= 5) dlog("(mas tirones en este intervalo; total %d)", dbg_hitches);
         memset(&win, 0, sizeof(win));

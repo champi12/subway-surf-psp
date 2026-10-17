@@ -3,7 +3,9 @@
  * - OnTriggerEnter/Exit de la capsula del personaje
  * - Physics.Raycast hacia abajo (etiqueta del suelo, saltos sobre trenes)
  */
+#include <pspkernel.h>
 #include <string.h>
+#include <stdlib.h>
 #include "devlog.h"
 #include "physics.h"
 #include "scene.h"
@@ -30,13 +32,40 @@ static void aabb_from_box(Col *c)
     c->bmax = v3add(c->c, e);
 }
 
+/* collider de cada nodo y ramas sin ninguno, calculados la primera vez (los componentes no cambian) */
+static const uint32_t **ccol;
+static unsigned char *ctype, *subcol;
+
+static int calc_subcol(int n)
+{
+    int any = ccol[n] != NULL;
+    for (int c = gd.nodes[n].first_child; c >= 0; c = gd.nodes[c].next_sibling) any |= calc_subcol(c);
+    subcol[n] = (unsigned char)any;
+    return any;
+}
+
+static void col_cache_init(void)
+{
+    ccol = calloc(gd.nnodes, sizeof(*ccol));
+    ctype = calloc(gd.nnodes, 1);
+    subcol = calloc(gd.nnodes, 1);
+    for (int i = 0; i < gd.nnodes; i++) {
+        const uint32_t *b;
+        if ((b = node_comp(i, C_BOX, NULL))) { ccol[i] = b; ctype[i] = C_BOX; }
+        else if ((b = node_comp(i, C_SPHERE, NULL))) { ccol[i] = b; ctype[i] = C_SPHERE; }
+        else if ((b = node_comp(i, C_CAPSULE, NULL))) { ccol[i] = b; ctype[i] = C_CAPSULE; }
+    }
+    for (int i = 0; i < gd.nnodes; i++) if (gd.nodes[i].parent < 0) calc_subcol(i);
+}
+
 static void add_node_cols(int n)
 {
     const NodeRT *r = &nrt[n];
-    if (!r->active || !r->col || r->hidden || ncols >= MAX_COLS) return;
-    const uint32_t *b;
+    if (!ccol[n] || !r->active || !r->col || r->hidden || ncols >= MAX_COLS) return;
+    const uint32_t *b = ccol[n];
+    int ty = ctype[n];
     const M34 *w = &r->world;
-    if ((b = node_comp(n, C_BOX, NULL)) && b[1]) {
+    if (ty == C_BOX && b[1]) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_BOX; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;
@@ -49,7 +78,7 @@ static void add_node_cols(int n)
             (&c->he.x)[i] = fabsf(sz[i] * l * 0.5f);
         }
         aabb_from_box(c);
-    } else if ((b = node_comp(n, C_SPHERE, NULL)) && b[1]) {
+    } else if (ty == C_SPHERE && b[1]) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_SPHERE; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;
@@ -61,7 +90,7 @@ static void add_node_cols(int n)
         c->r = u2f(b[5]) * s;
         c->bmin = v3sub(c->p0, v3(c->r, c->r, c->r));
         c->bmax = v3add(c->p0, v3(c->r, c->r, c->r));
-    } else if ((b = node_comp(n, C_CAPSULE, NULL)) && b[1]) {
+    } else if (ty == C_CAPSULE && b[1]) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_CAPSULE; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;
@@ -84,20 +113,27 @@ static void add_node_cols(int n)
 
 static void add_subtree(int n)
 {
+    if (!subcol[n]) return;
     add_node_cols(n);
     for (int c = gd.nodes[n].first_child; c >= 0; c = gd.nodes[c].next_sibling) add_subtree(c);
 }
 
-void phys_build(const int *extra, int nextra)
+float phys_ms;
+
+void phys_build(const int *extra, int nextra, float z0, float z1)
 {
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    if (!ccol) col_cache_init();
     ncols = 0;
     for (int i = 0; i < track_nactive; i++) {
         extern int track_chunk_node(int ci);
-        add_subtree(track_chunk_node(track_active[i]));
+        extern int track_chunk_overlaps(int ci, float z0, float z1);
+        if (track_chunk_overlaps(track_active[i], z0, z1)) add_subtree(track_chunk_node(track_active[i]));
     }
     for (int i = 0; i < nextra; i++) if (extra[i] >= 0) add_subtree(extra[i]);
     static int warned;
     if (ncols >= MAX_COLS && !warned++) dlog("AVISO demasiados colliders (%d): algunos obstaculos no chocaran", MAX_COLS);
+    phys_ms += (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
 }
 
 /* --------- consultas geometricas --------- */
@@ -186,6 +222,23 @@ static void cc_capsule(const CharCtrl *cc, V3 *a, V3 *b)
     *b = v3add(ctr, v3(0, half, 0));
 }
 
+/* candidatos del movimiento actual: se eligen una vez por cc_move, no en cada subpaso
+ * (recorrer todos los colliders en cada subpaso no cabe en la cache de 16 KB de la PSP) */
+#define MAX_CAND 256
+static int cand[MAX_CAND], ncand;
+
+static void gather_candidates(V3 mn, V3 mx)
+{
+    ncand = 0;
+    for (int i = 0; i < ncols && ncand < MAX_CAND; i++) {
+        const Col *c = &cols[i];
+        if (c->trigger || !phys_layer_hits(c->layer)) continue;
+        if (mx.x < c->bmin.x || mn.x > c->bmax.x || mx.y < c->bmin.y || mn.y > c->bmax.y ||
+            mx.z < c->bmin.z || mn.z > c->bmax.z) continue;
+        cand[ncand++] = i;
+    }
+}
+
 static void cc_resolve(CharCtrl *cc, int was_grounded)
 {
     float slope_cos = cosf(cc->slope * DEG2RAD);
@@ -196,9 +249,9 @@ static void cc_resolve(CharCtrl *cc, int was_grounded)
         V3 mn = v3(fminf(a.x, b.x) - r, fminf(a.y, b.y) - r, fminf(a.z, b.z) - r);
         V3 mx = v3(fmaxf(a.x, b.x) + r, fmaxf(a.y, b.y) + r, fmaxf(a.z, b.z) + r);
         int any = 0;
-        for (int i = 0; i < ncols; i++) {
+        for (int k = 0; k < ncand; k++) {
+            int i = cand[k];
             const Col *c = &cols[i];
-            if (c->trigger || !phys_layer_hits(c->layer)) continue;
             if (mx.x < c->bmin.x || mn.x > c->bmax.x || mx.y < c->bmin.y || mn.y > c->bmax.y ||
                 mx.z < c->bmin.z || mn.z > c->bmax.z) continue;
             V3 n; float d;
@@ -228,14 +281,27 @@ void cc_move(CharCtrl *cc, V3 motion)
     int was_grounded = cc->grounded;
     cc->grounded = 0;
     cc->last_ground_col = -1;
+    unsigned int t0 = sceKernelGetSystemTimeLow();
     float len = v3len(motion);
     int steps = (int)(len / 1.0f) + 1;
     if (steps > 64) steps = 64;
     V3 sub = v3scale(motion, 1.0f / steps);
+    /* caja que cubre la capsula al principio y al final del movimiento, con margen para el escalon y el empuje */
+    {
+        V3 a, b;
+        cc_capsule(cc, &a, &b);
+        float m = cc->radius + cc->step + 2.0f;
+        V3 mn = v3(fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z));
+        V3 mx = v3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
+        mn = v3add(v3(fminf(mn.x, mn.x + motion.x), fminf(mn.y, mn.y + motion.y), fminf(mn.z, mn.z + motion.z)), v3(-m, -m, -m));
+        mx = v3add(v3(fmaxf(mx.x, mx.x + motion.x), fmaxf(mx.y, mx.y + motion.y), fmaxf(mx.z, mx.z + motion.z)), v3(m, m, m));
+        gather_candidates(mn, mx);
+    }
     for (int s = 0; s < steps; s++) {
         cc->pos = v3add(cc->pos, sub);
         cc_resolve(cc, was_grounded);
     }
+    phys_ms += (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
 }
 
 /* --------- rayo hacia abajo --------- */

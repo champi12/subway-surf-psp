@@ -17,6 +17,7 @@ Nada de esto se guarda en el repositorio: cada uno lo genera con su propia copia
 """
 import io
 import math
+import re
 import os
 import struct
 import sys
@@ -609,8 +610,13 @@ def export_textures(ex, maxsize=512, hq=()):
     body = bytearray()
     offs = []
     for to in ex.textures:
-        t = to.read()
-        img = t.image.convert('RGBA')
+        if isinstance(to, tuple):          # textura generada por el conversor (fuentes pre-escaladas)
+            gen_name, gen_img = to[1], to[2]
+            t = None
+            img = gen_img.convert('RGBA')
+        else:
+            t = to.read()
+            img = t.image.convert('RGBA')
         w, h = img.size
         nw = 1 << max(0, (w - 1).bit_length())
         nh = 1 << max(0, (h - 1).bit_length())
@@ -621,8 +627,8 @@ def export_textures(ex, maxsize=512, hq=()):
             img = img.resize((nw, nh), Image.LANCZOS)
         a = np.asarray(img)
         has_alpha = bool((a[:, :, 3] < 250).any())
-        name = t.m_Name
-        if name in hq:
+        name = t.m_Name if t is not None else gen_name
+        if name in hq or t is None:
             if has_alpha:
                 fmt = TEX_4444
                 r = (a[:, :, 0].astype(np.uint16) >> 4)
@@ -890,8 +896,9 @@ def export_ui(sc, ex):
                 at = sc.resolve_ptr(o, fl['mAtlas'])
                 fonts.append({'name': gname, 'atlas_key': key(at) if at else None, 'font': fl['mFont'],
                               'spacing': (fl['mSpacingX'], fl['mSpacingY'])})
+    baked_atlases, baked_fonts = bake_fonts(ex, atlases, fonts)
     out = bytearray(b'SSU1')
-    out += struct.pack('<II', len(atlases), len(fonts))
+    out += struct.pack('<II', len(atlases) + len(baked_atlases), len(fonts) + len(baked_fonts))
     akeys = [a['key'] for a in atlases]
     for a in atlases:
         nb = a['name'].encode()[:31]
@@ -902,6 +909,11 @@ def export_ui(sc, ex):
             o_, i_ = sp['outer'], sp['inner']
             out += struct.pack('<B', len(sn)) + sn.ljust(31, b'\0')
             out += struct.pack('<8f', o_['x'], o_['y'], o_['width'], o_['height'], i_['x'], i_['y'], i_['width'], i_['height'])
+    # atlas de las fuentes pre-escaladas (sin sprites): van detras de los originales y antes de las fuentes
+    for ba in baked_atlases:
+        nb = ba['name'].encode()[:31]
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+        out += struct.pack('<iIIfI', ba['tex'], ba['w'], ba['h'], 1.0, 0)
     for fo in fonts:
         nb = fo['name'].encode()[:31]
         f = fo['font']
@@ -914,8 +926,96 @@ def export_ui(sc, ex):
         for g in glyphs:
             out += struct.pack('<9h', g['index'], g['x'], g['y'], g['width'], g['height'], g['offsetX'], g['offsetY'],
                                g['advance'], 0)
-    print('  %d atlas, %d fuentes' % (len(atlases), len(fonts)))
+    # fuentes pre-escaladas: fuentes con las coordenadas ya en su atlas nuevo
+    for bf in baked_fonts:
+        nb = bf['name'].encode()[:31]
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
+        out += struct.pack('<B', 0) + b'\0' * 31
+        out += struct.pack('<iiiiiiI', len(atlases) + bf['atlas'], bf['size'], bf['base'], 0, 0, bf['spacing'], len(bf['glyphs']))
+        for g in bf['glyphs']:
+            out += struct.pack('<9h', *g, 0)
+    print('  %d atlas, %d fuentes (+%d pre-escaladas)' % (len(atlases), len(fonts), len(baked_fonts)))
     return bytes(out)
+
+
+# Tamanos en pixeles a los que la interfaz del port dibuja cada familia (ver hud.c). Las letras se generan ya a
+# ese tamano desde la textura original a resolucion completa (1024x512, que no cabe en la PSP) y se dibujan 1:1:
+# sin esto el texto sale de la textura reducida a la mitad y ampliado, y se ve borroso en la consola.
+BAKE_SIZES = {'Lilita': [9, 10, 12, 14, 16, 18, 20, 24, 28, 34], 'Titan': [52, 69]}
+BAKE_CHARS = {'Lilita': None, 'Titan': '0123456789'}    # None = todas
+
+
+def bake_fonts(ex, atlases, fonts):
+    akeys = {a['key']: a for a in atlases}
+    fam = {}
+    for fo in fonts:
+        m = re.match(r'([A-Za-z]+?)(\d+)$', fo['name'])
+        if not m or m.group(1) not in BAKE_SIZES or fo['atlas_key'] not in akeys:
+            continue
+        fam.setdefault(m.group(1), []).append(fo)
+    baked_atlases, baked_fonts = [], []
+    for family, sizes in BAKE_SIZES.items():
+        srcs = sorted(fam.get(family, []), key=lambda fo: fo['font']['mSize'])
+        if not srcs:
+            continue
+        glyph_imgs = []      # (px, glyph tuple sin x/y, imagen)
+        for px in sizes:
+            # origen: la fuente original mas pequena que sea al menos 1.3 veces mayor (se reduce con buen filtro)
+            src = next((fo for fo in srcs if fo['font']['mSize'] >= px * 1.3), srcs[-1])
+            f = src['font']
+            at = akeys[src['atlas_key']]
+            img = ex.textures[at['tex']].read().image.convert('RGBA')
+            sp = next((s_ for s_ in at['sprites'] if s_['name'] == f['mSpriteName']), None)
+            sx, sy = (sp['outer']['x'], sp['outer']['y']) if sp else (0, 0)
+            k = px / f['mSize']
+            chars = BAKE_CHARS[family]
+            for g in f['mSaved']:
+                if chars is not None and chr(g['index']) not in chars:
+                    continue
+                w, h = g['width'], g['height']
+                adv = int(round(g['advance'] * k))
+                ox, oy = int(round(g['offsetX'] * k)), int(round(g['offsetY'] * k))
+                if w <= 0 or h <= 0:
+                    glyph_imgs.append((px, (g['index'], 0, 0, 0, 0, ox, oy, adv), None))
+                    continue
+                crop = img.crop((int(sx + g['x']), int(sy + g['y']), int(sx + g['x'] + w), int(sy + g['y'] + h)))
+                nw, nh = max(1, int(round(w * k))), max(1, int(round(h * k)))
+                # alfa premultiplicado al reducir: sin halos oscuros alrededor de las letras
+                gi = crop.convert('RGBa').resize((nw, nh), Image.LANCZOS).convert('RGBA')
+                glyph_imgs.append((px, (g['index'], 0, 0, nw, nh, ox, oy, adv), gi))
+            base = int(round(f['mBase'] * k))
+            baked_fonts.append({'name': '%s@%d' % (family, px), 'atlas': len(baked_atlases), 'size': px, 'base': base,
+                                'spacing': int(round(src['spacing'][0] * k)), 'glyphs': [], 'px': px})
+        # empaquetado por estantes, de mas alto a mas bajo, con 1 pixel de separacion
+        order = sorted([i for i, gi in enumerate(glyph_imgs) if gi[2] is not None], key=lambda i: -glyph_imgs[i][2].size[1])
+        W = 512 if family == 'Lilita' else 256
+        x = y = shelf = 0
+        pos = {}
+        for i in order:
+            gw, gh = glyph_imgs[i][2].size
+            if x + gw + 1 > W:
+                x, y, shelf = 0, y + shelf + 1, 0
+            pos[i] = (x, y)
+            x += gw + 1
+            shelf = max(shelf, gh)
+        H = 1 << max(3, (y + shelf).bit_length())
+        if H > 512:
+            raise SystemExit('Las fuentes %s no caben en 512x512 (hacen falta %d de alto)' % (family, y + shelf))
+        sheet = Image.new('RGBA', (W, H), (255, 255, 255, 0))
+        fonts_of_family = [bf for bf in baked_fonts if bf['name'].startswith(family + '@')]
+        for i, (px, gt, gi) in enumerate(glyph_imgs):
+            bf = next(b for b in fonts_of_family if b['px'] == px)
+            if gi is not None:
+                gx, gy = pos[i]
+                sheet.paste(gi, (gx, gy))
+                gt = (gt[0], gx, gy) + gt[3:]
+            bf['glyphs'].append(gt)
+        name = 'FontBaked' + family
+        tid = len(ex.textures)
+        ex.textures.append(('generada', name, sheet))
+        baked_atlases.append({'name': name, 'tex': tid, 'w': W, 'h': H})
+        print('  fuente %s pre-escalada a %s px: atlas %dx%d' % (family, sizes, W, H))
+    return baked_atlases, baked_fonts
 
 # ---------------------------------------------------------------- main
 EXCLUDE_ROOTS = {'0UI', 'IngameHighScore', 'XXXTestToRemove', 'temp'}

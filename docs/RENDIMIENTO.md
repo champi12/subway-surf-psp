@@ -41,12 +41,26 @@ Muestra los últimos 128 fotogramas: **verde** por debajo de 16,7 ms (60 FPS), *
 ## 2. El devlog (`devlog.txt`)
 
 El juego escribe `devlog.txt` en su carpeta: `ms0:/PSP/GAME/SUBWAY/devlog.txt` en la consola. En PPSSPP está en
-la carpeta `memstick/PSP/GAME/SUBWAY/` del emulador. El de la partida anterior se guarda como `devlog_prev.txt`, por si el
-juego se colgó y lo volviste a abrir.
+la carpeta `memstick/PSP/GAME/SUBWAY/` del emulador. Se guardan los **tres últimos**: `devlog.txt` (esta partida),
+`devlog_prev.txt` y `devlog_prev2.txt`, para que no se pierda el de un cuelgue aunque se vuelva a abrir el juego
+un par de veces.
 
-Lo escribe un hilo de baja prioridad cada 5 segundos, abriendo y cerrando el archivo cada vez. Así, si el juego se
-cuelga, en la tarjeta queda todo menos los últimos segundos. Los errores se escriben al momento. Ocupa unos
-8 KB por minuto de juego.
+Lo escribe un hilo de baja prioridad **cada segundo**, abriendo y cerrando el archivo cada vez: si la consola se
+cuelga, en la tarjeta queda todo menos el último segundo. Los errores se escriben al momento. Ocupa unos 10 KB
+por minuto de juego.
+
+### El vigilante (BLOQUEO)
+
+Un hilo de prioridad alta comprueba cada medio segundo que el bucle principal sigue avanzando. Si lleva **3 s
+parado** (10 s durante la carga inicial), escribe al momento una línea así:
+
+    BLOQUEO el bucle principal lleva 3.0 s parado en: r_end_frame: esperando a que el GE termine (sceGuSync) |
+    hilo de musica: sceAudioSRCOutputBlocking (avanza) | mezclador de sonidos: sceAudioOutputBlocking (avanza) |
+    GE: atascado (stall) | estado CARRERA, 143 m
+
+Dice en qué fase está cada hilo y si avanza, y el estado del GE. Si el juego se recupera, añade `RECUPERADO`.
+**Si después de un cuelgue no hay ninguna línea `BLOQUEO`**, la consola entera se detuvo por una excepción de la CPU
+(un acceso a memoria inválido): eso también es una pista.
 
 ### Qué contiene
 
@@ -72,11 +86,15 @@ cuelga, en la tarjeta queda todo menos los últimos segundos. Los errores se esc
 | Cabecera | Firmware, frecuencias, batería, **RAM total que la consola le da al juego**, VFPU, módulos de audio |
 | `CARGA` | Cada archivo de `data/`, su tamaño y lo que tardó en leerse de la Memory Stick |
 | `TEXTURA` | Cada textura cuando se carga por primera vez: tamaño, formato, si fue a VRAM o a RAM y cuánto tardó |
+| `PERFIL` (cada 5 s) | En qué se va la CPU por fotograma: lógica (con la física dentro) y preparar el dibujo, y cuántos vértices transforma la CPU y cuántos el GE |
 | `STAT` (cada 5 s) | FPS medios y mínimos; CPU media y máxima; espera al GE; máximos de vértices, triángulos y dibujos; memoria; VRAM; ocupación de las listas del GE con su pico; dibujos perdidos; estado, metros, MHz, batería y temperatura |
 | `ESTADO`, `TRAMO`, `CHOQUE`, `FIN DE CARRERA`, `MUSICA` | Qué estaba pasando: si el juego se cuelga, las últimas líneas dicen dónde |
 | `TIRON` | Fotograma de más de 50 ms, con su CPU, su espera de GE, el tiempo "otros" (fuera del juego: otros hilos, la Memory Stick) y si coincidió con una carga de la Memory Stick |
 | `AVISO` | Memoria por encima del 90 %, lista del GE por encima del 80 %, dibujos perdidos, textura sin sitio en VRAM, batería caliente, y cualquier lista interna llena (monedas, objetos en movimiento, colliders, objetos transparentes) |
 | `ERROR` | Archivo que falta, sin memoria, fallo de la música |
+| `BLOQUEO`, `RECUPERADO` | El vigilante: ver arriba |
+| `Alineacion de los datos` | Al arrancar se comprueba que modelos, animaciones y sonidos están alineados en memoria (la CPU real se cuelga si no) |
+| `Idioma de la consola` | El idioma del sistema y el de la interfaz |
 
 Para no generarlo (versión final): `make clean && make DEVLOG=0`. El medidor de SELECT sigue funcionando.
 
@@ -91,20 +109,26 @@ consola y otras solo orientativas:
 | **VRAM**, texturas, lista del GE, buffers, dibujos perdidos | **Exacto** | Son cuentas del propio juego |
 | Vértices, triángulos, llamadas de dibujo | **Exacto** | Igual |
 | Errores (archivos, módulos de audio, AT3) | **Casi exacto** | Algún módulo puede comportarse distinto en un CFW concreto |
-| **CPU ms** | **Orientativo, por lo bajo** | PPSSPP no imita los fallos de caché ni las esperas de la memoria. En la consola real cuenta con **1,5 a 2,5 veces más** |
+| **CPU ms** | **Muy por lo bajo** | PPSSPP no imita la caché de 16 KB ni las esperas de la memoria. Medido con el devlog de una PSP real: **unas 5 veces más** que en el emulador a la misma frecuencia |
 | **espera / GE ms** | **No vale** | PPSSPP no imita la velocidad real del GE (relleno de píxeles, lectura de texturas). Este dato solo se puede medir en la consola |
 | FPS | **No vale** | Depende de lo anterior |
 | Tiempos de `CARGA` y `TEXTURA` | **Orientativo** | La Memory Stick real es más lenta, sobre todo en la PSP-1000 |
 
-**Con el emulador puedes saber con seguridad si cabe en memoria.** Para la velocidad da una estimación con
-margen: si la CPU va por debajo de **12-15 ms** en el emulador, en la consola debería ir bien a 30 FPS. La prueba
-definitiva de velocidad (FPS y espera del GE) es el devlog de una consola real.
+**Con el emulador puedes saber con seguridad si cabe en memoria.** Para la velocidad solo da una idea: multiplica
+la CPU del emulador por 5 (a 333 MHz). Para 30 FPS la consola tiene 33 ms por fotograma, así que en el emulador hay
+que estar por debajo de **6 ms**. La prueba definitiva de velocidad (FPS y espera del GE) es el devlog de una
+consola real.
+
+Lo que más cuesta en la consola y casi nada en el emulador: recorrer muchos datos en cada fotograma (la caché es de
+16 KB) y las llamadas al sistema (leer el reloj, por ejemplo). Por eso las optimizaciones del apartado 7 van sobre
+todo a tocar menos memoria por fotograma.
 
 ### Medidas actuales en PPSSPP (modelo PSP-1000, 333 MHz)
 
 | Dato | Medido | Límite |
 |---|---|---|
-| CPU media / máxima en carrera | 6-8 ms / ~19 ms (al reiniciar la vía) | < 15 ms de media |
+| CPU media / máxima en carrera | 5-6 ms / ~20 ms (al reiniciar la vía) | < 6 ms de media (≈ 30 ms en la consola) |
+| Vértices por fotograma | 12.000-14.000 por la CPU, 20.000-23.000 por el GE | |
 | RAM (montón) | 13,0 MB de 18,4 MB (71 %) | < 90 % |
 | VRAM | 1.840 de 2.048 KB | Si se llena, las texturas van a RAM (no falla) |
 | Lista del GE / vértices / índices (pico) | 28 % / 45 % / 10 % (con jetpack) | < 80 % |
@@ -145,7 +169,11 @@ Qué mirar:
 
 * Cabecera, `RAM: monton de C`: lo que te da tu consola. Una PSP-1000 da ~18.800 KB, una 2000/3000 lo mismo
   (el juego no pide la memoria extra).
-* `STAT`: si `fps` está en 30 o más y `cpu` + `ge` quedan por debajo de 33 ms, va bien.
+* `STAT`: el juego va a **30 FPS fijos** (como el original en Android). Si `fps` está en 30 y `cpu` + `ge` quedan
+  por debajo de 33 ms, va bien.
+* `PERFIL`: si va lento, dice si el tiempo se va en la lógica, en la física o en el dibujo.
+* `BLOQUEO`: si el juego se cuelga, esta línea dice dónde. Después de un cuelgue, envía `devlog.txt`, `devlog_prev.txt`
+  y `devlog_prev2.txt`.
 * `TIRON`: si aparecen muchos fuera de las cargas, mándame el devlog.
 * `AVISO` y `ERROR`: si sale alguno, mándame el archivo completo.
 
@@ -175,6 +203,11 @@ tramo que se alterna con el primero).
 | **Skinning por hardware** (lotes de ≤ 8 huesos) para Jake, el inspector y el perro | Toda la piel de los personajes |
 | Texturas del escenario y los trenes en **VRAM**; el resto con paleta de 256 colores y *swizzled* | Ancho de banda de texturas |
 | Buffers del GE ajustados a lo medido con el devlog (pico × 2) | 3,6 MB más de RAM libre |
+| **Curvatura en el GE según el error real**: cada bloque va al GE si el error de aproximar la curvatura (`k·r²/d`) es menor de 0,75 píxeles | ~40 % menos vértices en la CPU |
+| **Física solo cerca del personaje**: solo los tramos entre 80 unidades detrás y 250 delante, y en cada movimiento se preseleccionan las cajas cercanas una vez (no en cada subpaso) | Miles de lecturas de memoria por fotograma |
+| Componentes de dibujo y de colisión de cada nodo calculados al arrancar; las ramas sin nada que dibujar o chocar se saltan | Recorrer la escena |
+| Sin lecturas del reloj por cada trozo de modelo (en la PSP real cada una es una llamada al sistema) | Varios ms por fotograma en la consola |
+| **30 FPS fijos**, como el original | Ritmo estable en vez de saltar entre 60, 30 y 20 |
 
 ## 8. Si en la consola real fuera lento
 
@@ -182,4 +215,4 @@ Por orden de impacto (nada de esto cambia la jugabilidad):
 
 1. Bajar la distancia de dibujo (`r_far` en `src/render.c`; el original usa 1000).
 2. Simplificar los edificios lejanos (el conversor puede generar versiones con menos polígonos).
-3. Fijar 30 FPS (sincronizar cada 2 VBlank) para que el ritmo sea estable.
+3. Reducir el número de llamadas de dibujo juntando bloques pequeños del escenario.

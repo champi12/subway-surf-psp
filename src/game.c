@@ -14,6 +14,7 @@
 #include "audio.h"
 #include "spawn.h"
 #include "devlog.h"
+#include "lang.h"
 #include "data.h"
 #include "hud.h"
 #include "missions.h"
@@ -1928,17 +1929,18 @@ void game_init(void)
 /* ------------------------------------------------------------ tienda (Upgrades.cs) */
 enum { SK_AMOUNT, SK_TIER, SK_BOX, SK_SKIP };
 const ShopItem shop_items[] = {
-    {"Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
-    {"Headstart 250", "icon_upgrades_headstart500", SK_AMOUNT, 1},
-    {"Headstart 1000", "icon_upgrades_headstart2000", SK_AMOUNT, 2},
-    {"Caja misteriosa", "icon_upgrades_mysteryBox", SK_BOX, 0},
-    {"Jetpack", "icon_upgrades_jetpack", SK_TIER, PW_JETPACK},
-    {"Super Sneakers", "icon_upgrades_superSneakers", SK_TIER, PW_SNEAKERS},
-    {"Coin Magnet", "icon_upgrades_coinMagnet", SK_TIER, PW_MAGNET},
-    {"2x Multiplier", "icon_upgrades_doubleScore", SK_TIER, PW_DOUBLE},
-    {"Saltar mision 1", "icon_upgrades_skipMission1", SK_SKIP, 0},
-    {"Saltar mision 2", "icon_upgrades_skipMission2", SK_SKIP, 1},
-    {"Saltar mision 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
+    /* nombres en ingles: los de Upgrades.cs del original */
+    {"Hoverboard", "Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
+    {"Headstart 250", "Headstart 250", "icon_upgrades_headstart500", SK_AMOUNT, 1},
+    {"Headstart 1000", "Headstart 1000", "icon_upgrades_headstart2000", SK_AMOUNT, 2},
+    {"Caja misteriosa", "Mystery Box", "icon_upgrades_mysteryBox", SK_BOX, 0},
+    {"Jetpack", "Jetpack", "icon_upgrades_jetpack", SK_TIER, PW_JETPACK},
+    {"Super Sneakers", "Super Sneakers", "icon_upgrades_superSneakers", SK_TIER, PW_SNEAKERS},
+    {"Coin Magnet", "Coin Magnet", "icon_upgrades_coinMagnet", SK_TIER, PW_MAGNET},
+    {"2x Multiplier", "2x Multiplier", "icon_upgrades_doubleScore", SK_TIER, PW_DOUBLE},
+    {"Saltar mision 1", "Skip Mission 1", "icon_upgrades_skipMission1", SK_SKIP, 0},
+    {"Saltar mision 2", "Skip Mission 2", "icon_upgrades_skipMission2", SK_SKIP, 1},
+    {"Saltar mision 3", "Skip Mission 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
 };
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
 static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
@@ -1993,8 +1995,8 @@ static void mystery_open(void)
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     if (coins) missions_did(M_EARNCOIN, coins);
     if (tok) missions_did(M_TOKENS, 1);
-    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "Ficha de personaje");
-    else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d monedas", coins);
+    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "%s", TR("Ficha de personaje", "Character token"));
+    else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d monedas", "%d coins"), coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
@@ -2088,6 +2090,13 @@ void game_input(unsigned in)
 
 /* ------------------------------------------------------------ bucle */
 static int extra_cols[8];
+/* solo los tramos cerca del personaje entran en la fisica (el piloto automatico mira mas lejos) */
+#define PHYS_BEHIND 80.0f
+#ifdef AUTOTEST
+#define PHYS_AHEAD 450.0f
+#else
+#define PHYS_AHEAD 250.0f
+#endif
 
 void game_update(float dt)
 {
@@ -2105,7 +2114,7 @@ void game_update(float dt)
     currentLevelSpeed = Speed(t);
     /* colisiones de los tramos activos y del entorno inicial */
     extra_cols[0] = n_intro_env;
-    phys_build(extra_cols, 1);
+    phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
     switch (state) {
     case GS_INTRO: intro_tick(); break;
     case GS_RUNNING: running_tick(dt); break;
@@ -2152,7 +2161,7 @@ void game_update(float dt)
     pickups_update(game_time);
     coins_update(dt);
     if (state == GS_RUNNING || state == GS_JETPACK) {
-        phys_build(extra_cols, 1);
+        phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
         check_triggers();
         coins_tick(dt);
     }

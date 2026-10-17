@@ -7,6 +7,7 @@
 #include <pspgum.h>
 #include <pspdisplay.h>
 #include <string.h>
+#include <math.h>
 #include <stdlib.h>
 #include <malloc.h>
 #include <stdio.h>
@@ -46,6 +47,7 @@ float r_fov = 50.0f;
 /* constantes de la proyeccion de Unity (para calcular la curvatura igual que el original) */
 static float P00, P11, ZA, ZB;
 static float gx, gy;            /* banda de guarda en espacio de camara */
+static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #ifndef HW_OK
 #define HW_OK 1
 #endif
@@ -53,6 +55,12 @@ static float gx, gy;            /* banda de guarda en espacio de camara */
 #define FAST_OK 1
 #endif
 #define CLIP_NEAR 4.0f          /* plano cercano real de recorte */
+#ifndef R_VBLANKS
+#define R_VBLANKS 2             /* 2 = 30 FPS, 1 = 60 FPS */
+#endif
+#ifndef HW_TOL
+#define HW_TOL 0.75f            /* error maximo (pixeles) de la curvatura linealizada en los bloques grandes */
+#endif
 #define GUARD 3.0f              /* en unidades NDC */
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
@@ -61,6 +69,7 @@ typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 static int cur_tex = -2, cur_blend = -1;
 static unsigned int cur_color = 0;
 static float cur_st[4] = {-1, -1, -1, -1};
+static int filt_nearest;
 static int vram_tex_next;
 static void *vram_tex_ptr[64];
 static unsigned char *tex_failed;
@@ -84,7 +93,11 @@ static int tex_ensure(int t)
     if (tx->loaded) return 0;
     if (tex_failed && tex_failed[t]) return -1;
     unsigned int t0 = sceKernelGetSystemTimeLow();
-    if (data_tex_load(t) < 0) {
+    volatile const char *ph = dbg_phase_main;
+    DBG_PHASE(main, "leyendo una textura de la Memory Stick");
+    int lr = data_tex_load(t);
+    dbg_phase_main = ph;
+    if (lr < 0) {
         dlog_error("Sin memoria para la textura %s (%d KB)", tx->name, (int)((tx->databytes + tx->palbytes) / 1024));
         if (tex_failed) tex_failed[t] = 1;
         return -1;
@@ -148,8 +161,15 @@ void r_bind_texture(int t)
     }
     sceGuTexImage(0, tx->w, tx->h, tx->w, tx->data);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
-    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+    sceGuTexFilter(filt_nearest ? GU_NEAREST : GU_LINEAR, filt_nearest ? GU_NEAREST : GU_LINEAR);
     sceGuTexWrap(GU_REPEAT, GU_REPEAT);
+}
+
+void r_set_nearest(int on)
+{
+    if (on == filt_nearest) return;
+    filt_nearest = on;
+    if (cur_tex >= 0) sceGuTexFilter(on ? GU_NEAREST : GU_LINEAR, on ? GU_NEAREST : GU_LINEAR);
 }
 
 static void set_blend(int b)
@@ -264,6 +284,9 @@ void r_init(void)
     ZB = -2.0f * r_far * r_near / (r_far - r_near);
     gx = GUARD / P00;
     gy = GUARD / P11;
+    band_gxn = 1.0f / gx; band_gyn = 1.0f / gy;
+    band_igl = 1.0f / sqrtf(band_gxn * band_gxn + 1.0f); band_igll = 1.0f / sqrtf(band_gyn * band_gyn + 1.0f);
+    band_ilx = 1.0f / sqrtf(P00 * P00 + 1.0f); band_ily = 1.0f / sqrtf(P11 * P11 + 1.0f);
     vfpu_selftest();
 }
 
@@ -311,11 +334,22 @@ void r_end_frame(void)
     sceKernelDcacheWritebackAll();
     unsigned int t0 = sceKernelGetSystemTimeLow();
     /* espera a que el GE termine el fotograma anterior y lo muestra en el siguiente VBlank */
+    DBG_PHASE(main, "r_end_frame: esperando a que el GE termine (sceGuSync)");
     if (ge_busy) sceGuSync(0, 0);
-    sceDisplayWaitVblankStart();
+    DBG_PHASE(main, "r_end_frame: esperando el VBlank");
+    /* 30 FPS fijos como el original (Unity en movil): cada fotograma dura al menos R_VBLANKS refrescos de 60 Hz.
+     * Asi el ritmo es estable en la consola en vez de saltar entre 60, 30 y 20. */
+    static unsigned int last_vc;
+    unsigned int vc;
+    do {
+        sceDisplayWaitVblankStart();
+        vc = sceDisplayGetVcount();
+    } while (vc - last_vc < R_VBLANKS);
+    last_vc = vc;
     if (ge_busy) sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)(frame_par ? fbp0 : fbp1)), BUF_W,
                                        PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
     r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
+    DBG_PHASE(main, "r_end_frame: enviando la lista al GE");
     /* lanza el fotograma nuevo */
     sceGuStart(GU_DIRECT, kick_list[frame_par]);
     sceGuCallList(dlist);
@@ -498,16 +532,15 @@ static int sphere_visible(V3 c, float r)
     float x = p.x + (-0.0005f / P00) * zz, y = p.y + (-0.0003f / P11) * zz;
     /* margen por la curvatura dentro del propio objeto */
     float rr = r * 1.15f + 0.0012f * r * (d > 0 ? d : 0);
-    float nx = P00, ny = P11;
-    float lx = sqrtf(nx * nx + 1.0f), ly = sqrtf(ny * ny + 1.0f);
-    float dl = (nx * x + d) / lx, dr = (-nx * x + d) / lx, db = (ny * y + d) / ly, dt = (-ny * y + d) / ly;
+    /* distancias a los planos laterales del frustum y de la banda de guarda (inversas precalculadas en r_init) */
+    const float nx = P00, ny = P11, ilx = band_ilx, ily = band_ily;
+    float dl = (nx * x + d) * ilx, dr = (-nx * x + d) * ilx, db = (ny * y + d) * ily, dt = (-ny * y + d) * ily;
     if (dl < -rr || dr < -rr || db < -rr || dt < -rr) return 0;
     /* completamente dentro de la banda de guarda y delante del plano cercano? */
     if (d - rr <= CLIP_NEAR) return 2;
-    float gxn = 1.0f / gx, gyn = 1.0f / gy;     /* planos de la banda: |x| <= gx*d */
-    float gl = sqrtf(gxn * gxn + 1.0f), gll = sqrtf(gyn * gyn + 1.0f);
-    if ((gxn * x + d) / gl < rr || (-gxn * x + d) / gl < rr) return 2;
-    if ((gyn * y + d) / gll < rr || (-gyn * y + d) / gll < rr) return 2;
+    const float gxn = band_gxn, gyn = band_gyn, igl = band_igl, igll = band_igll;
+    if ((gxn * x + d) * igl < rr || (-gxn * x + d) * igl < rr) return 2;
+    if ((gyn * y + d) * igll < rr || (-gyn * y + d) * igll < rr) return 2;
     return 1;
 }
 
@@ -659,6 +692,14 @@ static void transform_into(Batch *b, const MVert *src, int nv, const M34 *mv, fl
 float r_mat_uoff[256];
 int r_mesh_verts[512];
 unsigned int r_prof[8];   /* microsegundos: 0 rapido, 1 recorte, 2 piel, 3 culling */
+/* cronometros finos: solo en la prueba automatica (en la PSP real cada lectura del reloj es una llamada al sistema) */
+#ifdef AUTOTEST
+#define PT_START(v) unsigned int v = sceKernelGetSystemTimeLow()
+#define PT_ADD(i, v) (r_prof[i] += sceKernelGetSystemTimeLow() - (v))
+#else
+#define PT_START(v) ((void)0)
+#define PT_ADD(i, v) ((void)0)
+#endif
 
 /* si la lista del GE se llenara, el GE leeria comandos de memoria ajena: mejor no dibujar */
 static int list_full(int reserve)
@@ -694,14 +735,18 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         MeshPart *pt = &me->parts[k];
         int mat = pt->sub < nmats ? mats[pt->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
         if (mat < 0) continue;
-        unsigned int tq0 = sceKernelGetSystemTimeLow();
+        PT_START(tq0);
         int vis = sky ? 2 : sphere_visible(m34_point(world, pt->center), pt->radius * sc);
-        r_prof[3] += sceKernelGetSystemTimeLow() - tq0;
+        PT_ADD(3, tq0);
         if (!vis) continue;
         float d0 = vis == 1 ? m34_point(&mv, pt->center).z : 0;
         float pr = pt->radius * sc;
-        /* objetos pequenos o bloques lejanos: el error de linealizar la curvatura es menor de un pixel */
-        if (vis == 1 && HW_OK && (pr <= 20.0f || (pr <= 64.0f && d0 - pr > 550.0f))) {
+        /* Curvatura linealizada en el GE: el error en pantalla de un trozo de radio pr cuyo punto mas cercano
+         * esta a dmin es |k|*pr^2/dmin (en NDC). Se usa el GE si queda por debajo de HW_TOL pixeles, o si es un
+         * objeto pequeno (moneda, barrera: se deforma entero y no deja juntas). */
+        float dmin = d0 - pr;
+        if (vis == 1 && HW_OK &&
+            (pr <= 20.0f || (dmin > CLIP_NEAR && pr * pr * fmaxf(fabsf(kx * P00) * (SCR_W / 2), fabsf(ky * P11) * (SCR_H / 2)) <= HW_TOL * dmin))) {
             /* lo transforma el GE con la curvatura linealizada (sin trabajo de CPU) */
             ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
             bent_gumatrix(gm, &mv, d0, kx, ky);
@@ -721,9 +766,9 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             int bytes = pt->nv * sizeof(OV);
             if (vpos + bytes + 64 > VRING_BYTES) { r_mem.dropped++; break; }
             OV *ov = (OV *)(vring + vpos);
-            unsigned int tp0 = sceKernelGetSystemTimeLow();
+            PT_START(tp0);
             transform_fast(ov, pt->verts, pt->nv, &mv, kx, ky);
-            r_prof[0] += sceKernelGetSystemTimeLow() - tp0;
+            PT_ADD(0, tp0);
             vpos += (bytes + 63) & ~63;
             r_stat_verts += pt->nv;
             if (mi < 512) r_mesh_verts[mi] += pt->nv;
@@ -736,12 +781,12 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         }
         Batch b;
         if (!batch_begin(&b, pt->nv, 256 + pt->ni / 3, pt->ni + 1024)) break;
-        unsigned int tc0 = sceKernelGetSystemTimeLow();
+        PT_START(tc0);
         transform_into(&b, pt->verts, pt->nv, &mv, kx, ky);
         r_stat_verts += pt->nv;
         if (mi < 512) r_mesh_verts[mi] += pt->nv;
         batch_tris(&b, pt->idx, pt->ni);
-        r_prof[1] += sceKernelGetSystemTimeLow() - tc0;
+        PT_ADD(1, tc0);
         if (b.ni > 0) {
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
@@ -803,7 +848,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
     Mesh *me = &gd.meshes[mi];
     if (!me->skinned) return;
     static M34 vb[64];
-    unsigned int ts0 = sceKernelGetSystemTimeLow();
+    PT_START(ts0);
     int nb = nbones < 64 ? nbones : 64;
     if (me->nbatches > 0 && nb > 0) {
         /* centro aproximado: media de las posiciones de los huesos */
@@ -849,7 +894,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
                 r_stat_hw += sb->nv;
                 r_stat_tris += sb->ni / 3;
             }
-            r_prof[2] += sceKernelGetSystemTimeLow() - ts0;
+            PT_ADD(2, ts0);
             return;
         }
     }
@@ -894,7 +939,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         }
         batch_commit(&b);
     }
-    r_prof[2] += sceKernelGetSystemTimeLow() - ts0;
+    PT_ADD(2, ts0);
 }
 
 /* --------------- 2D --------------- */

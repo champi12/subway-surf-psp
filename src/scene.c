@@ -89,9 +89,31 @@ void scene_glow_visible(int glow, int vis)
     if (m >= 0) nrt[m].rend = vis;
 }
 
+/* componentes de dibujo de cada nodo y ramas sin nada que dibujar, calculados una vez al arrancar:
+ * el recorrido de cada fotograma no tiene que buscar entre los componentes ni bajar por ramas de
+ * colliders, triggers y puntos de aparicion (miles de lecturas de memoria dispersas en la PSP real) */
+static const uint32_t **cmesh, **cskin;
+static unsigned char *subdraw;
+
+static int calc_subdraw(int n)
+{
+    int any = cmesh[n] || cskin[n];
+    for (int c = gd.nodes[n].first_child; c >= 0; c = gd.nodes[c].next_sibling) any |= calc_subdraw(c);
+    subdraw[n] = (unsigned char)any;
+    return any;
+}
+
 void scene_init(void)
 {
     nrt = calloc(gd.nnodes, sizeof(NodeRT));
+    cmesh = calloc(gd.nnodes, sizeof(*cmesh));
+    cskin = calloc(gd.nnodes, sizeof(*cskin));
+    subdraw = calloc(gd.nnodes, 1);
+    for (int i = 0; i < gd.nnodes; i++) {
+        cmesh[i] = node_comp(i, C_MESH, NULL);
+        cskin[i] = node_comp(i, C_SKIN, NULL);
+    }
+    for (int i = 0; i < gd.nnodes; i++) if (gd.nodes[i].parent < 0) calc_subdraw(i);
     for (int i = 0; i < gd.nnodes; i++) {
         NodeFile *f = &gd.nodes[i];
         NodeRT *r = &nrt[i];
@@ -160,10 +182,10 @@ void scene_ssgroups(int on)
 
 void scene_draw_subtree(int n)
 {
+    if (!subdraw[n]) return;
     NodeRT *r = &nrt[n];
     if (r->active && r->rend && !r->hidden) {
-        int nw;
-        const uint32_t *m = node_comp(n, C_MESH, &nw);
+        const uint32_t *m = cmesh[n];
         if (m) {
             int mesh = m[0], nm = m[2];
             int mats[4];
@@ -185,7 +207,7 @@ void scene_draw_subtree(int n)
         }
     }
     if (r->active && r->rend) {
-        const uint32_t *sk = node_comp(n, C_SKIN, NULL);
+        const uint32_t *sk = cskin[n];
         if (sk) {
             int mesh = sk[0], nm = sk[2];
             int mats[4];
@@ -496,6 +518,11 @@ static int track_left = -1, track_right = -1, jetpack_landing = -1, tutorial_chu
 static float clean_up_distance = 300.0f, track_ahead = 1500.0f;
 
 int track_chunk_node(int ci) { return chunks[ci].node; }
+int track_chunk_overlaps(int ci, float z0, float z1)
+{
+    float a = nrt[chunks[ci].node].lpos.z;
+    return a <= z1 && a + chunks[ci].zSize >= z0;
+}
 
 static int chunk_of_node(int n)
 {

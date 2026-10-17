@@ -53,7 +53,7 @@ Genera:
 | `tex.bin` | Texturas a 512×512 como máximo (la PSP no admite más): 16 bits para el escenario y los trenes, paleta de 256 colores para el resto |
 | `anim.bin` | 95 animaciones muestreadas a 30 fps |
 | `sfx.bin` | Efectos en PCM 16 bits 22.050 Hz |
-| `ui.bin` | Atlas y fuentes de NGUI |
+| `ui.bin` | Atlas y fuentes de NGUI, más las fuentes pre-escaladas a los tamaños exactos de la interfaz (texto nítido en la PSP) |
 | `music/` | La música original (`Hr_music_newFunky.mp3`) |
 | `wav/` | Todos los sonidos en WAV, por si se quieren convertir a AT3 |
 
@@ -100,6 +100,10 @@ El original se jugaba deslizando el dedo; en la PSP:
 | L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
 | L / R (en el menú) | Ver las misiones |
 | SELECT | Medidor: resumen → memoria y VRAM → gráfica de tiempos → oculto |
+
+**Idioma:** el juego usa el idioma de la consola (*Ajustes → Ajustes del sistema → Idioma*): en español si la PSP
+está en español y en inglés con cualquier otro idioma, como el original. En inglés, las misiones y la tienda usan
+los textos originales de `Missions.cs` y `Upgrades.cs`.
 
 En el menú, △ o □ abren la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
 Headstart 1000 (2000), cajas misteriosas (500) y los 5 niveles de mejora del jetpack, las super zapatillas, el imán

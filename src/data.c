@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <malloc.h>
 #include "data.h"
 #include "devlog.h"
@@ -249,10 +250,43 @@ static int load_sfx(void)
     return 0;
 }
 
+/* La CPU de la PSP se cuelga (excepcion de direccion) al leer un float o un int de una direccion que no es
+ * multiplo de 4; PPSSPP no lo imita. Los modelos, animaciones y sonidos se usan directamente desde el archivo
+ * cargado, asi que se comprueba que todo este alineado antes de jugar. */
+#define MISALIGNED(p, a) (((uintptr_t)(p)) & ((a) - 1))
+static int check_alignment(void)
+{
+    int bad = 0;
+    if (MISALIGNED(gd.nodes, 4) || MISALIGNED(gd.blob, 4)) { bad++; dlog_error("world.bin desalineado"); }
+    for (int i = 0; i < gd.nmeshes; i++) {
+        const Mesh *m = &gd.meshes[i];
+        for (int k = 0; k < m->nparts; k++) {
+            const MeshPart *pt = &m->parts[k];
+            if (MISALIGNED(pt->verts, 4) || MISALIGNED(pt->idx, 2) || (m->skinned && MISALIGNED(pt->skin, 4))) {
+                if (bad++ < 5) dlog_error("Modelo %s trozo %d desalineado", m->name, k);
+            }
+        }
+        for (int k = 0; k < m->nbatches; k++)
+            if (MISALIGNED(m->batches[k].verts, 4) || MISALIGNED(m->batches[k].idx, 2)) {
+                if (bad++ < 5) dlog_error("Modelo %s lote de huesos %d desalineado", m->name, k);
+            }
+    }
+    for (int i = 0; i < gd.nclips; i++)
+        for (int t = 0; t < gd.clips[i].ntracks; t++)
+            if (MISALIGNED(gd.clips[i].tracks[t].data, 4)) {
+                if (bad++ < 5) dlog_error("Animacion %s pista %d desalineada", gd.clips[i].name, t);
+            }
+    for (int i = 0; i < gd.nsfx; i++)
+        if (MISALIGNED(gd.sfx[i].pcm, 2)) { if (bad++ < 5) dlog_error("Sonido %s desalineado", gd.sfx[i].name); }
+    dlog("Alineacion de los datos: %s (%d problemas)", bad ? "MAL" : "correcta", bad);
+    return bad;
+}
+
 int data_load(const char *dir)
 {
     snprintf(basedir, sizeof(basedir), "%s", dir);
     if (load_world() || load_mats() || load_meshes() || load_textures() || load_anims() || load_sfx()) return -1;
+    if (check_alignment()) { snprintf(errbuf, sizeof(errbuf), "Datos desalineados: vuelve a generar data/ con tools/extract.py"); return -1; }
     return 0;
 }
 

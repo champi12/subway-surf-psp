@@ -16,8 +16,10 @@ typedef struct {
 extern Col cols[MAX_COLS];
 extern int ncols;
 
-/* reconstruye la lista de colliders de los tramos activos y de los nodos fijos */
-void phys_build(const int *extra_roots, int nextra);
+/* reconstruye la lista de colliders de los tramos activos entre z0 y z1 (alrededor del personaje) y de los
+ * nodos fijos. Los tramos lejanos no pueden tocar al personaje en este fotograma: no se procesan. */
+void phys_build(const int *extra_roots, int nextra, float z0, float z1);
+extern float phys_ms;         /* ms de fisica acumulados (devlog) */
 int phys_layer_hits(int layer);   /* colisiona con la capa del personaje (11)? */
 
 typedef struct {

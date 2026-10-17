@@ -3,6 +3,7 @@
 #include <string.h>
 #include "missions.h"
 #include "missions_data.h"
+#include "lang.h"
 
 int mission_set;                   /* PlayerInfo.currentMissionSet */
 int mission_progress[3];
@@ -36,7 +37,7 @@ static void set_complete_check(void)
     mission_set++;
     memset(mission_progress, 0, sizeof(mission_progress));
     memset(run_progress, 0, sizeof(run_progress));
-    snprintf(mission_msg, sizeof(mission_msg), "Multiplicador x%d", missions_multiplier());
+    snprintf(mission_msg, sizeof(mission_msg), TR("Multiplicador x%d", "Multiplier x%d"), missions_multiplier());
     mission_msg_t = game_time;
     check_offline();
 }
@@ -45,7 +46,7 @@ static void complete(int i)
 {
     char buf[64];
     missions_text(i, buf, sizeof(buf));
-    snprintf(mission_msg, sizeof(mission_msg), "Mision: %s", buf);
+    snprintf(mission_msg, sizeof(mission_msg), TR("Mision: %s", "Mission: %s"), buf);
     mission_msg_t = game_time;
     set_complete_check();
 }
@@ -60,13 +61,15 @@ static void check_offline(void)
 
 void missions_text(int i, char *buf, int n)
 {
-    if (mission_set >= MISSION_SETS) { snprintf(buf, n, "Todas las misiones completadas"); return; }
-    const MissionTpl *t = &mission_tpl[mission_sets[mission_set][i].type];
+    if (mission_set >= MISSION_SETS) { snprintf(buf, n, "%s", TR("Todas las misiones completadas", "All missions completed")); return; }
+    int type = mission_sets[mission_set][i].type;
+    /* en ingles, el texto original con singular o plural segun el objetivo */
+    const char *txt = lang_es ? mission_tpl[type].text : mission_en[type][missions_goal(i) == 1 ? 0 : 1];
     char goal[16];
     snprintf(goal, sizeof(goal), "%d", missions_goal(i));
-    const char *p = strstr(t->text, "{0}");
-    if (!p) { snprintf(buf, n, "%s", t->text); return; }
-    snprintf(buf, n, "%.*s%s%s", (int)(p - t->text), t->text, goal, p + 3);
+    const char *p = strstr(txt, "{0}");
+    if (!p) { snprintf(buf, n, "%s", txt); return; }
+    snprintf(buf, n, "%.*s%s%s", (int)(p - txt), txt, goal, p + 3);
 }
 
 int missions_progress(int i)
