@@ -83,7 +83,8 @@ modificados** y copia la carpeta `PSP` al destino que le indiques (opcional). La
 
 ## Instalar
 
-En la Memory Stick: `ms0:/PSP/GAME/SUBWAY/EBOOT.PBP` y `ms0:/PSP/GAME/SUBWAY/data/` (sin `wav/`, que solo sirve
+En la Memory Stick: `ms0:/PSP/GAME/SUBWAY/EBOOT.PBP`, `ms0:/PSP/GAME/SUBWAY/exhandler.prx` (capturador de cuelgues, ver
+[docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)) y `ms0:/PSP/GAME/SUBWAY/data/` (sin `wav/`, que solo sirve
 para convertir). Funciona en firmware personalizado (CFW/ARK/PRO) y en PPSSPP.
 
 ## Controles

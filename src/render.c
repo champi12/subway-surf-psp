@@ -862,6 +862,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         for (int i = 0; i < nb; i++) c = v3add(c, m34_pos(&bones[i]));
         c = v3scale(c, 1.0f / nb);
         if (sphere_visible(c, 12.0f) == 1) {
+            DBG_PHASE(main, "r_draw_skinned: piel por hardware (GE)");
             float d0 = m34_point(&r_view, c).z;
             M34 idm; m34_identity(&idm);
             ScePspFMatrix4 bent;
@@ -904,6 +905,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
             return;
         }
     }
+    DBG_PHASE(main, "r_draw_skinned: piel por software (CPU)");
     model_identity();
     for (int i = 0; i < nb; i++) m34_mul(&vb[i], &r_view, &bones[i]);
     float kx = -0.0005f / P00, ky = -0.0003f / P11;

@@ -763,9 +763,9 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
-#ifdef AT_ROLL
-    dlog("RUEDA carril %d altura %.1f en el aire %d", ch.trackIndex, (double)cc.pos.y, !cc.grounded);
-#endif
+    /* (diagnostico del cuelgue al rodar en la consola real: se escribe en la tarjeta al momento) */
+    dlog("RUEDA carril %d altura %d en el aire %d a %d m", ch.trackIndex, (int)cc.pos.y, !cc.grounded, ginfo.meters);
+    dlog_flush();
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -2118,7 +2118,9 @@ void game_update(float dt)
     currentLevelSpeed = Speed(t);
     /* colisiones de los tramos activos y del entorno inicial */
     extra_cols[0] = n_intro_env;
+    DBG_PHASE(main, "game_update: phys_build");
     phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
+    DBG_PHASE(main, "game_update: running_tick (movimiento y colisiones)");
     switch (state) {
     case GS_INTRO: intro_tick(); break;
     case GS_RUNNING: running_tick(dt); break;
@@ -2129,11 +2131,14 @@ void game_update(float dt)
         break;
     default: break;
     }
+    DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) mods_update(dt);
     update_powerup_times(dt);
     /* corrutinas del personaje */
     track_change_tick();
+    DBG_PHASE(main, "game_update: roll_tick (rodar)");
     if (state == GS_RUNNING || state == GS_JETPACK || state == GS_DIEFALL) roll_tick();
+    DBG_PHASE(main, "game_update: personaje");
     if (ch.stumble && game_time >= ch.stumble_end) { ch.stumble = 0; guard_reset_catch_up(); }
     if (stumble_pending && game_time >= stumble_pending_t) {
         stumble_pending = 0;
@@ -2161,16 +2166,19 @@ void game_update(float dt)
     set_node_active(n_shadow, ch.shadow_on);
     scene_update_world(n_character);
     /* objetos moviles, pickups y monedas */
+    DBG_PHASE(main, "game_update: trenes, power-ups y monedas");
     moving_update(ch.z, dt, currentSpeed);
     pickups_update(game_time);
     coins_update(dt);
     if (state == GS_RUNNING || state == GS_JETPACK) {
         phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
+        DBG_PHASE(main, "game_update: check_triggers");
         check_triggers();
         coins_tick(dt);
     }
     calculate_score();
     /* animaciones */
+    DBG_PHASE(main, "game_update: animaciones");
     anim_update(&anim_char, dt);
     anim_update(&anim_guard, dt);
     anim_update(&anim_dog, dt);
@@ -2211,7 +2219,11 @@ void game_draw(void)
     }
     /* cronometro por bloques para el devlog (pocas lecturas del reloj por fotograma) */
     unsigned int tsec = sceKernelGetSystemTimeLow(), tnow;
-#define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow)
+#define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow, \
+                 DBG_PHASE(main, sect_phase[i]))
+    static const char *const sect_phase[7] = {"game_draw: cielo", "game_draw: via", "game_draw: entorno del menu",
+                                              "game_draw: monedas", "game_draw: personajes (Jake, inspector, perro)",
+                                              "game_draw: efectos y transparentes", "game_draw: fin"};
     SECT(0);   /* camara */
     /* el cielo va pegado a la camara: se dibuja primero */
     if (n_sky >= 0) {

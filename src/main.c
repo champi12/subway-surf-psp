@@ -53,6 +53,29 @@ static void fatal(const char *msg)
     sceKernelExitGame();
 }
 
+#include "../exhandler/exhandler.h"
+/* Carga exhandler.prx (modulo de kernel): si la CPU lanza una excepcion, en vez de congelarse la consola se
+ * escribe crash.txt con la direccion exacta del fallo. Solo en firmware personalizado; si no se puede, se sigue. */
+static void load_exhandler(void)
+{
+    static ExhArgs a;
+    char dir[160];
+    if (!getcwd(dir, sizeof(dir))) strcpy(dir, "ms0:/PSP/GAME/SUBWAY");
+    char prx[200];
+    snprintf(prx, sizeof(prx), "%s/exhandler.prx", dir);
+    snprintf(a.crash_path, sizeof(a.crash_path), "%s/crash.txt", dir);
+    snprintf(a.devlog_path, sizeof(a.devlog_path), "%s/devlog.txt", dir);
+    a.phase_main = &dbg_phase_main;
+    a.phase_music = &dbg_phase_music;
+    a.phase_mixer = &dbg_phase_mixer;
+    SceUID m = sceKernelLoadModule(prx, 0, NULL);
+    if (m < 0) { dlog("Capturador de excepciones: no se pudo cargar %s (0x%08x)", prx, m); return; }
+    int st = 0;
+    int r = sceKernelStartModule(m, sizeof(a), &a, &st, NULL);
+    dlog("Capturador de excepciones: %s (carga 0x%08x, inicio 0x%08x, estado %d)",
+         r >= 0 && st == 0 ? "activo, un cuelgue escribira crash.txt" : "NO activo", m, r, st);
+}
+
 extern void game_load(void);
 unsigned int heap_used_kb(void) { struct mallinfo mi = mallinfo(); return mi.uordblks / 1024; }
 
@@ -66,6 +89,10 @@ int main(int argc, char **argv)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     rng_state ^= sceKernelGetSystemTimeLow();
     dlog_init();
+#if DEVLOG && !defined(AUTOTEST)
+    /* en la prueba automatica no: PPSSPP no implementa el registro de excepciones del kernel */
+    load_exhandler();
+#endif
     lang_init();
     if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
     unsigned int tl = sceKernelGetSystemTimeLow();

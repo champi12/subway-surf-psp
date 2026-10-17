@@ -62,6 +62,28 @@ Dice en qué fase está cada hilo y si avanza, y el estado del GE. Si el juego s
 **Si después de un cuelgue no hay ninguna línea `BLOQUEO`**, la consola entera se detuvo por una excepción de la CPU
 (un acceso a memoria inválido o desalineado, o una corrupción de memoria): eso también es una pista.
 
+### El capturador de excepciones (`crash.txt`)
+
+Junto al `EBOOT.PBP` va `exhandler.prx`, un módulo de kernel (solo funciona en CFW). Si la CPU lanza una excepción, en
+vez de congelarse la consola se muestra una pantalla con el error y se escribe `crash.txt` (y lo mismo al final de
+`devlog.txt`) con:
+
+* el **tipo de excepción** (dirección desalineada, dirección prohibida, instrucción `break`, coprocesador no disponible…),
+* **EPC**: la dirección de la instrucción que falló, y **BadVAddr**: la dirección de memoria que intentó usar,
+* el **hilo** que falló y la **fase** en la que estaba cada hilo del juego,
+* todos los registros y la pila de llamadas.
+
+Para traducir las direcciones a función y línea del código hace falta el `subway.elf` de **la misma compilación**
+(`build_dist.sh` lo deja en `dist/subway.elf`):
+
+    tools/crash.sh crash.txt dist/subway.elf
+
+    Fallo en                     0x0880B0E8  r_draw_skinned at src/render.c:863
+    Llamado desde (RA)           0x0881D438  game_update at src/game.c:2140
+
+Al arrancar, el devlog dice si el capturador quedó activo (`Capturador de excepciones: activo`). En PPSSPP sale
+"NO activo": el emulador no implementa esa parte del kernel.
+
 ### Diferencias entre PPSSPP y la consola que pueden colgar el juego
 
 | En la consola real | En PPSSPP (por defecto) |

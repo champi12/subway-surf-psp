@@ -12,3 +12,7 @@ autotest_out/
 __pycache__/
 src/*.d
 devlog*.txt
+exhandler/*.prx
+exhandler/*.elf
+exhandler/*.o
+crash*.txt
