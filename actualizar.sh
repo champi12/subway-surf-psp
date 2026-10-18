@@ -32,7 +32,16 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 
 if [ -n "$2" ]; then
-    mkdir -p "$2"
+    # no se crea la carpeta destino: si no existe es que la ruta esta mal escrita (y en /mnt/c/Users no hay permiso)
+    if [ ! -d "$2" ]; then
+        echo
+        echo "No existe la carpeta: $2"
+        echo "El juego SI se ha compilado: esta en $(pwd)/dist/PSP"
+        echo "Escritorios encontrados en Windows (usa uno de estos, entre comillas):"
+        ls -d /mnt/c/Users/*/Desktop /mnt/c/Users/*/Escritorio /mnt/c/Users/*/OneDrive*/Desktop \
+              /mnt/c/Users/*/OneDrive*/Escritorio 2>/dev/null | sed 's/^/    "/; s/$/"/' || true
+        exit 1
+    fi
     cp -r dist/PSP "$2/"
     echo "Copiado a: $2/PSP"
 fi
