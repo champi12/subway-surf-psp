@@ -3,7 +3,7 @@
 #define GAME_H
 #include "vmath.h"
 
-enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP };
+enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS };
 
 /* botones (ya filtrados: solo los recien pulsados) */
 enum { IN_LEFT = 1, IN_RIGHT = 2, IN_UP = 4, IN_DOWN = 8, IN_BOARD = 16, IN_START = 32, IN_CROSS = 64, IN_CIRCLE = 128,
@@ -25,7 +25,8 @@ typedef struct {
     float headstart_until;        /* botones de headstart visibles hasta este momento */
     char reward[64]; float reward_t;
     int gameover_coins;
-    int tokens, character;
+    int tokens, character;        /* tokens: fichas de personaje recogidas (total); character: personaje elegido */
+    int char_sel;                 /* personaje marcado en la pantalla de personajes */
     int missions_open;            /* ventana de misiones abierta en el menu */
 } GameInfo;
 
@@ -34,6 +35,18 @@ extern const ShopItem shop_items[];
 extern const int shop_count;
 int shop_price(int i);
 int shop_amount(int i);
+
+/* personajes (CharacterModels.cs): Jake gratis, Tricky/Fresh/Spike/Yutani con fichas de las cajas misteriosas,
+ * Lucy/Ninja/Frank/King/Frizzy con monedas */
+enum { UL_FREE, UL_TOKENS, UL_COINS };
+int char_count(void);
+const char *char_name(int i);
+int char_unlock_type(int i);
+int char_price(int i);            /* fichas o monedas necesarias */
+int char_have(int i);             /* fichas que se tienen (o el precio si ya esta comprado) */
+int char_unlocked(int i);
+const char *char_token_name(int i);
+const char *char_token_sprite(int i);
 
 extern GameInfo ginfo;
 extern float game_time;

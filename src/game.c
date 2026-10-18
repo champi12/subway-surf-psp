@@ -227,7 +227,9 @@ static int state = GS_MENU;
 static float state_time, start_time;
 static float currentSpeed, currentLevelSpeed = SPEED_MIN;
 static int isDead;
-static int tutorial_completed = 1;
+static int tutorial_completed = 0;   /* sin partida guardada: primera vez, con tutorial */
+static int tut_board_ok;             /* TutorialEvent.allowHoverboard: la tabla se puede usar desde ese punto */
+static int tut_arrow_on, n_tut_arrow = -1;
 
 /* camara */
 static int cam_follow;          /* CharacterCamera.enabled */
@@ -1031,8 +1033,12 @@ static void on_char_enter(const Col *c)
     notify_stumble(&snd_stumble, node_name(n));
 }
 
+static void tutorial_event(const uint32_t *t);
+
 static void on_char_exit(const Col *c)
 {
+    const uint32_t *te = node_comp(c->node, C_TUTORIAL, NULL);
+    if (te && !ch.stopColliding) tutorial_event(te);
     if (c->tag == TAG_SUBWAY) { ch.isInsideSubway = 0; return; }
     int ot = obstacle_type(c->tag);
     if (ot != OB_NONE && ot == ch.lastObstacle && ch.lastObstacleTrack == ch.trackIndex) {
@@ -1452,7 +1458,7 @@ static void stage_menu_sequence(void)
     stop_all_char_coroutines();
     char_set_pos(v3(0, 0.8f, 0));
     nrt[n_avatar].lrot = qident();
-    nrt[n_sprayCan].rend = 1;
+    nrt[n_sprayCan].rend = ginfo.character == 0;
     cam_follow = 0;
     if (n_mainCam >= 0) {
         nrt[n_mainCam].lpos = v3(0, 0.8f + 33.0f + 0.8f, -33.0f);
@@ -1480,6 +1486,7 @@ static void game_top_menu(void)
 
 static void game_start_run(void)
 {
+    tut_board_ok = 0; tut_arrow_on = 0; ginfo.message = NULL;
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
     music_set_volume(0.3f);
@@ -1596,7 +1603,11 @@ static void handle_controls_running(void)
     if (in_right) change_track(1, dur);
     if (in_up) character_jump();
     if (in_down) character_roll();
-    if (in_board && ginfo.hoverboards > 0 && !mods[MOD_HOVERBOARD].active) mod_add(MOD_HOVERBOARD);
+    if (in_board && !mods[MOD_HOVERBOARD].active) {
+        /* en el tutorial la tabla se prueba gratis, pero solo desde su aviso (allowHoverboard) */
+        if (track_running_tutorial) { if (tut_board_ok) { ginfo.hoverboards++; mod_add(MOD_HOVERBOARD); } }
+        else if (ginfo.hoverboards > 0) mod_add(MOD_HOVERBOARD);
+    }
     in_left = in_right = in_up = in_down = in_board = 0;
 }
 
@@ -1627,14 +1638,9 @@ static void calculate_score(void)
     }
 }
 
-static void running_tick(float dt)
+/* camara que sigue al personaje (CharacterCamera): en carrera y al volver al punto de control del tutorial */
+static void follow_camera(float dt)
 {
-    track_lay_chunks(ch.z, track_ahead_distance(), 0);
-    scene_current_level_speed = currentLevelSpeed;
-    currentSpeed = currentLevelSpeed;
-    handle_controls_running();
-    apply_gravity(dt);
-    move_forward(dt);
     V3 position = cc.pos;
     if (mods[MOD_SNEAKERS].active) sm_y_target = 0.5f * (ch.lastGroundedY + position.y);
     else if (cc.grounded) sm_y_target = ch.lastGroundedY;
@@ -1669,6 +1675,17 @@ static void running_tick(float dt)
         if (r >= 1) from_jetpack = 0;
         from_jet_t += dt;
     } else { cam_pos = pe; cam_target = te; }
+}
+
+static void running_tick(float dt)
+{
+    track_lay_chunks(ch.z, track_ahead_distance(), 0);
+    scene_current_level_speed = currentLevelSpeed;
+    currentSpeed = currentLevelSpeed;
+    handle_controls_running();
+    apply_gravity(dt);
+    move_forward(dt);
+    follow_camera(dt);
     /* CheckInAirJump */
     if (cc.grounded && ch.inAirJump) { character_jump(); ch.inAirJump = 0; }
     update_meters();
@@ -1851,10 +1868,6 @@ static void game_die(void)
     ginfo.state = GS_DIEFALL;
 }
 
-static void back_to_checkpoint(void)
-{
-    change_state(GS_CHECKPOINT);
-}
 
 static void die_tick(float dt)
 {
@@ -1881,12 +1894,128 @@ static void die_tick(float dt)
     }
 }
 
+/* ------------------------------------------------------------ tutorial (TutorialEvent.cs, Game.BackToCheckPoint) */
+static float tut_arrow_t0, tut_arrow_time, tut_arrow_dir;
+
+static void tut_message(const char *txt)
+{
+    ginfo.message = txt;
+    ginfo.message_t = game_time;
+}
+
+/* TutorialEvent.OnTriggerExit: textos del original con los botones de la PSP */
+static void tutorial_event(const uint32_t *t)
+{
+#ifdef AUTOTEST
+    dlog("TUTORIAL evento texto%d flecha%d dir %.0f fin%d a %d m", t[0], t[2], u2f(t[4]), t[6], ginfo.meters);
+#endif
+    if (t[0]) {
+        const char *txt = (int)t[1] >= 0 ? gd.strings[t[1]] : "";
+        if (strstr(txt, "GO")) tut_message(TR("Genial! Ahora a correr!", "You rock! Now GO!"));
+        else if (strstr(txt, "Hoverboard")) tut_message(TR("Cuadrado o triangulo: tabla", "Square or triangle: Hoverboard"));
+        else if (strstr(txt, "Fresh")) tut_message(TR("Buenos movimientos!", "Fresh Moves!"));
+        else tut_message(txt);
+    }
+    if (t[2] && (int)t[3] >= 0) {
+        /* ShowArrow: la flecha 3D delante de la camara, y el boton de la PSP debajo */
+        n_tut_arrow = t[3];
+        tut_arrow_dir = u2f(t[4]);
+        tut_arrow_time = u2f(t[5]) > 0.05f ? u2f(t[5]) : 1.0f;
+        tut_arrow_t0 = game_time;
+        tut_arrow_on = 1;
+        /* direccion de la flecha: 0 arriba, 180 abajo, 90 izquierda, -90 derecha */
+        if (fabsf(tut_arrow_dir) > 135.0f) tut_message(TR("ABAJO o O: rodar", "DOWN or O: roll"));
+        else if (tut_arrow_dir > 45.0f) tut_message(TR("IZQUIERDA: cambiar de via", "LEFT: change lane"));
+        else if (tut_arrow_dir < -45.0f) tut_message(TR("DERECHA: cambiar de via", "RIGHT: change lane"));
+        else tut_message(TR("ARRIBA o X: saltar", "UP or X: jump"));
+    }
+    if (t[7]) tut_board_ok = 1;
+    if (t[6]) {
+        /* endTutorial: a partir de aqui, carrera normal; no se vuelve a ver */
+        track_running_tutorial = 0;
+        track_tutorial = 0;
+        tutorial_completed = 1;
+        game_save();
+        dlog("TUTORIAL completado");
+    }
+}
+
+/* la flecha del tutorial: hija de la camara, a 20 unidades, girada segun la direccion y desplazandose por ella */
+static void tutorial_draw_arrow(void)
+{
+    if (!tut_arrow_on || n_tut_arrow < 0) return;
+    float t = (game_time - tut_arrow_t0) / tut_arrow_time;
+    if (t >= 1.0f) { tut_arrow_on = 0; return; }
+    Q4 r = qeuler(0, 0, tut_arrow_dir);
+    V3 up = qrot(r, v3(0, 1, 0));
+    V3 pos = v3add(v3(0, 0, 20), v3scale(up, -5.0f + 10.0f * t));
+    M34 cw, local;
+    m34_inverse(&cw, &r_view);
+    /* el shader de particulas del original no descarta caras: se gira 180 grados en Y para que el plano mire a la camara
+     * (la flecha es simetrica, asi que el giro no cambia su direccion) */
+    m34_trs(&local, pos, qmul(r, qeuler(0, 180, 0)), nrt[n_tut_arrow].lscl);
+    m34_mul(&nrt[n_tut_arrow].world, &cw, &local);
+    int was_active = nrt[n_tut_arrow].active, was_rend = nrt[n_tut_arrow].rend;
+    nrt[n_tut_arrow].active = 1;
+    nrt[n_tut_arrow].rend = 1;
+    scene_draw_subtree(n_tut_arrow);
+    nrt[n_tut_arrow].active = was_active;
+    nrt[n_tut_arrow].rend = was_rend;
+}
+
+/* Character.SetBackToCheckPoint: tras 0.7 s, 1 s de vuelta suave al ultimo punto de control, en la via central */
+static struct { int phase; float t0, x0, z0, x1, z1; } cpk;
+
+static void back_to_checkpoint(void)
+{
+    dlog("TUTORIAL vuelta al punto de control desde %d m", ginfo.meters);
+    change_state(GS_CHECKPOINT);
+    cpk.phase = 0;
+    stumble_pending = 0;
+    stumble_set(0);
+}
+
+static void checkpoint_tick(float dt)
+{
+    if (cpk.phase == 0) {
+        if (game_time - state_time < 0.7f) { follow_camera(dt); return; }
+        cpk.phase = 1;
+        cpk.t0 = game_time;
+        cpk.x0 = ch.x; cpk.z0 = ch.z;
+        cpk.z1 = track_last_checkpoint(ch.z);
+        ch.trackIndex = ch.trackIndexTarget = 1;
+        ch.trackIndexPosition = 1;
+        ch.trackMovement = ch.trackMovementNext = 0;
+        ch.tc = 0;
+        cpk.x1 = track_get_x(1);
+        ch.immune = 1;
+        ch.stopColliding = 1;
+        anim_crossfade(&anim_char, an.run, 1.0f);
+    }
+    float t = clamp01(game_time - cpk.t0), s = t * t * (3.0f - 2.0f * t);
+    ch.x = lerpf(cpk.x0, cpk.x1, s);
+    ch.z = lerpf(cpk.z0, cpk.z1, s);
+    V3 p = track_pos(ch.x, ch.z);
+    char_set_pos(v3(p.x, cc.pos.y, p.z));
+    follow_camera(dt);
+    if (t >= 1.0f) {
+        ch.immune = 0;
+        ch.stopColliding = 0;
+        anim_play(&anim_char, an.run);
+        change_state(GS_RUNNING);
+        ginfo.state = GS_RUNNING;
+    }
+}
+
 /* ------------------------------------------------------------ inicializacion */
 static int find(const char *path)
 {
     int n = node_find_path(-1, path);
     return n;
 }
+
+static int n_avatars = -1;            /* Character Model/avatar_prefab/avatars: un modelo por personaje */
+static void char_show_model(int i);
 
 void game_init(void)
 {
@@ -1954,6 +2083,8 @@ void game_init(void)
     col_center = col_center0; col_height = col_height0;
     /* animadores */
     anim_init(&anim_char, n_avatar);
+    n_avatars = node_find_child(n_avatar, "avatars");
+    char_show_model(ginfo.character);   /* game_load ya ha leido el personaje elegido */
     anim_init(&anim_guard, n_guard);
     anim_init(&anim_dog, n_dog);
     anim_init(&anim_cam, n_camRig);
@@ -1988,6 +2119,82 @@ void game_init(void)
     game_top_menu();
     music_play("Hr_music_newFunky", 1);
     music_set_volume(0.25f);
+}
+
+/* ------------------------------------------------------------ personajes (CharacterModels.cs, PlayerInfo.cs) */
+/* fichas por tipo (CharacterModels.TokenType); a los de monedas se les "dan" sus fichas al comprarlos, como en
+ * PlayerInfo: un personaje esta desbloqueado cuando sus fichas llegan al precio */
+enum { TK_JAKE, TK_TRICKY, TK_FRESH, TK_SPIKE, TK_YUTANI, TK_FRANK, TK_FRIZZY, TK_KING, TK_LUCY, TK_NINJA, TK_COUNT };
+typedef struct { const char *model, *name; int unlock, token, price; const char *tok_es, *tok_en, *tok_sprite; } CharDef;
+static const CharDef chars[] = {
+    {"slick", "Jake", UL_FREE, TK_JAKE, 0, "", "", NULL},
+    {"tricky", "Tricky", UL_TOKENS, TK_TRICKY, 3, "Gorra de Tricky", "Tricky's Hat", "trophy_tricky_token"},
+    {"fresh", "Fresh", UL_TOKENS, TK_FRESH, 50, "Radio de Fresh", "Fresh's Stereo", "trophy_fresh_token"},
+    {"spike", "Spike", UL_TOKENS, TK_SPIKE, 200, "Guitarra de Spike", "Spike's Guitar", "trophy_spike_token"},
+    {"yutani", "Yutani", UL_TOKENS, TK_YUTANI, 500, "OVNI de Yutani", "Yutani's UFO", "trophy_yutani_token"},
+    {"lucy", "Lucy", UL_COINS, TK_LUCY, 7000, "", "", NULL},
+    {"ninja", "Ninja", UL_COINS, TK_NINJA, 20000, "", "", NULL},
+    {"frank", "Frank", UL_COINS, TK_FRANK, 40000, "", "", NULL},
+    {"king", "King", UL_COINS, TK_KING, 80000, "", "", NULL},
+    {"frizzy", "Frizzy", UL_COINS, TK_FRIZZY, 150000, "", "", NULL},
+};
+#define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
+static int char_tokens[TK_COUNT];
+
+int char_count(void) { return NCHARS; }
+const char *char_name(int i) { return chars[i].name; }
+int char_unlock_type(int i) { return chars[i].unlock; }
+int char_price(int i) { return chars[i].price; }
+int char_have(int i) { return char_tokens[chars[i].token]; }
+int char_unlocked(int i) { return chars[i].unlock == UL_FREE || char_tokens[chars[i].token] >= chars[i].price; }
+const char *char_token_name(int i) { return TR(chars[i].tok_es, chars[i].tok_en); }
+const char *char_token_sprite(int i) { return chars[i].tok_sprite; }
+
+/* CharacterModel.ChangeCharacterModel: todos los modelos comparten el esqueleto; se ve solo el elegido.
+ * El spray solo lo lleva Jake (HideAllPowerups) */
+static void char_show_model(int i)
+{
+    if (i < 0 || i >= NCHARS) i = 0;
+    if (n_avatars >= 0)
+        for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
+            nrt[c].rend = !strcmp(gd.strings[gd.nodes[c].name], chars[i].model);
+    if (n_sprayCan >= 0 && (state == GS_MENU || state == GS_CHARS || state == GS_SHOP)) nrt[n_sprayCan].rend = i == 0;
+}
+
+/* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
+static int char_useful_token(void)
+{
+    int opts[4], n = 0;
+    for (int i = 0; i < NCHARS; i++)
+        if (chars[i].unlock == UL_TOKENS && char_tokens[chars[i].token] < chars[i].price) opts[n++] = i;
+    return n ? opts[rnd_range(0, n)] : -1;
+}
+
+static void chars_input(unsigned in, int confirm)
+{
+    if (in & IN_UP) { ginfo.char_sel = (ginfo.char_sel + NCHARS - 1) % NCHARS; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if (in & IN_DOWN) { ginfo.char_sel = (ginfo.char_sel + 1) % NCHARS; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
+    int i = ginfo.char_sel;
+    if (confirm) {
+        if (char_unlocked(i)) {
+            ginfo.character = i;
+            snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
+            game_save();
+        } else if (chars[i].unlock == UL_COINS && ginfo.total_coins >= chars[i].price) {
+            /* UICharacterBuyButton: se paga y queda elegido */
+            ginfo.total_coins -= chars[i].price;
+            missions_did(M_SPENDCOIN, chars[i].price);
+            char_tokens[chars[i].token] = chars[i].price;
+            ginfo.character = i;
+            snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+            game_save();
+        } else snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+    }
+    if (in & (IN_CIRCLE | IN_SQUARE | IN_START)) {
+        snd_play(sfx_tap, 1, 1, 0);
+        change_state(GS_MENU); ginfo.state = GS_MENU;
+        char_show_model(ginfo.character);
+    }
 }
 
 /* ------------------------------------------------------------ tienda (Upgrades.cs) */
@@ -2056,10 +2263,17 @@ static void mystery_open(void)
         else if (r < 0.998f) h20 = 3;
         else coins = 10000;
     }
+    int tc = -1;
+    if (tok) {
+        /* ficha de un personaje que aun la necesite; si ya no queda ninguno, 100 monedas (como el original) */
+        tc = char_useful_token();
+        if (tc < 0) { tok = 0; coins = 100; }
+        else char_tokens[chars[tc].token]++;
+    }
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     if (coins) missions_did(M_EARNCOIN, coins);
     if (tok) missions_did(M_TOKENS, 1);
-    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "%s", TR("Ficha de personaje", "Character token"));
+    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "1x %s", char_token_name(tc));
     else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d monedas", "%d coins"), coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
@@ -2123,7 +2337,11 @@ void game_input(unsigned in)
         }
         if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
         else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
-        else if (in & (IN_TRIANGLE | IN_SQUARE)) { snd_play(sfx_tap, 1, 1, 0); ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
+        else if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
+        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.char_sel = ginfo.character; change_state(GS_CHARS); ginfo.state = GS_CHARS; }
+        break;
+    case GS_CHARS:
+        chars_input(in, confirm);
         break;
     case GS_SHOP:
         if ((in & IN_UP) && !(in & IN_CROSS)) ginfo.shop_sel = (ginfo.shop_sel + shop_count - 1) % shop_count;
@@ -2186,9 +2404,7 @@ void game_update(float dt)
     case GS_RUNNING: running_tick(dt); break;
     case GS_JETPACK: jetpack_tick(dt); break;
     case GS_DIEFALL: case GS_DIE: die_tick(dt); break;
-    case GS_CHECKPOINT:
-        if (game_time - state_time > 1.5f) { running_begin(); }
-        break;
+    case GS_CHECKPOINT: checkpoint_tick(dt); break;
     default: break;
     }
     DBG_PHASE(main, "game_update: power-ups");
@@ -2330,21 +2546,23 @@ void game_draw(void)
     if (gu.showing || state == GS_DIE || state == GS_DIEFALL) scene_draw_subtree(n_enemies);
     SECT(5);
     if (n_efx >= 0) scene_draw_subtree(n_efx);
+    tutorial_draw_arrow();
     r_flush_transparent();
     SECT(6);
 #undef SECT
 }
 
 /* ------------------------------------------------------------ partida guardada */
-#define SAVE_MAGIC 0x53535032
+#define SAVE_MAGIC 0x53535033   /* v3: + fichas por personaje (v2 sin ellas se sigue leyendo) */
 void game_save(void)
 {
     FILE *f = fopen("save.dat", "wb");
     if (!f) return;
-    int d[20] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
+    int d[32] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
                  ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
                  upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
                  mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
+    for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2353,20 +2571,25 @@ void game_load(void)
 {
     FILE *f = fopen("save.dat", "rb");
     if (!f) return;
-    int d[20];
+    int d[32];
     memset(d, 0, sizeof(d));
-    int n = fread(d, 4, 20, f);
+    int n = fread(d, 4, 32, f);
     fclose(f);
-    if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; return; }
-    if (n < 13 || d[0] != SAVE_MAGIC) return;
+    if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
+    int v2 = d[0] == 0x53535032;
+    if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;
     ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; ginfo.hs500 = d[4]; ginfo.hs2000 = d[5];
     ginfo.boxes_pending = d[6]; ginfo.boxes_opened = d[7];
     upgrade_tier[PW_JETPACK] = d[8]; upgrade_tier[PW_SNEAKERS] = d[9]; upgrade_tier[PW_MAGNET] = d[10]; upgrade_tier[PW_DOUBLE] = d[11];
-    tutorial_completed = d[12] ? 1 : 1;
+    tutorial_completed = v2 ? 1 : d[12];   /* quien ya jugo con la version anterior no repite el tutorial */
     if (n >= 20) {
         mission_set = d[13]; ginfo.tokens = d[14];
         mission_progress[0] = d[15]; mission_progress[1] = d[16]; mission_progress[2] = d[17]; ginfo.character = d[18];
     }
+    if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
+    else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
+    /* como CharacterModel.Awake: si el elegido no esta desbloqueado, se vuelve a Jake */
+    if (ginfo.character < 0 || ginfo.character >= NCHARS || !char_unlocked(ginfo.character)) ginfo.character = 0;
 }
 
 void scene_on_chunk_laid(int chunk) { (void)chunk; }

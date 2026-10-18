@@ -231,7 +231,7 @@ static void watchdog_report(int half_secs, int music_moving, int mixer_moving)
                      "mezclador de sonidos: %s (%s) | GE: %s | estado %s, %d m\r\n",
                      sec, cs, half_secs / 2, (half_secs & 1) * 5, (const char *)dbg_phase_main, (const char *)dbg_phase_music,
                      music_moving ? "avanza" : "parado", (const char *)dbg_phase_mixer, mixer_moving ? "avanza" : "parado",
-                     ge_state(), ginfo.state >= 0 && ginfo.state < 9 ? state_name_pub(ginfo.state) : "?", ginfo.meters);
+                     ge_state(), state_name_pub(ginfo.state), ginfo.meters);
     if (n > (int)sizeof(line)) n = sizeof(line);
     /* las lineas que aun no se habian escrito van primero: dicen que estaba pasando justo antes */
     SceUInt to = 300000;
@@ -325,8 +325,9 @@ void dlog_init(void)
 /* ------------------------------------------------------------ estadisticas periodicas */
 static const char *state_name(int s)
 {
-    static const char *n[] = {"MENU", "INTRO", "CARRERA", "JETPACK", "CAYENDO", "MUERTE", "FIN", "CHECKPOINT", "TIENDA"};
-    return s >= 0 && s < 9 ? n[s] : "?";
+    static const char *n[] = {"MENU", "INTRO", "CARRERA", "JETPACK", "CAYENDO", "MUERTE", "FIN", "CHECKPOINT", "TIENDA",
+                              "PERSONAJES"};
+    return s >= 0 && s < 10 ? n[s] : "?";
 }
 
 static struct {

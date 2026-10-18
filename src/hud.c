@@ -293,6 +293,11 @@ static const char *pw_icons[6] = {"icon_upgrades_hoverboard", "icon_upgrades_jet
 
 static void draw_ingame(void)
 {
+    /* avisos del tutorial (UIScreenController.QueueMessage) */
+    if (ginfo.message && ginfo.time - ginfo.message_t < 2.5f && ginfo.time >= ginfo.message_t) {
+        float a = clampf(2.5f - (ginfo.time - ginfo.message_t), 0, 1);
+        text_shadow(f_big, SCR_W / 2, 62, 0.75f, ((unsigned)(a * 255) << 24) | 0x00ffffff, 1, ginfo.message);
+    }
     char buf[64];
     /* puntuacion con ceros a la izquierda (UIIngameUpdater.SetScoreLabel) */
     snprintf(buf, sizeof(buf), "%06d", ginfo.score);
@@ -452,11 +457,64 @@ static void draw_menu(void)
     ui_sliced(a_ui, "button_fill_menuShop", sx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
     ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
     text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Tienda", "Shop"));
-    text_shadow(f_small, sx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("triangulo / cuadrado", "triangle / square"));
+    text_shadow(f_small, sx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("triangulo", "triangle"));
+    /* boton de personajes (abajo a la izquierda) */
+    float cx = 4 + 4;
+    ui_sliced(a_ui, "button_fill_menuShop", cx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
+    text_shadow(f_mid, cx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Personajes", "Characters"));
+    text_shadow(f_small, cx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("cuadrado", "square"));
     if (ginfo.missions_open) draw_missions_popup();
 }
 
 /* ------------------------------------------------------------ tienda */
+/* ------------------------------------------------------------ personajes (UICharacterSelectButton / BuyButton) */
+static void draw_chars(void)
+{
+    char buf[64];
+    /* lista a la izquierda; a la derecha se ve el modelo 3D del personaje marcado */
+    r_rect(0, 0, 238, SCR_H, 0xa0000000);
+    text_shadow(f_big, 119, 4, 0.7f, 0xffffffff, 1, TR("Personajes", "Characters"));
+    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
+    float tw = ui_text_width(f_big, LBL, buf);
+    ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - tw - 34 * UIS, 6, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
+    ui_sprite_wh(a_ui, "coin2d", SCR_W - 8 - tw - 30 * UIS, 6 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
+    ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
+    float y = 32;
+    for (int i = 0; i < char_count(); i++) {
+        int sel = i == ginfo.char_sel, un = char_unlocked(i);
+        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 6, y, 226, 20, 0.5f,
+                  sel ? 0xffffffff : 0xc0ffffff);
+        ui_text(f_mid, 14, y + 2, 0.62f, un ? 0xffffffff : 0xffb0b0b0, 0, char_name(i));
+        if (i == ginfo.character) {
+            ui_text(f_mid, 226, y + 2, 0.62f, 0xff80ff80, 2, TR("Elegido", "Selected"));
+        } else if (un) {
+            ui_text(f_mid, 226, y + 2, 0.62f, 0xffffffff, 2, TR("Disponible", "Unlocked"));
+        } else if (char_unlock_type(i) == UL_TOKENS) {
+            snprintf(buf, sizeof(buf), "%d/%d", char_have(i), char_price(i));
+            float w = ui_text_width(f_mid, 0.62f, buf);
+            if (char_token_sprite(i)) ui_sprite_wh(a_ui, char_token_sprite(i), 226 - w - 20, y + 1, 18, 18, 0xffffffff);
+            ui_text(f_mid, 226, y + 2, 0.62f, 0xffffffff, 2, buf);
+        } else {
+            snprintf(buf, sizeof(buf), "%d", char_price(i));
+            float w = ui_text_width(f_mid, 0.62f, buf);
+            ui_sprite_wh(a_ui, "coin2d", 226 - w - 18, y + 3, 15, 15, 0xffffffff);
+            ui_text(f_mid, 226, y + 2, 0.62f, ginfo.total_coins >= char_price(i) ? 0xffffffff : 0xff8080ff, 2, buf);
+        }
+        y += 22;
+    }
+    int i = ginfo.char_sel;
+    const char *hint;
+    if (char_unlocked(i)) hint = TR("X elegir    O volver", "X select    O back");
+    else if (char_unlock_type(i) == UL_COINS) hint = TR("X comprar    O volver", "X buy    O back");
+    else hint = TR("Fichas en las cajas misteriosas", "Tokens come from Mystery Boxes");
+    text_shadow(f_small, 119, SCR_H - 22, 0.6f, 0xffe0e0e0, 1, hint);
+    if (!char_unlocked(i) && char_unlock_type(i) == UL_TOKENS) {
+        snprintf(buf, sizeof(buf), "%s: %d/%d", char_token_name(i), char_have(i), char_price(i));
+        text_shadow(f_mid, 360, SCR_H - 30, 0.65f, 0xff00dbff, 1, buf);
+    }
+}
+
 static void draw_shop(void)
 {
     char buf[64];
@@ -545,6 +603,7 @@ void hud_draw(void)
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
+    case GS_CHARS: draw_chars(); break;
     case GS_GAMEOVER: draw_gameover(); break;
     default: draw_ingame(); break;
     }

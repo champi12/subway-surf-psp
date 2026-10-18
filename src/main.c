@@ -204,7 +204,15 @@ int main(int argc, char **argv)
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
-#ifdef AT_UI
+#ifdef AT_CHARS
+        /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
+        if (frame_no == 30) ginfo.total_coins = 9000;
+        if (frame_no == 40) pr |= PSP_CTRL_SQUARE;
+        if (frame_no >= 60 && frame_no <= 120 && frame_no % 12 == 0) pr |= PSP_CTRL_DOWN;
+        if (frame_no == 150) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
+        if (ginfo.state == GS_MENU && frame_no > 240) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_UI)
         if (frame_no == 40) pr |= PSP_CTRL_TRIANGLE;
         if (frame_no >= 60 && frame_no < 160 && frame_no % 10 == 0) pr |= PSP_CTRL_DOWN;   /* recorre toda la tienda */
         if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;

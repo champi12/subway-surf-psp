@@ -19,6 +19,8 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `FollowingGuard` | `src/game.c` | Inspector y perro: persecución, salto retrasado, captura |
 | `Jetpack`, `Hoverboard`, `SuperSneakers`, `CoinMagnet`, `DoubleScoreMultiplier` | `src/game.c` | Duraciones de `Upgrades.cs` |
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
+| `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 10 personajes: Jake gratis, 4 por fichas de las cajas misteriosas y 5 por monedas |
+| `TutorialEvent`, `Character.SetBackToCheckPoint` | `src/game.c` | Tramo de tutorial en la primera partida, con la flecha, los mensajes y la vuelta al punto de control al chocar |
 | `GameStats` | `src/game.c` | Puntos por metro × multiplicador, monedas, bonus de power-ups |
 | `Missions`, `PlayerInfo` | `src/missions.c` | Los 29 grupos de 3 misiones del original; cada grupo completado sube el multiplicador (hasta ×30) |
 | `RunnerAnimPlayer`, `CharacterPickupParticles` | `src/game.c` | Sonidos de pasos por fotograma y escala pentatónica de las monedas |
@@ -32,10 +34,9 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 
 ### Pendiente
 
-* Personajes desbloqueables (las fichas de las cajas misteriosas ya se guardan) y la palabra del día.
-  Las misiones que necesitan conexión (ganar a amigos, retos diarios, letras del día) se dan por completadas.
-* Tutorial (el tramo existe; de momento se empieza como si ya se hubiera completado).
-* Partículas (chispas de la tabla, polvo del jetpack).
+* La palabra del día. Las misiones que necesitan conexión (ganar a amigos, retos diarios, letras del día) se dan
+  por completadas.
+* Partículas (chispas de la tabla, polvo del jetpack): se dejan para el final porque costarían fotogramas.
 
 ## Cómo generar los datos
 
@@ -100,13 +101,22 @@ El original se jugaba deslizando el dedo; en la PSP:
 | START | Pausa (al reanudar hay cuenta atrás "Starting in 3, 2, 1" como en el original) |
 | L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
 | L / R (en el menú) | Ver las misiones |
+| △ / □ (en el menú) | Tienda / personajes |
 | SELECT | Medidor: resumen → memoria y VRAM → gráfica de tiempos → oculto |
 
 **Idioma:** el juego usa el idioma de la consola (*Ajustes → Ajustes del sistema → Idioma*): en español si la PSP
 está en español y en inglés con cualquier otro idioma, como el original. En inglés, las misiones y la tienda usan
 los textos originales de `Missions.cs` y `Upgrades.cs`.
 
-En el menú, △ o □ abren la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
+En el menú, □ abre los **personajes**: Jake viene desbloqueado; Tricky, Fresh, Spike y Yutani se consiguen
+juntando sus fichas (3, 50, 200 y 500), que salen en las cajas misteriosas, y Lucy, Ninja, Frank, King y Frizzy se
+compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `CharacterModels.cs`.
+
+La primera partida es el **tutorial** del original (saltar, rodar, cambiar de vía y la tabla), con los mensajes
+adaptados a los botones de la PSP; al chocar se vuelve al último punto de control en lugar de morir. Las partidas
+guardadas con versiones anteriores lo dan por hecho.
+
+En el menú, △ abre la **tienda** con los precios de `Upgrades.cs`: hoverboards (300), Headstart 250 (400),
 Headstart 1000 (2000), cajas misteriosas (500) y los 5 niveles de mejora del jetpack, las super zapatillas, el imán
 y el multiplicador ×2 (500, 1500, 3000, 10000, 30000), y saltar una misión (1500 + 100 por grupo completado).
 Al terminar la carrera las monedas suman 2 × el multiplicador de misiones a la puntuación final. Las cajas misteriosas recogidas en la carrera se abren al
