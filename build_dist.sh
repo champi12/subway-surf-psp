@@ -2,6 +2,11 @@
 # Arma dist/PSP/GAME/SUBWAY con el EBOOT y (si existe) la carpeta data/ generada con tools/extract.py
 set -e
 cd "$(dirname "$0")"
+# siempre desde cero: con objetos viejos, un .c sin cambios no se recompila aunque cambie un .h que usa
+# (paso con NodeRT en scene.h: anim.o se quedo con la estructura antigua y la camara y los personajes salian rotos)
+make clean > /dev/null
+make -C exhandler clean > /dev/null 2>&1 || true
+make -C exhandler/loader clean > /dev/null 2>&1 || true
 make
 make -C exhandler      # capturador de excepciones (crash.txt)
 make -C exhandler/loader   # plan B para cargarlo con kubridge
