@@ -115,7 +115,7 @@ int main(int argc, char **argv)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     rng_state ^= sceKernelGetSystemTimeLow();
     dlog_init();
-#if DEVLOG && !defined(AUTOTEST)
+#if DEVLOG && (!defined(AUTOTEST) || defined(AT_EXH))
     /* en la prueba automatica no: PPSSPP no implementa el registro de excepciones del kernel */
     load_exhandler();
 #endif
@@ -151,7 +151,9 @@ int main(int argc, char **argv)
     int stick_state = 0;
     int show_perf = 0;
 #ifdef AUTOTEST
+#ifndef AT_NOPERF
     show_perf = 1;
+#endif
     int frame_no = 0;
 #endif
     unsigned int last = sceKernelGetSystemTimeLow();
