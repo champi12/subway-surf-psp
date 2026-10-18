@@ -1525,6 +1525,7 @@ static void intro_tick(void)
 
 static void running_begin(void)
 {
+    in_left = in_right = in_up = in_down = in_board = 0;
     from_jetpack = cc.pos.y > 70.0f;
     nrt[n_colChar].active = 1;
     cam_follow = 1;
@@ -2357,6 +2358,11 @@ void game_input(unsigned in)
         break;
     case GS_DIE:
         if (in & (IN_UP | IN_CROSS)) in_up = 1;
+        break;
+    case GS_INTRO:
+    case GS_CHECKPOINT:
+        /* como en el original, mientras la intro o la vuelta al punto de control no se puede mover: si se guardara
+         * la pulsacion, el personaje saltaria, rodaria o cambiaria de via nada mas empezar a correr */
         break;
     default:
         if (in & IN_L) use_headstart(0);
