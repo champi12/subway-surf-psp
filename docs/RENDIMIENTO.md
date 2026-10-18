@@ -259,7 +259,7 @@ tramo que se alterna con el primero).
 | **Camino rápido** sin recorte para los bloques que caben enteros en la banda de guarda del GE | Comprobaciones por vértice |
 | **VFPU** para transformar vértices, comprobada al arrancar contra la versión en C | Cálculo por vértice |
 | **Curvatura exacta en el GE** con skinning de 4 "huesos": cada vértice lleva los pesos (1, x, y, z) normalizados a la caja del modelo y `zc² = zc·(c0 + Σ uj·cj)` sale exacto. Los objetos pequeños de un solo trozo usan la aproximación lineal de siempre | Todo el escenario que no hay que recortar va al GE: de ~12.000 a ~600 vértices por fotograma en la CPU (en el emulador) |
-| **Skinning por hardware** (lotes de ≤ 8 huesos) para Jake, el inspector y el perro; también cerca de la cámara si el centro está a más de 10 unidades (`SKIN_GE_MIN_D`): el GE recorta solo contra el plano cercano | Toda la piel de los personajes (antes, con el inspector cerca, 5-15 ms de CPU por fotograma en la consola) |
+| **Skinning por hardware** (lotes de ≤ 8 huesos) para Jake, el inspector y el perro cuando caben enteros delante de la cámara (cerca de ella van por la CPU: en el GE las partes de detrás se convierten en triángulos gigantes) | Toda la piel de los personajes |
 | Texturas del escenario y los trenes en **VRAM**; el resto con paleta de 256 colores y *swizzled* | Ancho de banda de texturas |
 | Buffers del GE ajustados a lo medido con el devlog (pico × 2) | 3,6 MB más de RAM libre |
 | **Física solo cerca del personaje**: solo los tramos entre 80 unidades detrás y 250 delante, y en cada movimiento se preseleccionan las cajas cercanas una vez (no en cada subpaso) | Miles de lecturas de memoria por fotograma |

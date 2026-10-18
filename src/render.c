@@ -56,9 +56,6 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define FAST_OK 1
 #endif
 #define CLIP_NEAR 4.0f          /* plano cercano real de recorte */
-#ifndef SKIN_GE_MIN_D
-#define SKIN_GE_MIN_D 10.0f     /* personajes cerca de la camara: distancia minima del centro para la piel en el GE */
-#endif
 #ifndef R_VBLANKS
 #define R_VBLANKS 2             /* 2 = 30 FPS, 1 = 60 FPS */
 #endif
@@ -911,11 +908,9 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         V3 c = v3(0, 0, 0);
         for (int i = 0; i < nb; i++) c = v3add(c, m34_pos(&bones[i]));
         c = v3scale(c, 1.0f / nb);
-        /* GE si cabe entero, o si esta cerca pero con el centro a mas de SKIN_GE_MIN_D delante: el GE recorta solo
-         * contra el plano cercano (GU_CLIP_PLANES) y a esa distancia ningun vertice se sale de su rango de pantalla.
-         * Antes el inspector y el perro iban por la CPU en cuanto se acercaban a la camara (5-15 ms por fotograma) */
-        int sv = sphere_visible(c, 12.0f);
-        if (sv == 1 || (sv == 2 && m34_point(&r_view, c).z > SKIN_GE_MIN_D)) {
+        /* solo si cabe entero delante del plano cercano: con el inspector o el perro cerca de la camara, las partes
+         * que quedan detras se convierten en triangulos gigantes en el GE (probado: se ve en PPSSPP) */
+        if (sphere_visible(c, 12.0f) == 1) {
             DBG_PHASE(main, "r_draw_skinned: piel por hardware (GE)");
             float d0 = m34_point(&r_view, c).z;
             M34 idm; m34_identity(&idm);

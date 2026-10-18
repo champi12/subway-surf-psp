@@ -211,7 +211,17 @@ int main(int argc, char **argv)
         if (frame_no == 700) { pr |= PSP_CTRL_START; }
         if (frame_no == 740) { pr |= PSP_CTRL_START; }
 #else
-        if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
+        {
+            /* AT_MENUBACK: tras la primera carrera se queda en el menu (para ver como vuelve la camara) */
+            static int ran;
+            if (ginfo.state == GS_RUNNING) ran = 1;
+#ifdef AT_MENUBACK
+            if (ginfo.state == GS_MENU && frame_no > 60 && !ran) pr |= PSP_CTRL_CROSS;
+#else
+            (void)ran;
+            if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
+#endif
+        }
 #endif
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
         {
