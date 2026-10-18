@@ -11,6 +11,7 @@ typedef struct {
     uint8_t rend;        /* renderer.enabled */
     uint8_t col;         /* collider.enabled */
     uint8_t hidden;      /* ocultado por la tabla (hoverboard) */
+    uint8_t taken;       /* moneda suelta (Coin de la escena) ya recogida: ni se dibuja ni choca */
     float rot_phase;     /* PickupRotate */
     uint8_t rotating;
     uint8_t picked;

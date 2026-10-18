@@ -113,7 +113,7 @@ static void add_node_cols(int n)
 
 static void add_subtree(int n)
 {
-    if (!subcol[n]) return;
+    if (!subcol[n] || nrt[n].taken) return;
     add_node_cols(n);
     for (int c = gd.nodes[n].first_child; c >= 0; c = gd.nodes[c].next_sibling) add_subtree(c);
 }

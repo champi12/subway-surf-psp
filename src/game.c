@@ -1070,6 +1070,10 @@ static void check_triggers(void)
         const Col *k = &cols[i];
         if (!phys_layer_hits(k->layer) || k->layer == 11) continue;
         if (capsule_overlaps(a, b, col_radius, k)) over_now[nover++] = k->node;
+#ifdef AT_COINTEST
+        /* prueba: una moneda suelta a la altura de Jake (en z) cuenta como tocada, este donde este */
+        else if (k->type == COL_SPHERE && node_comp(k->node, C_COIN, NULL) && fabsf(k->p0.z - c.z) < 3.0f) over_now[nover++] = k->node;
+#endif
     }
     for (int i = 0; i < nover; i++) {
         int found = 0;
@@ -1088,9 +1092,8 @@ static void check_triggers(void)
 }
 
 /* ---- monedas: recogida, iman y zapatillas ---- */
-static void pickup_coin_effect(int ci)
+static void pickup_coin_effect(float y)
 {
-    float y = coins[ci].pos.y;
     static const int pent[17] = {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
     float pitch;
     if (80.0f < y) {
@@ -1117,7 +1120,7 @@ static void collect_coin(int i)
     coins_run++;
     missions_did(M_EARNCOIN, 1);
     if (coins[i].pulling && mods[MOD_MAGNET].active) missions_did(M_COINSWITHMAGNET, 1);
-    pickup_coin_effect(i);
+    pickup_coin_effect(coins[i].pos.y);
     coins[i].visible = 0;
     coins[i].collider = 0;
     coins[i].pulling = 0;
@@ -1142,6 +1145,15 @@ static void coins_tick(float dt)
     int magnet = mods[MOD_MAGNET].active && !mods[MOD_MAGNET].paused && state != GS_JETPACK;
     int sneak = mods[MOD_SNEAKERS].active && !mods[MOD_SNEAKERS].paused;
     V3 magc = v3add(cc.pos, v3(0, 5.7f + 5.0f, 10.0f));
+    if (magnet && !ch.stopColliding) {
+        /* el iman tambien atrae las monedas sueltas de la escena (las de los trenes en marcha): CoinMagnet.CoinHit.
+         * Aqui se recogen al entrar en su radio, sin el vuelo hasta Jake */
+        for (int i = 0; i < ncols; i++) {
+            const Col *k = &cols[i];
+            if (k->type != COL_SPHERE || nrt[k->node].taken || !node_comp(k->node, C_COIN, NULL)) continue;
+            if (v3len(v3sub(k->p0, magc)) < 60.0f + k->r) notify_pickup(k->node);
+        }
+    }
     for (int i = 0; i < MAX_COINS; i++) {
         CoinRT *k = &coins[i];
         if (!k->active) continue;
@@ -1171,11 +1183,6 @@ static void coins_tick(float dt)
             if (got) dlog("MONEDA recogida gracias al barrido (se movio %.1f en un fotograma)", v3len(dr));
 #endif
         }
-#ifdef AUTOTEST
-        if (!got && k->prel_ok && k->prel.z > 0 && rel.z <= 0 && fabsf(rel.x) < 6.0f)
-            dlog("MONEDA no recogida al pasar: dx %.1f dy %.1f (antes %.1f %.1f %.1f) dueno %s", rel.x, rel.y, k->prel.x,
-                 k->prel.y, k->prel.z, k->owner >= 0 ? node_name(k->owner) : "-");
-#endif
         k->prel = rel; k->prel_ok = 1;
         if (got && !ch.stopColliding) { collect_coin(i); continue; }
         if (magnet || sneak) {
@@ -1233,6 +1240,17 @@ static void notify_pickup(int node)
         missions_did(M_SCORE, score_multiplier() * 50);
         missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
+        break;
+    case PK_COIN:
+        /* moneda suelta de la escena (la de MovingCoin, encima de los trenes en marcha): Coin.OnPickup.
+         * Antes no hacia nada: ni sonaba ni sumaba */
+        coins_run++;
+        missions_did(M_EARNCOIN, 1);
+        pickup_coin_effect(m34_pos(&nrt[node].world).y);
+        nrt[node].taken = 1;
+#ifdef AUTOTEST
+        dlog("MONEDA suelta recogida a %d m", ginfo.meters);
+#endif
         break;
     default: break;
     }

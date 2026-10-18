@@ -182,7 +182,7 @@ void scene_ssgroups(int on)
 
 void scene_draw_subtree(int n)
 {
-    if (!subdraw[n]) return;
+    if (!subdraw[n] || nrt[n].taken) return;
     NodeRT *r = &nrt[n];
     if (r->active && r->rend && !r->hidden) {
         const uint32_t *m = cmesh[n];
@@ -424,6 +424,13 @@ static void obj_activate(int n)
         scene_update_world(n);
     }
     if (node_comp(n, C_RENDACT, NULL)) nrt[n].rend = 1;
+    if (node_comp(n, C_COIN, NULL)) {
+        /* moneda suelta (la de MovingCoin): vuelve a estar disponible al reutilizar el tramo */
+        int pc = find_parent_collider(n);
+        if (pc >= 0) nrt[pc].col = 1;
+        nrt[n].taken = 0;
+        nrt[n].picked = 0;
+    }
     if ((c = node_comp(n, C_PICKUPDEFAULT, NULL))) {
         int pc = find_parent_collider(n);
         if (pc >= 0) nrt[pc].col = 1;
