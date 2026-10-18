@@ -18,6 +18,7 @@
 #include "hud.h"
 #include "devlog.h"
 #include "lang.h"
+#include "fpu.h"
 
 PSP_MODULE_INFO("SubwaySurfers", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -35,6 +36,7 @@ unsigned int rnd_u32(void)
 static int exit_cb(int a1, int a2, void *c) { running = 0; return 0; }
 static int cb_thread(SceSize a, void *p)
 {
+    fpu_no_exceptions();
     int id = sceKernelCreateCallback("exit", exit_cb, NULL);
     sceKernelRegisterExitCallback(id);
     sceKernelSleepThreadCB();
@@ -103,6 +105,8 @@ unsigned int heap_used_kb(void) { struct mallinfo mi = mallinfo(); return mi.uor
 
 int main(int argc, char **argv)
 {
+    unsigned int fcr31 = fpu_get_fcr31();
+    fpu_no_exceptions();
     mem_init();
     SceUID th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
@@ -115,6 +119,7 @@ int main(int argc, char **argv)
     /* en la prueba automatica no: PPSSPP no implementa el registro de excepciones del kernel */
     load_exhandler();
 #endif
+    dlog("FPU: FCR31 al arrancar 0x%08x (excepciones activadas 0x%02x) -> desactivadas en todos los hilos", fcr31, (fcr31 >> 7) & 31);
     lang_init();
     if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
     unsigned int tl = sceKernelGetSystemTimeLow();

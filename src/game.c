@@ -766,7 +766,7 @@ static void character_roll(void)
     /* (diagnostico del cuelgue al rodar en la consola real: se escribe en la tarjeta al momento) */
     dlog("RUEDA carril %d altura %d en el aire %d a %d m", ch.trackIndex, (int)cc.pos.y, !cc.grounded, ginfo.meters);
     dlog_flush();
-    dbg_trace_start("rodada", 20);
+    dbg_trace_start("rodada", 2);
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -1147,7 +1147,8 @@ static void coins_tick(float dt)
         V3 sp = v3add(k->pos, v3(0, 6, 0));
         /* trigger de la moneda (esfera r=4.5) contra la capsula del personaje */
         V3 q = a, ab = v3sub(b, a);
-        float l2 = v3dot(ab, ab), t = l2 > 0 ? clamp01(v3dot(v3sub(sp, a), ab) / l2) : 0;
+        /* al rodar la capsula es un punto (l2 = 0): fmaxf evita la division por cero que -ffast-math adelanta */
+        float l2 = v3dot(ab, ab), t = clamp01(v3dot(v3sub(sp, a), ab) / fmaxf(l2, 1e-12f));
         q = v3add(a, v3scale(ab, t));
         if (v3len(v3sub(sp, q)) < 4.5f + col_radius && !ch.stopColliding) { collect_coin(i); continue; }
         if (magnet || sneak) {
@@ -1434,7 +1435,6 @@ static void game_top_menu(void)
 
 static void game_start_run(void)
 {
-    dbg_trace_start("inicio de la carrera", 15);
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
     music_set_volume(0.3f);
@@ -2184,8 +2184,10 @@ void game_update(float dt)
         phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
         DBG_PHASE(main, "game_update: check_triggers");
         check_triggers();
+        DBG_PHASE(main, "game_update: coins_tick (monedas e iman)");
         coins_tick(dt);
     }
+    DBG_PHASE(main, "game_update: calculate_score");
     calculate_score();
     /* animaciones */
     DBG_PHASE(main, "game_update: animaciones");

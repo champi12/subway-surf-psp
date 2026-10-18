@@ -9,6 +9,7 @@
 #include <malloc.h>
 #include <unistd.h>
 #include "devlog.h"
+#include "fpu.h"
 #include "render.h"
 #include "game.h"
 #include "scene.h"
@@ -41,7 +42,7 @@ void dbg_trace(const char *phase) { trace_write(phase); }
 
 void dbg_trace_start(const char *why, int frames)
 {
-    if (trace_runs >= 4 || !trace_path[0]) return;     /* como mucho 4 rastreos por partida */
+    if (trace_runs >= 2 || !trace_path[0]) return;     /* como mucho 2 rastreos por partida (cada linea cuesta ~20 ms) */
     trace_runs++;
     char b[96];
     snprintf(b, sizeof(b), "===== RASTREO %d: %s =====", trace_runs, why);
@@ -112,6 +113,7 @@ static volatile int boot_done;
 
 static int writer_thread(SceSize a, void *p)
 {
+    fpu_no_exceptions();
     while (wrun) {
         sceKernelWaitSema(wsema, 1, 0);
         int b = wpend;
@@ -243,6 +245,7 @@ static void watchdog_report(int half_secs, int music_moving, int mixer_moving)
 
 static int watchdog_thread(SceSize a, void *p)
 {
+    fpu_no_exceptions();
     unsigned int last_main = dbg_count_main, last_mus = dbg_count_music, last_mix = dbg_count_mixer;
     int stuck = 0, reported = 0;
     while (wrun) {

@@ -88,8 +88,10 @@ con `kubridge` (PRO y ARK lo traen). En PPSSPP sale "NO activo": el emulador no 
 ### El modo rastreo (`trace.txt`)
 
 Para cuelgues que congelan toda la consola sin pasar por el capturador (por ejemplo, si el chip gráfico bloquea
-el bus), al empezar la carrera y en las primeras rodadas el juego escribe **cada paso del bucle principal** en
-`trace.txt`, abriendo y cerrando el archivo cada vez. Durante esos fotogramas el juego va muy lento. Si se cuelga,
+el bus), en las 2 primeras rodadas el juego escribe **cada paso del bucle principal** durante 2 fotogramas en
+`trace.txt`, abriendo y cerrando el archivo cada vez. Cada línea cuesta unos 20 ms en la consola, así que esos
+fotogramas van a tirones (antes se hacía también al empezar la carrera, y durante 15-20 fotogramas: ese era el "1 fps"
+al empezar a correr). Si se cuelga,
 **la última línea de `trace.txt` es el último paso que llegó a ejecutarse**.
 
 ### Diferencias entre PPSSPP y la consola que pueden colgar el juego
@@ -99,9 +101,22 @@ el bus), al empezar la carrera y en las primeras rodadas el juego escribe **cada
 | Leer un `int`/`float` de una dirección no múltiplo de 4 (o `lv.q` no múltiplo de 16) cuelga la consola | Funciona |
 | Leer una dirección inválida cuelga la consola | Se ignora |
 | Un hilo de más prioridad puede interrumpir a otro en mitad de cualquier función | Los hilos solo cambian en las llamadas al sistema |
+| La FPU viene con las excepciones activadas (FCR31 = 0x0e00): dividir por cero, `sqrt` de un negativo, 0/0 o un desbordamiento cuelgan la consola | Se calcula infinito o NaN y sigue |
 
-Para la prueba automática hay un parche para PPSSPPHeadless 1.18.1 (`tools/ppsspp_estricto.patch`) que detecta los dos primeros casos (`PPSSPP_STRICT_ALIGN=1
-PPSSPP_STRICT_MEM=1 PPSSPP_ARGS=-i`), parcheando el intérprete. El tercero no se puede emular: por eso solo el hilo
+Para la prueba automática hay un parche para PPSSPPHeadless 1.18.1 (`tools/ppsspp_estricto.patch`) que detecta el
+primero, el segundo y el cuarto (`PPSSPP_STRICT_ALIGN=1 PPSSPP_STRICT_MEM=1 PPSSPP_STRICT_FPU=1 PPSSPP_ARGS=-i`),
+parcheando el intérprete. Con `PPSSPP_STRICT_FPU=1` escribe `SS_FPU ... PC=... RA=...` en cuanto una operación de coma
+flotante fallaría en la consola (solo si el hilo tiene las excepciones activadas, como la PSP; con
+`PPSSPP_STRICT_FPU_ALL=1` avisa siempre). `psp-addr2line -f -i -e subway.elf <PC>` dice la línea.
+
+**El cuelgue al rodar era esto.** Al rodar, la cápsula del personaje se queda en un punto y en `coins_tick` se dividía
+por su longitud (0). El código lo protegía con un `if`, pero con `-ffast-math` GCC pone la división en el hueco de
+retardo del salto (en MIPS esa instrucción se ejecuta siempre, se tome o no el salto) y la consola se colgaba sin pasar
+por el capturador. Lo mismo pasaba con `sqrtf` en `phys_raycast_down`. Por eso ahora todos los hilos llaman a
+`fpu_no_exceptions()` (`src/fpu.h`) al empezar, y el devlog escribe al arrancar `FPU: FCR31 al arrancar ...`. Ojo: cada
+hilo nuevo empieza otra vez con las excepciones activadas, así que cualquier hilo que se añada debe llamarla.
+
+El tercero no se puede emular: por eso solo el hilo
 principal formatea números decimales (`%f`), ya que la libc de la PSP (newlib) comparte entre hilos la memoria que usa
 para formatearlos.
 

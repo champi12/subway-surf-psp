@@ -48,7 +48,7 @@ extern volatile unsigned int dbg_count_music, dbg_count_mixer;
 #define DBG_PHASE_mixer(s) (dbg_phase_mixer = (s))
 /* modo rastreo (diagnostico de cuelgues que congelan toda la consola): mientras esta activo, cada fase nueva del
  * hilo principal se escribe en trace.txt al momento (abrir, escribir, cerrar). La ultima linea es el ultimo paso que
- * llego a ejecutarse. Hace el juego muy lento: solo se activa unos segundos (al rodar y al empezar la carrera). */
+ * llego a ejecutarse. Cada linea cuesta ~20 ms en la consola: solo se activa 2 fotogramas en las 2 primeras rodadas. */
 extern volatile int dbg_tracing;
 void dbg_trace(const char *phase);
 void dbg_trace_start(const char *why, int frames);

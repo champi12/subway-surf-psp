@@ -334,8 +334,9 @@ int phys_raycast_down(V3 o, float maxd, float *out_d, int include_triggers)
         } else {
             V3 p = c->p0;
             float dx = o.x - p.x, dz = o.z - p.z, r2 = c->r * c->r - dx * dx - dz * dz;
-            if (r2 >= 0) t = (o.y - p.y) - sqrtf(r2);
-            if (t < 0 && r2 >= 0) t = 0;
+            if (r2 < 0) continue;   /* (con la raiz dentro de un if, -ffast-math la calculaba antes: sqrt de negativo) */
+            t = (o.y - p.y) - sqrtf(r2);
+            if (t < 0) t = 0;
         }
         if (t >= 0 && t < bd) { bd = t; best = i; }
     }

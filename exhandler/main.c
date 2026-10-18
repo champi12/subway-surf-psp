@@ -113,12 +113,14 @@ static void handler(PspDebugRegBlock *r)
     if ((sp & 3) == 0 && (sp & 0x3FFFFFFF) >= 0x08800000 && (sp & 0x3FFFFFFF) < 0x0C000000 - 64)
         for (int i = 0; i < 16; i++) { hex(((volatile unsigned int *)sp)[i]); put((i & 3) == 3 ? "\r\n" : " "); }
     put("=======================================\r\n");
-    write_file(cfg.crash_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC);
-    write_file(cfg.devlog_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND);
+    /* primero la pantalla: si escribir en la Memory Stick se queda colgado, al menos se puede hacer una foto */
     pspDebugScreenInit();
     pspDebugScreenPuts("Subway Surfers PSP has crashed / se ha colgado\n");
     pspDebugScreenPuts(out);
-    pspDebugScreenPuts("\nSend crash.txt and devlog.txt / Envia crash.txt y devlog.txt\n");
+    pspDebugScreenPuts("\nWriting crash.txt... / Escribiendo crash.txt...\n");
+    write_file(cfg.crash_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC);
+    write_file(cfg.devlog_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND);
+    pspDebugScreenPuts("Send crash.txt and devlog.txt / Envia crash.txt y devlog.txt\n");
     pspDebugScreenPuts("Hold POWER to turn off / Manten POWER para apagar\n");
     for (;;) sceKernelDelayThread(1000000);
 }

@@ -16,6 +16,7 @@
 #include "audio.h"
 #include "data.h"
 #include "vmath.h"
+#include "fpu.h"
 
 #define MAX_VOICES 16
 #define MIX_SAMPLES 512
@@ -38,6 +39,7 @@ static SceUID mix_thid = -1, mus_thid = -1;
 
 static int mixer_thread(SceSize args, void *argp)
 {
+    fpu_no_exceptions();
     int ch = sceAudioChReserve(PSP_AUDIO_NEXT_CHANNEL, MIX_SAMPLES, PSP_AUDIO_FORMAT_STEREO);
     int cur = 0;
     static int acc[MIX_SAMPLES];
@@ -160,6 +162,7 @@ static int ends_with(const char *s, const char *e)
 
 static int music_thread(SceSize args, void *argp)
 {
+    fpu_no_exceptions();
     SceUID fd = -1;
     int handle = -1, src_ch = -1, last_samples = 0, rate = 44100;
     /* AT3 */
