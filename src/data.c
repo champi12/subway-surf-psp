@@ -85,7 +85,7 @@ static int load_meshes(void)
 {
     uint8_t *b = load_file("mesh.bin", NULL);
     if (!b) return -1;
-    if (memcmp(b, "SSM2", 4)) { snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
+    if (memcmp(b, "SSM3", 4)) { snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
     gd.nmeshes = rd32(b + 4);
     gd.meshes = calloc(gd.nmeshes, sizeof(Mesh));
     for (int i = 0; i < gd.nmeshes; i++) {

@@ -56,6 +56,9 @@ typedef struct {
     int pulling;
     float pull_t, pull_dur;
     V3 pull_from;
+    /* posicion relativa al personaje en el fotograma anterior (para no saltarse monedas rapidas) */
+    V3 prel;
+    int prel_ok;
 } CoinRT;
 
 #define MAX_COINS 600

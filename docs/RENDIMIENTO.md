@@ -255,20 +255,27 @@ tramo que se alterna con el primero).
 | Técnica | Qué ahorra |
 |---|---|
 | **CPU y GE en paralelo**: cada fotograma se prepara mientras el GE dibuja el anterior | Casi todo el tiempo de CPU queda oculto detrás del dibujo |
-| **Escenario troceado** en bloques de 32 unidades; se descartan los que quedan fuera de cámara, y los bloques pequeños pueden curvarse en el GE | En la consola real el coste va con los vértices que transforma la CPU (~2,5 µs cada uno): de ~12.500 a ~3.500 por fotograma |
+| **Escenario troceado** en bloques de 64 unidades; se descartan los que quedan fuera de cámara | En la consola real el coste va con los vértices que transforma la CPU (~2,5 µs cada uno) y con el número de llamadas de dibujo: con bloques de 32 había ~1.000 por fotograma, con 64 unos 450 (-29 % de CPU en el emulador) |
 | **Camino rápido** sin recorte para los bloques que caben enteros en la banda de guarda del GE | Comprobaciones por vértice |
 | **VFPU** para transformar vértices, comprobada al arrancar contra la versión en C | Cálculo por vértice |
-| **Curvatura linealizada en el GE** para objetos pequeños y bloques lejanos (error < 1 píxel) | ~17.000 vértices por fotograma |
+| **Curvatura exacta en el GE** con skinning de 4 "huesos": cada vértice lleva los pesos (1, x, y, z) normalizados a la caja del modelo y `zc² = zc·(c0 + Σ uj·cj)` sale exacto. Los objetos pequeños de un solo trozo usan la aproximación lineal de siempre | Todo el escenario que no hay que recortar va al GE: de ~12.000 a ~600 vértices por fotograma en la CPU (en el emulador) |
 | **Skinning por hardware** (lotes de ≤ 8 huesos) para Jake, el inspector y el perro | Toda la piel de los personajes |
 | Texturas del escenario y los trenes en **VRAM**; el resto con paleta de 256 colores y *swizzled* | Ancho de banda de texturas |
 | Buffers del GE ajustados a lo medido con el devlog (pico × 2) | 3,6 MB más de RAM libre |
-| **Curvatura en el GE según el error real**: cada bloque va al GE si el error de aproximar la curvatura (`k·r²/d`) es menor de 0,75 píxeles | ~40 % menos vértices en la CPU |
 | **Física solo cerca del personaje**: solo los tramos entre 80 unidades detrás y 250 delante, y en cada movimiento se preseleccionan las cajas cercanas una vez (no en cada subpaso) | Miles de lecturas de memoria por fotograma |
 | Componentes de dibujo y de colisión de cada nodo calculados al arrancar; las ramas sin nada que dibujar o chocar se saltan | Recorrer la escena |
 | Sin lecturas del reloj por cada trozo de modelo (en la PSP real cada una es una llamada al sistema) | Varios ms por fotograma en la consola |
 | **30 FPS fijos**, como el original | Ritmo estable en vez de saltar entre 60, 30 y 20 |
 | Texto: una llamada de dibujo por frase (no por letra); centro de cada trozo calculado una vez | Llamadas de dibujo y cálculo por trozo |
 | Banda de guarda de 6 (el GE admite hasta 8,5 en horizontal) | Menos triángulos recortados por software |
+
+### Los puntos blancos en el escenario
+
+Antes la curvatura se aproximaba con una recta distinta en cada bloque. En la junta entre dos bloques el mismo vértice
+caía en sitios un poco distintos (hasta 0,75 píxeles) y por la rendija se veía el color de fondo: puntos blancos en
+fila a lo largo de la vía. Ahora la curvatura es exacta en el GE (ver la tabla): los vértices compartidos caen en el
+mismo sitio. Para comprobarlo: `XFLAGS="-DAT_GOD -DAT_CRACKS" tools/autotest.sh ...` dibuja sin cielo y con el fondo
+magenta, de modo que cualquier grieta se ve magenta en las capturas.
 
 ## 8. Si en la consola real fuera lento
 

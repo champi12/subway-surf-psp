@@ -127,6 +127,8 @@ static void baked_init(void)
     }
 }
 
+#define MIN_TEXT_PX 14.0f
+
 /* fuente y escala con las que se dibuja realmente; snap = a tamano exacto (1:1 y pixeles enteros) */
 static void resolve_font(int *fi, float *scale, int *snap)
 {
@@ -134,6 +136,8 @@ static void resolve_font(int *fi, float *scale, int *snap)
     baked_init();
     if (*fi < 0 || strchr(fnt[*fi].name, '@')) return;
     float want = fnt[*fi].size * *scale;
+    /* en la pantalla de la PSP, por debajo de 14 pixeles cuesta leer (el original escalaba para pantallas de movil) */
+    if (want < MIN_TEXT_PX) { want = MIN_TEXT_PX; *scale = want / fnt[*fi].size; }
     int best = -1;
     float bd = 1e9f;
     for (int i = 0; i < nbaked; i++) {
@@ -377,7 +381,7 @@ static void draw_missions_button(float x, float y)
     snprintf(buf, sizeof(buf), "x%d", missions_multiplier());
     text_shadow(f_big, x + 144, y + 2, 0.6f, 0xff00dbff, 2, buf);
     snprintf(buf, sizeof(buf), "%d/3   L / R", n);
-    ui_text(f_small, x + 46, y + 25, 0.55f, 0xffc0c0c0, 0, buf);
+    text_shadow(f_small, x + 46, y + 24, 0.55f, 0xffe0e0e0, 0, buf);
 }
 
 /* ventana con las 3 misiones del grupo actual */
@@ -401,7 +405,7 @@ static void draw_missions_popup(void)
             text_shadow(f_mid, x + w - 16, ry + 4, 0.62f, 0xff00dbff, 2, buf);
         }
     }
-    ui_text(f_small, SCR_W / 2, y + 180, 0.6f, 0xffc0c0c0, 1, TR("Completa las 3 para subir el multiplicador", "Complete all 3 to raise your multiplier"));
+    text_shadow(f_small, SCR_W / 2, y + 178, 0.6f, 0xffe0e0e0, 1, TR("Completa las 3 para subir el multiplicador", "Complete all 3 to raise your multiplier"));
 }
 
 /* aviso de mision completada (UINotification) */
@@ -448,7 +452,7 @@ static void draw_menu(void)
     ui_sliced(a_ui, "button_fill_menuShop", sx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
     ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
     text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Tienda", "Shop"));
-    ui_text(f_small, sx + 65 * UIS, sy - 16, 0.55f, 0xffffffff, 1, TR("triangulo / cuadrado", "triangle / square"));
+    text_shadow(f_small, sx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("triangulo / cuadrado", "triangle / square"));
     if (ginfo.missions_open) draw_missions_popup();
 }
 
@@ -503,7 +507,7 @@ static void draw_shop(void)
         missions_text(shop_items[ginfo.shop_sel].idx, buf, sizeof(buf));
         ui_text(f_small, SCR_W / 2, SCR_H - 32, 0.55f, 0xffffffff, 1, buf);
     }
-    ui_text(f_small, SCR_W / 2, SCR_H - 16, 0.6f, 0xffc0c0c0, 1, TR("X comprar    O volver", "X buy    O back"));
+    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("X comprar    O volver", "X buy    O back"));
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
         r_rect(90, 110, 300, 50, 0xd0000000);
         text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);

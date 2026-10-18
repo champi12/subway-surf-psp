@@ -249,7 +249,11 @@ int main(int argc, char **argv)
         { extern unsigned int r_prof[8]; memset(r_prof, 0, sizeof(r_prof)); }
 #endif
         DBG_PHASE(main, "game_draw (preparar el dibujo)");
+#ifdef AT_CRACKS
+        r_begin_frame(0xffff00ff);   /* prueba de grietas: fondo magenta */
+#else
         r_begin_frame(0xfff6e6bc);   /* color de fondo de la camara (0.737, 0.902, 0.965) */
+#endif
         game_draw();
         DBG_PHASE(main, "hud_draw (interfaz)");
         unsigned int th0 = sceKernelGetSystemTimeLow();

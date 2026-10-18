@@ -40,7 +40,9 @@ typedef struct {
     uint32_t sky;
 } MatFile;
 
+/* w: pesos para la curvatura exacta en el GE (32768 = 1): 1 y la posicion normalizada a la caja del modelo */
 typedef struct {
+    uint16_t w[4];
     float u, v, x, y, z;
 } MVert;
 

@@ -426,7 +426,7 @@ def subdivide(V, UV, tris, max_edge):
     return V, UV, out
 
 
-CLUSTER = 32.0       # tamano de celda para trocear el escenario (culling por trozos y curvatura en el GE)
+CLUSTER = 64.0       # tamano de celda para trocear el escenario (culling por trozos); la curvatura es exacta en el GE
 
 
 def mesh_triangles(mo, h):
@@ -484,7 +484,7 @@ def make_parts(V, UV, subs, skin, world):
 
 
 def export_meshes(ex):
-    out = bytearray(b'SSM2')
+    out = bytearray(b'SSM3')
     out += struct.pack('<I', len(ex.meshes))
     body = bytearray()
     offs = []
@@ -514,6 +514,10 @@ def export_meshes(ex):
         body += struct.pack('<B', len(nm)) + nm.ljust(31, b'\0')
         body += struct.pack('<HHBBH', len(parts), len(subs), 1 if skin else 0, 0, 0)
         body += struct.pack('<4f6f', ctr[0], ctr[1], ctr[2], rad, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2])
+        # pesos para la curvatura exacta en el GE (skinning con 4 "huesos"): 1 y la posicion normalizada a la caja
+        # del modelo (0..1 -> 0..32768). Los vertices repetidos en varios trozos tienen los mismos pesos: sin juntas.
+        ext = np.where(mx > mn, mx - mn, 1.0).astype(np.float32)
+        Q = np.clip(np.rint((Va - mn) / ext * 32768.0), 0, 32768).astype(np.int64)
         tv = 0
         for si, order, idx in parts:
             P = Va[order]
@@ -522,7 +526,7 @@ def export_meshes(ex):
             pr = float(np.sqrt(((P - pc) ** 2).sum(axis=1)).max())
             body += struct.pack('<HHI4f', si, len(order), len(idx), pc[0], pc[1], pc[2], pr)
             for i in order:
-                body += struct.pack('<5f', UV[i][0], 1.0 - UV[i][1], V[i][0], V[i][1], V[i][2])
+                body += struct.pack('<4H5f', 32768, Q[i][0], Q[i][1], Q[i][2], UV[i][0], 1.0 - UV[i][1], V[i][0], V[i][1], V[i][2])
             body += struct.pack('<%dH' % len(idx), *idx)
             if len(idx) % 2:
                 body += b'\0\0'

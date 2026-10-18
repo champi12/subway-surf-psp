@@ -921,6 +921,8 @@ static void notify_stumble(const ClipInfo *snd, const char *name)
     if (state == GS_JETPACK) return;
     play_ci(snd);
     if (track_running_tutorial) return;
+    dlog("TROPIEZO contra %s a %d m, carril %d%s", name, ginfo.meters, ch.trackIndex,
+         ch.stumble ? " (ya iba tropezado: el inspector le atrapa)" : "");
     if (!strcmp(name, "lightSignal")) missions_did(M_BUMPLIGHTSIGNAL, 1);
     else if (!strcmp(name, "bush") || !strcmp(name, "powerbox")) missions_did(M_BUMPBUSH, 1);
     else if (!strncmp(name, "blocker_", 8)) missions_did(M_BUMPBARRIER, 1);
@@ -1121,6 +1123,15 @@ static void collect_coin(int i)
     coins[i].pulling = 0;
 }
 
+/* esfera de la moneda (r=4.5) contra la capsula del personaje (eje a-b) */
+static int coin_touch(V3 sp, V3 a, V3 b)
+{
+    V3 ab = v3sub(b, a);
+    /* al rodar la capsula es un punto (l2 = 0): fmaxf evita la division por cero que -ffast-math adelanta */
+    float l2 = v3dot(ab, ab), t = clamp01(v3dot(v3sub(sp, a), ab) / fmaxf(l2, 1e-12f));
+    return v3len(v3sub(sp, v3add(a, v3scale(ab, t)))) < 4.5f + col_radius;
+}
+
 static void coins_tick(float dt)
 {
     (void)dt;
@@ -1143,14 +1154,30 @@ static void coins_tick(float dt)
             continue;
         }
         if (!k->collider || !k->visible) continue;
-        if (fabsf(k->pos.z - cc.pos.z) > 80.0f) continue;
+        if (fabsf(k->pos.z - cc.pos.z) > 80.0f) { k->prel_ok = 0; continue; }
         V3 sp = v3add(k->pos, v3(0, 6, 0));
-        /* trigger de la moneda (esfera r=4.5) contra la capsula del personaje */
-        V3 q = a, ab = v3sub(b, a);
-        /* al rodar la capsula es un punto (l2 = 0): fmaxf evita la division por cero que -ffast-math adelanta */
-        float l2 = v3dot(ab, ab), t = clamp01(v3dot(v3sub(sp, a), ab) / fmaxf(l2, 1e-12f));
-        q = v3add(a, v3scale(ab, t));
-        if (v3len(v3sub(sp, q)) < 4.5f + col_radius && !ch.stopColliding) { collect_coin(i); continue; }
+        /* trigger de la moneda (esfera r=4.5) contra la capsula del personaje. Las monedas de los trenes en
+         * marcha se acercan al doble de velocidad (~13 unidades por fotograma a 20 FPS, tanto como la zona de
+         * recogida): tambien se prueban los puntos intermedios del camino desde el fotograma anterior */
+        V3 rel = v3sub(sp, c);
+        int got = coin_touch(sp, a, b);
+        if (!got && k->prel_ok) {
+            V3 dr = v3sub(rel, k->prel);
+            int steps = (int)(v3len(dr) * 0.5f);
+            if (steps > 16) steps = 16;
+            for (int s = 1; s <= steps && !got; s++)
+                got = coin_touch(v3add(c, v3add(k->prel, v3scale(dr, (float)s / (steps + 1)))), a, b);
+#ifdef AUTOTEST
+            if (got) dlog("MONEDA recogida gracias al barrido (se movio %.1f en un fotograma)", v3len(dr));
+#endif
+        }
+#ifdef AUTOTEST
+        if (!got && k->prel_ok && k->prel.z > 0 && rel.z <= 0 && fabsf(rel.x) < 6.0f)
+            dlog("MONEDA no recogida al pasar: dx %.1f dy %.1f (antes %.1f %.1f %.1f) dueno %s", rel.x, rel.y, k->prel.x,
+                 k->prel.y, k->prel.z, k->owner >= 0 ? node_name(k->owner) : "-");
+#endif
+        k->prel = rel; k->prel_ok = 1;
+        if (got && !ch.stopColliding) { collect_coin(i); continue; }
         if (magnet || sneak) {
             V3 mc = magnet ? magc : v3add(cc.pos, v3(0, -21.0f, 3.0f));
             float r = magnet ? 60.0f : 2.0f;
@@ -1481,7 +1508,12 @@ static void running_begin(void)
     if (n_mainCam >= 0) {
         V3 p = node_pos(n_mainCam);
         sm_x = p.x;
-        if (!from_jetpack) { cam_pos = p; }
+        if (!from_jetpack) {
+            cam_pos = p;
+            /* el primer fotograma mira hacia donde miraba la camara de la intro (antes cam_target aun valia
+             * (0,0,0) y la camara apuntaba un instante al origen: el "salto" al empezar la carrera) */
+            cam_target = v3add(p, v3scale(v3norm(m34_col(&nrt[n_mainCam].world, 2)), 35.0f));
+        }
     }
     sm_xv = 0;
     aim = CAM_AIM; aim_v = 0;
@@ -2228,6 +2260,17 @@ void game_update(float dt)
 void game_draw(void)
 {
     /* camara */
+#ifdef AT_CAMLOG
+    {
+        static int fr;
+        fr++;
+        if (state == GS_INTRO || (state == GS_RUNNING && game_time - state_time < 0.5f)) {
+            V3 mp = n_mainCam >= 0 ? node_pos(n_mainCam) : v3(0, 0, 0);
+            dlog("CAM f%d st%d follow%d t%.3f pos %.1f %.1f %.1f tgt %.1f %.1f %.1f main %.1f %.1f %.1f", fr, state, cam_follow,
+                 game_time - state_time, cam_pos.x, cam_pos.y, cam_pos.z, cam_target.x, cam_target.y, cam_target.z, mp.x, mp.y, mp.z);
+        }
+    }
+#endif
     if (cam_follow) {
         r_set_camera(v3add(cam_pos, cam_shake), v3add(cam_target, cam_shake), 60.0f);
     } else if (n_mainCam >= 0) {
@@ -2242,7 +2285,11 @@ void game_draw(void)
                                               "game_draw: efectos y transparentes", "game_draw: fin"};
     SECT(0);   /* camara */
     /* el cielo va pegado a la camara: se dibuja primero */
+#ifdef AT_CRACKS
+    if (0) {   /* prueba de grietas: sin cielo, el fondo magenta se ve por cualquier hueco */
+#else
     if (n_sky >= 0) {
+#endif
         if (cam_follow) {
             /* con CharacterCamera el cielo sigue a la camara */
             M34 cw; m34_inverse(&cw, &r_view);

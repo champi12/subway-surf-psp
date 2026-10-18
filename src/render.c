@@ -33,6 +33,7 @@ static unsigned int *dlist = dlists[0];
 static int frame_par, ge_busy;
 static void vfpu_selftest(void);
 static int model_set;
+static int bones_zero;       /* huesos 1-3 a cero (modo aproximado de objetos pequenos) */
 static int vpos, ipos;
 static void *fbp0, *fbp1, *zbp;
 static int cur_fb;
@@ -57,9 +58,6 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define CLIP_NEAR 4.0f          /* plano cercano real de recorte */
 #ifndef R_VBLANKS
 #define R_VBLANKS 2             /* 2 = 30 FPS, 1 = 60 FPS */
-#endif
-#ifndef HW_TOL
-#define HW_TOL 0.75f            /* error maximo (pixeles) de la curvatura linealizada en los bloques grandes */
 #endif
 /* banda de guarda en NDC: el GE admite coordenadas de pantalla de 0 a 4096 (+-2048 px desde el centro, es decir
  * +-8,5 NDC en horizontal y +-15 en vertical); con 6 queda margen y mas trozos van por el camino rapido */
@@ -301,6 +299,7 @@ void r_begin_frame(unsigned int clear)
     r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = 0;
     r_mem.dropped = r_mem.frame_texloads = 0;
     model_set = 0;
+    bones_zero = 0;
     /* lista "llamable": se construye mientras el GE sigue con el fotograma anterior */
     sceGuStart(GU_CALL, dlist);
     cur_tex = -2; cur_blend = -1; cur_color = 0; cur_st[0] = -1;
@@ -572,9 +571,9 @@ static void transform_vfpu(OV *o, const MVert *src, int nv, const M34 *mv, float
         : : "r"(vf_mat), "r"(vf_par) : "memory");
     for (int i = 0; i < nv; i++, src++, o++) {
         __asm__ volatile(
-            "lv.s   S100, 8(%1)\n"
-            "lv.s   S101, 12(%1)\n"
-            "lv.s   S102, 16(%1)\n"
+            "lv.s   S100, 16(%1)\n"          /* MVert: 4 pesos de 16 bits, u, v, x, y, z */
+            "lv.s   S101, 20(%1)\n"
+            "lv.s   S102, 24(%1)\n"
             "vhtfm4.q C110, E000, C100\n"     /* (x, y, d, 1) */
             "vmul.s S120, S112, S202\n"       /* d * za */
             "vadd.s S120, S120, S203\n"       /* zc */
@@ -611,6 +610,59 @@ static void bent_gumatrix(ScePspFMatrix4 *out, const M34 *mv, float d0, float kx
     }
 }
 
+/* Curvatura EXACTA en el GE con skinning de 4 "huesos". Cada vertice lleva los pesos (1, ux, uy, uz), su posicion
+ * normalizada a la caja del modelo (v = bmin + u*ext). Con zc(v) = ZA*d(v) + ZB (afin en v):
+ *   zc^2 = zc * (c0 + sum_j u_j*c_j)   con c0 = zc(bmin), c_j = ZA*dd/dv_j*ext_j
+ * hueso 0 (peso 1):   x + kx*c0*zc, y + ky*c0*zc, -d
+ * hueso j (peso u_j): kx*c_j*zc, ky*c_j*zc, 0
+ * Es la misma funcion de la posicion en todos los trozos: los vertices compartidos caen en el mismo sitio y no
+ * quedan grietas (con la aproximacion lineal por trozo quedaban puntos sueltos en las juntas). */
+
+static void exact_bones(const M34 *mv, const Mesh *me, float kx, float ky)
+{
+    const float *m = mv->m;
+    float zcc[4], ext[3], bmn[3] = {me->bmin.x, me->bmin.y, me->bmin.z}, bmx[3] = {me->bmax.x, me->bmax.y, me->bmax.z};
+    for (int c = 0; c < 4; c++) zcc[c] = ZA * m[c * 3 + 2];
+    zcc[3] += ZB;
+    float c0 = zcc[3];
+    for (int j = 0; j < 3; j++) { c0 += zcc[j] * bmn[j]; ext[j] = bmx[j] > bmn[j] ? bmx[j] - bmn[j] : 1.0f; }
+    ScePspFMatrix4 b;
+    float *o = (float *)&b;
+    for (int c = 0; c < 4; c++) {
+        o[c * 4 + 0] = m[c * 3] + kx * c0 * zcc[c];
+        o[c * 4 + 1] = m[c * 3 + 1] + ky * c0 * zcc[c];
+        o[c * 4 + 2] = -m[c * 3 + 2];
+        o[c * 4 + 3] = c == 3 ? 1.0f : 0.0f;
+    }
+    sceGuBoneMatrix(0, &b);
+    for (int j = 0; j < 3; j++) {
+        float cj = zcc[j] * ext[j];
+        for (int c = 0; c < 4; c++) {
+            o[c * 4 + 0] = kx * cj * zcc[c];
+            o[c * 4 + 1] = ky * cj * zcc[c];
+            o[c * 4 + 2] = 0.0f;
+            o[c * 4 + 3] = c == 3 ? 1.0f : 0.0f;
+        }
+        sceGuBoneMatrix(j + 1, &b);
+    }
+    bones_zero = 0;
+}
+
+/* objetos pequenos de un solo trozo: la aproximacion lineal de siempre en el hueso 0 (1 matriz en vez de 4) */
+static void approx_bones(const M34 *mv, float d0, float kx, float ky)
+{
+    ScePspFMatrix4 b;
+    bent_gumatrix(&b, mv, d0, kx, ky);
+    sceGuBoneMatrix(0, &b);
+    if (!bones_zero) {
+        memset(&b, 0, sizeof(b));
+        for (int j = 1; j < 4; j++) sceGuBoneMatrix(j, &b);
+        bones_zero = 1;
+    }
+}
+
+#define MESH_VTYPE (GU_WEIGHTS(4) | GU_WEIGHT_16BIT | GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D)
+
 static void model_identity(void)
 {
     if (!model_set) return;
@@ -632,7 +684,7 @@ static void transform_fast(OV *o, const MVert *src, int nv, const M34 *mv, float
 /* comprueba al arrancar que la VFPU da lo mismo que la version en C */
 static void vfpu_selftest(void)
 {
-    MVert v[3] = {{0.1f, 0.2f, 3.0f, -4.0f, 50.0f}, {0.5f, 0.5f, -20.0f, 10.0f, 300.0f}, {0, 1, 7.5f, 2.5f, 900.0f}};
+    MVert v[3] = {{{0}, 0.1f, 0.2f, 3.0f, -4.0f, 50.0f}, {{0}, 0.5f, 0.5f, -20.0f, 10.0f, 300.0f}, {{0}, 0, 1, 7.5f, 2.5f, 900.0f}};
     OV a[3], b[3];
     M34 m;
     m34_trs(&m, v3(1, -33, 33), qeuler(21.5f, 3.0f, 0), v3(1, 1, 1));
@@ -735,6 +787,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
     float s1 = v3len(m34_col(world, 1)), s2 = v3len(m34_col(world, 2));
     if (s1 > sc) sc = s1;
     if (s2 > sc) sc = s2;
+    int bones_mesh = 0;   /* 1 = huesos exactos de este objeto ya enviados */
     for (int k = 0; k < me->nparts; k++) {
         MeshPart *pt = &me->parts[k];
         int mat = pt->sub < nmats ? mats[pt->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
@@ -747,20 +800,14 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         if (!vis) continue;
         float d0 = vis == 1 ? pc.z : 0;
         float pr = pt->radius * sc;
-        /* Curvatura linealizada en el GE: el error en pantalla de un trozo de radio pr cuyo punto mas cercano
-         * esta a dmin es |k|*pr^2/dmin (en NDC). Se usa el GE si queda por debajo de HW_TOL pixeles, o si es un
-         * objeto pequeno (moneda, barrera: se deforma entero y no deja juntas). */
-        float dmin = d0 - pr;
-        if (vis == 1 && HW_OK &&
-            (pr <= 20.0f || (dmin > CLIP_NEAR && pr * pr * fmaxf(fabsf(kx * P00) * (SCR_W / 2), fabsf(ky * P11) * (SCR_H / 2)) <= HW_TOL * dmin))) {
-            /* lo transforma el GE con la curvatura linealizada (sin trabajo de CPU) */
-            ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
-            bent_gumatrix(gm, &mv, d0, kx, ky);
-            sceGuSetMatrix(GU_MODEL, gm);
-            model_set = 1;
+        if (vis == 1 && HW_OK) {
+            /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
+             * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
+            model_identity();
+            if (me->nparts == 1 && pr <= 20.0f) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
+            else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
             bind_material(mat, amul);
-            sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
-                           pt->ni, pt->idx, pt->verts);
+            sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
             r_stat_draws++;
             r_stat_hw += pt->nv;
             r_stat_tris += pt->ni / 3;
@@ -894,6 +941,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
                     }
                     sceGuBoneMatrix(j, gm);
                 }
+                bones_zero = 0;
                 bind_material(mat, 1.0f);
                 sceGuDrawArray(GU_TRIANGLES, GU_WEIGHTS(sb->nb) | GU_WEIGHT_32BITF | GU_TEXTURE_32BITF | GU_VERTEX_32BITF |
                                GU_INDEX_16BIT | GU_TRANSFORM_3D, sb->ni, sb->idx, sb->verts);
