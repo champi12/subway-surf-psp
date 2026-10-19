@@ -12,6 +12,9 @@ endif
 ifdef AUTOTEST
 CFLAGS += -DAUTOTEST=$(AUTOTEST)
 endif
+ifdef MIPMAPS
+CFLAGS += -DMIPMAPS=$(MIPMAPS)
+endif
 ASFLAGS = $(CFLAGS)
 LIBS = -lpspgum -lpspgu -lpspmp3 -lpspatrac3 -lpspaudio -lpsputility -lpsppower -lm
 

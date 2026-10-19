@@ -3,7 +3,7 @@
 #define GAME_H
 #include "vmath.h"
 
-enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS };
+enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS, GS_TROPHIES };
 
 /* botones (ya filtrados: solo los recien pulsados) */
 enum { IN_LEFT = 1, IN_RIGHT = 2, IN_UP = 4, IN_DOWN = 8, IN_BOARD = 16, IN_START = 32, IN_CROSS = 64, IN_CIRCLE = 128,
@@ -27,6 +27,7 @@ typedef struct {
     int gameover_coins;
     int tokens, character;        /* tokens: fichas de personaje recogidas (total); character: personaje elegido */
     int char_sel;                 /* personaje marcado en la pantalla de personajes */
+    int trophy_sel;               /* trofeo marcado en la pantalla de trofeos */
     int missions_open;            /* ventana de misiones abierta en el menu */
 } GameInfo;
 
@@ -47,6 +48,14 @@ int char_have(int i);             /* fichas que se tienen (o el precio si ya est
 int char_unlocked(int i);
 const char *char_token_name(int i);
 const char *char_token_sprite(int i);
+
+/* trofeos (Trophies.cs): 8 objetos de oro que salen en las cajas misteriosas */
+#define NTROPHIES 8
+int trophy_unlocked(int i);
+int trophies_collected(void);
+const char *trophy_name(int i);
+const char *trophy_desc(int i);
+const char *trophy_sprite(int i);   /* "trophy_locked" si aun no se tiene */
 
 extern GameInfo ginfo;
 extern float game_time;

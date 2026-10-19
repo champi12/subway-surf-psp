@@ -2208,6 +2208,14 @@ static int char_useful_token(void)
     return n ? opts[rnd_range(0, n)] : -1;
 }
 
+static void open_shop(void) { ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
+static void open_chars(void)
+{
+    ginfo.char_sel = ginfo.character;
+    char_show_model(ginfo.char_sel);
+    change_state(GS_CHARS); ginfo.state = GS_CHARS;
+}
+
 static void chars_input(unsigned in, int confirm)
 {
     if (in & IN_UP) { ginfo.char_sel = (ginfo.char_sel + NCHARS - 1) % NCHARS; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
@@ -2228,11 +2236,42 @@ static void chars_input(unsigned in, int confirm)
             game_save();
         } else snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
     }
-    if (in & (IN_CIRCLE | IN_SQUARE | IN_START)) {
+    if (in & IN_R) {
+        snd_play(sfx_tap, 1, 1, 0);
+        char_show_model(ginfo.character);
+        open_shop();
+    } else if (in & (IN_CIRCLE | IN_L | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         change_state(GS_MENU); ginfo.state = GS_MENU;
         char_show_model(ginfo.character);
     }
+}
+
+/* ------------------------------------------------------------ trofeos (Trophies.cs) */
+static const struct { const char *name, *name_en, *desc, *desc_en, *sprite; } trophies[NTROPHIES] = {
+    {"Gema", "Gemstone", "Su sitio esta en un museo!", "It belongs in a museum!", "trophy_diamond"},
+    {"Lingote de oro", "Gold Bar", "Directo de Fort Knox.", "Directly from Fort Knox.", "trophy_gold"},
+    {"Reloj con clase", "Classy Clock", "Luce estilo como Flavor Flav!", "Show your style like Flavor Flav!", "trophy_goldChainClock"},
+    {"Cadena de dolar", "Dollar Chain", "Pon brillo en la fiesta.", "Bring some bling to the party.", "trophy_goldChainDollar"},
+    {"El pisapapeles", "The Paperweight", "Un pequeno Gold Sapiens.", "A little Gold Sapiens.", "trophy_goldSkull"},
+    {"Auriculares", "Headphones", "El ritmo esta en el corazon.", "Groove is in the heart.", "trophy_headphones"},
+    {"Disco de platino", "Platinum Record", "Que vuelva el ritmo!", "Bring the beat back!", "trophy_lpBlack"},
+    {"Cinta de casete", "Cassette Tape", "Musica retro.", "Retro musicology.", "trophy_tapeBlack"},
+};
+static int trophies_mask;
+
+int trophy_unlocked(int i) { return i >= 0 && i < NTROPHIES && (trophies_mask >> i & 1); }
+int trophies_collected(void) { int n = 0; for (int i = 0; i < NTROPHIES; i++) n += trophy_unlocked(i); return n; }
+const char *trophy_name(int i) { return TR(trophies[i].name, trophies[i].name_en); }
+const char *trophy_desc(int i) { return TR(trophies[i].desc, trophies[i].desc_en); }
+const char *trophy_sprite(int i) { return trophy_unlocked(i) ? trophies[i].sprite : "trophy_locked"; }
+
+/* MysteryBox.Roll: un trofeo que aun no se tenga, al azar; -1 si ya estan todos */
+static int trophy_roll(void)
+{
+    int left[NTROPHIES], n = 0;
+    for (int i = 0; i < NTROPHIES; i++) if (!trophy_unlocked(i)) left[n++] = i;
+    return n ? left[rnd_range(0, n)] : -1;
 }
 
 /* ------------------------------------------------------------ tienda (Upgrades.cs) */
@@ -2279,14 +2318,17 @@ static void mystery_open(void)
     if (ginfo.boxes_pending <= 0) return;
     ginfo.boxes_pending--;
     ginfo.boxes_opened++;
-    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0;
+    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1;
     if (ginfo.boxes_opened == 1) tok = 1;
     else if (ginfo.boxes_opened == 2) h5 = 1;
     else if (ginfo.boxes_opened == 3) coins = 600;
     else {
         float r = rnd01();
         if (r < 0.40f) tok = 1;
-        else if (r < 0.45f) coins = 100;
+        else if (r < 0.45f) {
+            trophy = trophy_roll();
+            if (trophy < 0) coins = 100;   /* ya estan todos: 100 monedas, como el original */
+        }
         else if (r < 0.69f) coins = rnd_range(200, 300);
         else if (r < 0.73f) h5 = 1;
         else if (r < 0.80f) coins = 500;
@@ -2311,7 +2353,11 @@ static void mystery_open(void)
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     if (coins) missions_did(M_EARNCOIN, coins);
     if (tok) missions_did(M_TOKENS, 1);
-    if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "1x %s", char_token_name(tc));
+    if (trophy >= 0) {
+        trophies_mask |= 1 << trophy;
+        dlog("TROFEO %s (%d de %d)", trophies[trophy].name, trophies_collected(), NTROPHIES);
+        snprintf(ginfo.reward, sizeof(ginfo.reward), TR("Trofeo: %s", "Trophy: %s"), trophy_name(trophy));
+    } else if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "1x %s", char_token_name(tc));
     else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d monedas", "%d coins"), coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
@@ -2369,23 +2415,34 @@ void game_input(unsigned in)
     }
     switch (state) {
     case GS_MENU:
+        /* menu: X jugar, triangulo misiones, L personajes y R tienda (como pestanas a izquierda y derecha) */
         if (ginfo.missions_open) {
-            if (in & (IN_L | IN_R | IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 0; }
+            if (in & (IN_TRIANGLE | IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 0; }
             break;
         }
-        if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
+        if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
         else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
-        else if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
-        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.char_sel = ginfo.character; change_state(GS_CHARS); ginfo.state = GS_CHARS; }
+        else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
+        else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
+        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.trophy_sel = 0; change_state(GS_TROPHIES); ginfo.state = GS_TROPHIES; }
         break;
     case GS_CHARS:
         chars_input(in, confirm);
+        break;
+    case GS_TROPHIES:
+        /* rejilla de 4 x 2 */
+        if (in & IN_LEFT) ginfo.trophy_sel = (ginfo.trophy_sel + NTROPHIES - 1) % NTROPHIES;
+        if (in & IN_RIGHT) ginfo.trophy_sel = (ginfo.trophy_sel + 1) % NTROPHIES;
+        if ((in & (IN_UP | IN_DOWN)) && !(in & (IN_CROSS | IN_CIRCLE))) ginfo.trophy_sel = (ginfo.trophy_sel + 4) % NTROPHIES;
+        if ((in & (IN_LEFT | IN_RIGHT | IN_UP | IN_DOWN)) && !(in & (IN_CROSS | IN_CIRCLE))) snd_play(sfx_tap, 0.5f, 1, 0);
+        if (in & (IN_CIRCLE | IN_SQUARE | IN_CROSS | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
     case GS_SHOP:
         if ((in & IN_UP) && !(in & IN_CROSS)) ginfo.shop_sel = (ginfo.shop_sel + shop_count - 1) % shop_count;
         if ((in & IN_DOWN) && !(in & IN_CIRCLE)) ginfo.shop_sel = (ginfo.shop_sel + 1) % shop_count;
         if (confirm) shop_buy(ginfo.shop_sel);
-        if (in & (IN_CIRCLE | IN_TRIANGLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
+        if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
+        else if (in & (IN_CIRCLE | IN_R | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
     case GS_GAMEOVER:
         if (confirm || (in & IN_START)) {
@@ -2606,6 +2663,7 @@ void game_save(void)
                  upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
                  mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
     for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
+    d[30] = trophies_mask;
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2631,6 +2689,7 @@ void game_load(void)
     }
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
+    if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
     /* como CharacterModel.Awake: si el elegido no esta desbloqueado, se vuelve a Jake */
     if (ginfo.character < 0 || ginfo.character >= NCHARS || !char_unlocked(ginfo.character)) ginfo.character = 0;
 }
@@ -2638,6 +2697,13 @@ void game_load(void)
 void scene_on_chunk_laid(int chunk) { (void)chunk; }
 
 #ifdef AUTOTEST
+/* para la prueba automatica: abrir n cajas misteriosas de golpe */
+void game_debug_boxes(int n)
+{
+    for (int i = 0; i < n; i++) { ginfo.boxes_pending++; mystery_open(); }
+    dlog("PRUEBA %d cajas abiertas: %d trofeos, monedas %d", n, trophies_collected(), ginfo.total_coins);
+}
+
 /* para la prueba automatica: activar power-ups a voluntad */
 void game_debug_powerup(int k)
 {

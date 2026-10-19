@@ -38,7 +38,7 @@ static int vpos, ipos;
 static void *fbp0, *fbp1, *zbp;
 static int cur_fb;
 
-int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped;
+int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_skin_cpu;
 M34 r_view;
 V3 r_cam_pos;
 float r_near = 2.0f, r_far = 1000.0f;
@@ -89,6 +89,80 @@ static void *vram_alloc(int bytes)
     return p;
 }
 
+/* ---- mipmaps ----
+ * Las texturas no traen niveles reducidos: la via que se pierde a lo lejos leia la textura de 512x512 entera para
+ * pintar unos pocos pixeles, y la cache de texturas del GE fallaba continuamente (en la consola el GE tardaba mas de
+ * 33 ms en los tramos largos). Se generan al cargar, solo para las texturas de los modelos 3D: el nivel 0 sigue donde
+ * estaba (VRAM o RAM) y los reducidos van a la RAM, que al ser pequenos caben en la cache. */
+#ifndef MIPMAPS
+#define MIPMAPS 3               /* niveles extra (0 = sin mipmaps) */
+#endif
+static unsigned char *tex_3d;                 /* la usa algun material de un modelo 3D */
+static unsigned char *tex_nmip;
+static void *(*tex_mip)[MIPMAPS > 0 ? MIPMAPS : 1];
+int r_mip_bytes;
+
+/* byte (x, y) de una textura con swizzle de la PSP (bloques de 16 bytes x 8 filas) */
+static inline unsigned swz_off(unsigned xb, unsigned y, unsigned wb)
+{
+    return ((y >> 3) * (wb >> 4) + (xb >> 4)) * 128 + (y & 7) * 16 + (xb & 15);
+}
+
+static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int sh)
+{
+    int dw = sw / 2, dh = sh / 2, bpp = tx->fmt == TEX_T8 ? 1 : 2;
+    unsigned swb = sw * bpp, dwb = dw * bpp;
+    unsigned char *dst = memalign(16, dwb * dh);
+    if (!dst) return NULL;
+    for (int y = 0; y < dh; y++)
+        for (int x = 0; x < dw; x++) {
+            if (bpp == 1) {
+                /* con paleta no se puede promediar: un pixel de cada 2x2 */
+                dst[swz_off(x, y, dwb)] = src[swz_off(2 * x, 2 * y, swb)];
+                continue;
+            }
+            unsigned p[4];
+            for (int k = 0; k < 4; k++) {
+                unsigned o = swz_off((2 * x + (k & 1)) * 2, 2 * y + (k >> 1), swb);
+                p[k] = src[o] | (src[o + 1] << 8);
+            }
+            unsigned v;
+            if (tx->fmt == TEX_5650) {
+                unsigned r = 0, g = 0, b = 0;
+                for (int k = 0; k < 4; k++) { r += p[k] & 31; g += (p[k] >> 5) & 63; b += p[k] >> 11; }
+                v = ((r + 2) >> 2) | (((g + 2) >> 2) << 5) | (((b + 2) >> 2) << 11);
+            } else {   /* 4444 */
+                unsigned c[4] = {0, 0, 0, 0};
+                for (int k = 0; k < 4; k++) for (int j = 0; j < 4; j++) c[j] += (p[k] >> (4 * j)) & 15;
+                v = 0;
+                for (int j = 0; j < 4; j++) v |= ((c[j] + 2) >> 2) << (4 * j);
+            }
+            unsigned o = swz_off(x * 2, y, dwb);
+            dst[o] = v & 255; dst[o + 1] = v >> 8;
+        }
+    return dst;
+}
+
+static void mips_build(int t)
+{
+    Texture *tx = &gd.tex[t];
+    tex_nmip[t] = 0;
+    if (MIPMAPS <= 0 || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return;
+    int bpp = tx->fmt == TEX_T8 ? 1 : 2, w = tx->w, h = tx->h;
+    const unsigned char *src = tx->data;
+    for (int l = 0; l < MIPMAPS; l++) {
+        /* el swizzle necesita filas de 16 bytes y 8 lineas como minimo */
+        if ((w / 2) * bpp < 16 || h / 2 < 8) break;
+        void *m = mip_make(tx, src, w, h);
+        if (!m) break;
+        tex_mip[t][l] = m;
+        tex_nmip[t] = l + 1;
+        w /= 2; h /= 2;
+        src = m;
+        r_mip_bytes += w * h * bpp;
+    }
+}
+
 /* lee la textura de la Memory Stick la primera vez que se usa (y la sube a la VRAM si cabe) */
 static int tex_ensure(int t)
 {
@@ -106,6 +180,7 @@ static int tex_ensure(int t)
         return -1;
     }
     const char *where = "RAM";
+    mips_build(t);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
     /* las texturas de 16 bits del escenario van a la VRAM si caben */
     if (tx->fmt != TEX_T8 && t < 64) {
         void *v = vram_alloc(tx->databytes);
@@ -126,9 +201,9 @@ static int tex_ensure(int t)
     if (where[0] == 'R') { r_mem.ram_tex += (int)(tx->databytes + tx->palbytes); r_mem.ram_tex_n++; }
     sceKernelDcacheWritebackAll();
     r_mem.frame_texloads++;
-    dlog("TEXTURA %s %dx%d %s %d KB en %s (%.1f ms)", tx->name, tx->w, tx->h,
+    dlog("TEXTURA %s %dx%d %s %d KB en %s, %d mipmaps (%.1f ms)", tx->name, tx->w, tx->h,
          tx->fmt == TEX_T8 ? "paleta" : tx->fmt == TEX_4444 ? "4444" : tx->fmt == TEX_5650 ? "5650" : "8888",
-         (int)((tx->databytes + tx->palbytes) / 1024), where, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
+         (int)((tx->databytes + tx->palbytes) / 1024), where, tex_nmip[t], (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
     return 0;
 }
 
@@ -137,6 +212,16 @@ void r_preload_texture(const char *name)
 {
     for (int t = 0; t < gd.ntex; t++)
         if (!strcmp(gd.tex[t].name, name)) { tex_ensure(t); return; }
+}
+
+static int cur_mips;
+static void tex_filter(void)
+{
+    /* con mipmaps el GE elige el nivel segun la distancia (GU_TEXTURE_AUTO) */
+    int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
+    int min = !cur_mips ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
+    if (cur_mips) sceGuTexLevelMode(GU_TEXTURE_AUTO, 0.0f);
+    sceGuTexFilter(min, mag);
 }
 
 void r_bind_texture(int t)
@@ -152,19 +237,22 @@ void r_bind_texture(int t)
         cur_tex = -1;
         return;
     }
+    int nm = tex_nmip[t];
     switch (tx->fmt) {
     case TEX_T8:
         sceGuClutMode(GU_PSM_8888, 0, 0xff, 0);
         sceGuClutLoad(256 / 8, tx->pal);
-        sceGuTexMode(GU_PSM_T8, 0, 0, 1);
+        sceGuTexMode(GU_PSM_T8, nm, 0, 1);
         break;
-    case TEX_5650: sceGuTexMode(GU_PSM_5650, 0, 0, 1); break;
-    case TEX_4444: sceGuTexMode(GU_PSM_4444, 0, 0, 1); break;
-    default: sceGuTexMode(GU_PSM_8888, 0, 0, 1); break;
+    case TEX_5650: sceGuTexMode(GU_PSM_5650, nm, 0, 1); break;
+    case TEX_4444: sceGuTexMode(GU_PSM_4444, nm, 0, 1); break;
+    default: sceGuTexMode(GU_PSM_8888, nm, 0, 1); break;
     }
     sceGuTexImage(0, tx->w, tx->h, tx->w, tx->data);
+    for (int l = 0; l < nm; l++) sceGuTexImage(l + 1, tx->w >> (l + 1), tx->h >> (l + 1), tx->w >> (l + 1), tex_mip[t][l]);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
-    sceGuTexFilter(filt_nearest ? GU_NEAREST : GU_LINEAR, filt_nearest ? GU_NEAREST : GU_LINEAR);
+    cur_mips = nm;
+    tex_filter();
     sceGuTexWrap(GU_REPEAT, GU_REPEAT);
 }
 
@@ -172,7 +260,7 @@ void r_set_nearest(int on)
 {
     if (on == filt_nearest) return;
     filt_nearest = on;
-    if (cur_tex >= 0) sceGuTexFilter(on ? GU_NEAREST : GU_LINEAR, on ? GU_NEAREST : GU_LINEAR);
+    if (cur_tex >= 0) tex_filter();
 }
 
 static void set_blend(int b)
@@ -257,6 +345,11 @@ void r_init(void)
     r_mem.vring_max = VRING_BYTES;
     r_mem.iring_max = IRING_BYTES;
     tex_failed = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
+    tex_3d = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
+    tex_nmip = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
+    tex_mip = calloc(gd.ntex > 0 ? gd.ntex : 1, sizeof(*tex_mip));
+    for (int i = 0; i < gd.nmats; i++)
+        if (gd.mats[i].tex >= 0 && gd.mats[i].tex < gd.ntex) tex_3d[gd.mats[i].tex] = 1;
     sceGuInit();
     sceGuStart(GU_DIRECT, dlists[0]);
     sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);
@@ -299,7 +392,7 @@ void r_begin_frame(unsigned int clear)
     vring = vrings[frame_par];
     iring = irings[frame_par];
     dlist = dlists[frame_par];
-    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = 0;
+    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = r_stat_skin_cpu = 0;
     r_mem.dropped = r_mem.frame_texloads = 0;
     model_set = 0;
     bones_zero = 0;
@@ -915,6 +1008,10 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
          * contra el plano cercano (GU_CLIP_PLANES) y a esa distancia ningun vertice se sale de su rango de pantalla.
          * Antes el inspector y el perro iban por la CPU en cuanto se acercaban a la camara (5-15 ms por fotograma) */
         int sv = sphere_visible(c, 12.0f);
+        /* fuera de la pantalla: nada. Antes iba a la piel por CPU, que transforma todos los vertices para luego
+         * descartarlos: el inspector y el perro, persiguiendo por debajo de la camara tras un tropiezo, costaban
+         * 1000-2000 vertices de CPU por fotograma (8-10 ms de "personajes" en la consola) */
+        if (sv == 0) return;
         if (sv == 1 || (sv == 2 && m34_point(&r_view, c).z > SKIN_GE_MIN_D)) {
             DBG_PHASE(main, "r_draw_skinned: piel por hardware (GE)");
             float d0 = m34_point(&r_view, c).z;
@@ -992,6 +1089,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         }
         b.codes = codebuf;
         r_stat_verts += pt->nv;
+        r_stat_skin_cpu += pt->nv;
         batch_tris(&b, pt->idx, pt->ni);
         if (b.ni > 0) {
             bind_material(mat, 1.0f);

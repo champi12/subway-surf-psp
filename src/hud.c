@@ -385,7 +385,7 @@ static void draw_missions_button(float x, float y)
     text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, TR("Misiones", "Missions"));
     snprintf(buf, sizeof(buf), "x%d", missions_multiplier());
     text_shadow(f_big, x + 144, y + 2, 0.6f, 0xff00dbff, 2, buf);
-    snprintf(buf, sizeof(buf), "%d/3   L / R", n);
+    snprintf(buf, sizeof(buf), TR("%d/3   triangulo", "%d/3   triangle"), n);
     text_shadow(f_small, x + 46, y + 24, 0.55f, 0xffe0e0e0, 0, buf);
 }
 
@@ -427,6 +427,46 @@ static void draw_mission_msg(void)
     ui_text(f_mid, x + 30, y + 4, 0.65f, ((unsigned)(a * 255) << 24) | 0x00dbff, 0, mission_msg);
 }
 
+/* ------------------------------------------------------------ trofeos (TrophyHelper) */
+static void draw_trophies_button(float x, float y)
+{
+    char buf[32];
+    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 44, UIS, 0x99000000);
+    ui_sprite_wh(a_ui, "trophy_gold", x + 4, y + 4, 36, 36, 0xffffffff);
+    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, TR("Trofeos", "Trophies"));
+    snprintf(buf, sizeof(buf), TR("%d/%d   cuadrado", "%d/%d   square"), trophies_collected(), NTROPHIES);
+    text_shadow(f_small, x + 46, y + 24, 0.55f, 0xffe0e0e0, 0, buf);
+}
+
+static void draw_trophies(void)
+{
+    char buf[64];
+    r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
+    text_shadow(f_big, SCR_W / 2, 6, 0.8f, 0xffffffff, 1, TR("Trofeos", "Trophies"));
+    snprintf(buf, sizeof(buf), "%d/%d", trophies_collected(), NTROPHIES);
+    text_shadow(f_mid, SCR_W - 12, 10, 0.7f, 0xff00dbff, 2, buf);
+    /* rejilla de 4 x 2: los que no se tienen salen con el candado (trophy_locked) */
+    const float cw = 100, chh = 74, x0 = (SCR_W - 4 * cw) * 0.5f, y0 = 40;
+    for (int i = 0; i < NTROPHIES; i++) {
+        float x = x0 + (i % 4) * cw, y = y0 + (i / 4) * chh;
+        int sel = i == ginfo.trophy_sel;
+        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", x + 4, y, cw - 8, chh - 6, 0.5f,
+                  sel ? 0xffffffff : 0xc0ffffff);
+        ui_sprite_wh(a_ui, trophy_sprite(i), x + cw * 0.5f - 28, y + 6, 56, 56, trophy_unlocked(i) ? 0xffffffff : 0xa0ffffff);
+    }
+    int i = ginfo.trophy_sel;
+    float ty = y0 + 2 * chh + 6;
+    if (trophy_unlocked(i)) {
+        text_shadow(f_big, SCR_W / 2, ty, 0.7f, 0xff00dbff, 1, trophy_name(i));
+        text_shadow(f_mid, SCR_W / 2, ty + 30, 0.65f, 0xffffffff, 1, trophy_desc(i));
+    } else {
+        text_shadow(f_big, SCR_W / 2, ty, 0.7f, 0xffb0b0b0, 1, "???");
+        text_shadow(f_mid, SCR_W / 2, ty + 30, 0.65f, 0xffe0e0e0, 1,
+                    TR("Sale en las cajas misteriosas", "Find it in Mystery Boxes"));
+    }
+    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("O volver", "O back"));
+}
+
 /* ------------------------------------------------------------ menu principal (FrontUI) */
 static void draw_menu(void)
 {
@@ -457,13 +497,14 @@ static void draw_menu(void)
     ui_sliced(a_ui, "button_fill_menuShop", sx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
     ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
     text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Tienda", "Shop"));
-    text_shadow(f_small, sx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("triangulo", "triangle"));
+    text_shadow(f_mid, sx + 65 * UIS, sy - 22, 0.75f, 0xffffffff, 1, "R");
     /* boton de personajes (abajo a la izquierda) */
     float cx = 4 + 4;
     ui_sliced(a_ui, "button_fill_menuShop", cx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
     ui_sliced(a_ui, "button_generic_2_outline", cx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
     text_shadow(f_mid, cx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Personajes", "Characters"));
-    text_shadow(f_small, cx + 65 * UIS, sy - 18, 0.55f, 0xffffffff, 1, TR("cuadrado", "square"));
+    text_shadow(f_mid, cx + 65 * UIS, sy - 22, 0.75f, 0xffffffff, 1, "L");
+    draw_trophies_button(4, 4 + 112 * UIS);
     if (ginfo.missions_open) draw_missions_popup();
 }
 
@@ -505,8 +546,8 @@ static void draw_chars(void)
     }
     int i = ginfo.char_sel;
     const char *hint;
-    if (char_unlocked(i)) hint = TR("X elegir    O volver", "X select    O back");
-    else if (char_unlock_type(i) == UL_COINS) hint = TR("X comprar    O volver", "X buy    O back");
+    if (char_unlocked(i)) hint = TR("X elegir   O volver   R tienda", "X select   O back   R shop");
+    else if (char_unlock_type(i) == UL_COINS) hint = TR("X comprar   O volver   R tienda", "X buy   O back   R shop");
     else hint = TR("Fichas en las cajas misteriosas", "Tokens come from Mystery Boxes");
     text_shadow(f_small, 119, SCR_H - 22, 0.6f, 0xffe0e0e0, 1, hint);
     if (!char_unlocked(i) && char_unlock_type(i) == UL_TOKENS) {
@@ -565,7 +606,7 @@ static void draw_shop(void)
         missions_text(shop_items[ginfo.shop_sel].idx, buf, sizeof(buf));
         ui_text(f_small, SCR_W / 2, SCR_H - 32, 0.55f, 0xffffffff, 1, buf);
     }
-    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("X comprar    O volver", "X buy    O back"));
+    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("X comprar    O volver    L personajes", "X buy    O back    L characters"));
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
         r_rect(90, 110, 300, 50, 0xd0000000);
         text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
@@ -604,6 +645,7 @@ void hud_draw(void)
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
     case GS_CHARS: draw_chars(); break;
+    case GS_TROPHIES: draw_trophies(); break;
     case GS_GAMEOVER: draw_gameover(); break;
     default: draw_ingame(); break;
     }

@@ -207,16 +207,28 @@ int main(int argc, char **argv)
 #ifdef AT_CHARS
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;
-        if (frame_no == 40) pr |= PSP_CTRL_SQUARE;
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no >= 60 && frame_no <= 120 && frame_no % 12 == 0) pr |= PSP_CTRL_DOWN;
         if (frame_no == 150) pr |= PSP_CTRL_CROSS;
         if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 240) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_TROPHY)
+        /* prueba de trofeos: 30 cajas misteriosas, pantalla de trofeos y paso por los 8 */
+        if (frame_no == 30) { extern void game_debug_boxes(int n); game_debug_boxes(30); }
+        if (frame_no == 50) pr |= PSP_CTRL_SQUARE;
+        if (frame_no >= 70 && frame_no <= 160 && frame_no % 12 == 0) pr |= PSP_CTRL_RIGHT;
+        if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 200) pr |= PSP_CTRL_LTRIGGER;   /* personajes, R a la tienda, L a personajes y O al menu */
+        if (frame_no == 230) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no == 260) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 290) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 310) pr |= PSP_CTRL_TRIANGLE;
+        if (frame_no == 340) pr |= PSP_CTRL_TRIANGLE;
 #elif defined(AT_UI)
-        if (frame_no == 40) pr |= PSP_CTRL_TRIANGLE;
+        if (frame_no == 40) pr |= PSP_CTRL_RTRIGGER;
         if (frame_no >= 60 && frame_no < 160 && frame_no % 10 == 0) pr |= PSP_CTRL_DOWN;   /* recorre toda la tienda */
         if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
-        if (frame_no == 200 || frame_no == 240) pr |= PSP_CTRL_RTRIGGER;           /* ventana de misiones */
+        if (frame_no == 200 || frame_no == 240) pr |= PSP_CTRL_TRIANGLE;           /* ventana de misiones */
         if (ginfo.state == GS_MENU && frame_no > 260) pr |= PSP_CTRL_CROSS;
         if (frame_no == 700) { pr |= PSP_CTRL_START; }
         if (frame_no == 740) { pr |= PSP_CTRL_START; }

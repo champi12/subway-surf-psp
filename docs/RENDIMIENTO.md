@@ -143,7 +143,7 @@ para formatearlos.
 |---|---|
 | Cabecera | Firmware, frecuencias, batería, **RAM total que la consola le da al juego**, VFPU, módulos de audio |
 | `CARGA` | Cada archivo de `data/`, su tamaño y lo que tardó en leerse de la Memory Stick |
-| `TEXTURA` | Cada textura cuando se carga por primera vez: tamaño, formato, si fue a VRAM o a RAM y cuánto tardó |
+| `TEXTURA` | Cada textura cuando se carga por primera vez: tamaño, formato, si fue a VRAM o a RAM, cuántos mipmaps se le generaron y cuánto tardó |
 | `PERFIL` (cada 5 s) | En qué se va la CPU por fotograma: lógica (con la física dentro) y preparar el dibujo, y cuántos vértices transforma la CPU y cuántos el GE |
 | `DIBUJO` (cada 5 s) | El dibujo por bloques: vía, personajes, monedas, efectos y transparentes, entorno del menú, cielo e interfaz, y los triángulos recortados por software |
 | `STAT` (cada 5 s) | FPS medios y mínimos; CPU media y máxima; espera al GE; máximos de vértices, triángulos y dibujos; memoria; VRAM; ocupación de las listas del GE con su pico; dibujos perdidos; estado, metros, MHz, batería y temperatura |
@@ -260,7 +260,9 @@ tramo que se alterna con el primero).
 | **VFPU** para transformar vértices, comprobada al arrancar contra la versión en C | Cálculo por vértice |
 | **Curvatura exacta en el GE** con skinning de 4 "huesos": cada vértice lleva los pesos (1, x, y, z) normalizados a la caja del modelo y `zc² = zc·(c0 + Σ uj·cj)` sale exacto. Los objetos pequeños de un solo trozo usan la aproximación lineal de siempre | Todo el escenario que no hay que recortar va al GE: de ~12.000 a ~600 vértices por fotograma en la CPU (en el emulador) |
 | **Skinning por hardware** (lotes de ≤ 8 huesos) para Jake, el inspector y el perro; también cerca de la cámara si el centro está a más de 10 unidades (`SKIN_GE_MIN_D`): el GE recorta solo contra el plano cercano | Toda la piel de los personajes (antes, con el inspector cerca, 5-15 ms de CPU por fotograma en la consola) |
+| Personajes **fuera de la pantalla no se dibujan** (antes iban a la piel por CPU, que transformaba todos sus vértices para descartarlos) | El inspector y el perro persiguiendo por debajo de la cámara tras un tropiezo: 1.000-2.000 vértices de CPU por fotograma. El devlog lo cuenta en `DIBUJO ... personajes x (piel por CPU n vert)` |
 | Texturas del escenario y los trenes en **VRAM**; el resto con paleta de 256 colores y *swizzled* | Ancho de banda de texturas |
+| **Mipmaps** (3 niveles) generados al cargar cada textura de los modelos 3D; el GE elige el nivel por la distancia. El nivel 0 sigue en VRAM y los reducidos van a la RAM (+33 % de memoria de esas texturas, ~0,5 MB) | Lectura de texturas del GE en la vía lejana: sin ellos, unos pocos píxeles leían la textura de 512×512 entera y la caché de texturas fallaba sin parar (en la consola el GE pasaba de 33 ms en los tramos largos). `make MIPMAPS=0` los quita para comparar |
 | Buffers del GE ajustados a lo medido con el devlog (pico × 2) | 3,6 MB más de RAM libre |
 | **Física solo cerca del personaje**: solo los tramos entre 80 unidades detrás y 250 delante, y en cada movimiento se preseleccionan las cajas cercanas una vez (no en cada subpaso) | Miles de lecturas de memoria por fotograma |
 | Componentes de dibujo y de colisión de cada nodo calculados al arrancar; las ramas sin nada que dibujar o chocar se saltan | Recorrer la escena |

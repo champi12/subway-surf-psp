@@ -326,14 +326,14 @@ void dlog_init(void)
 static const char *state_name(int s)
 {
     static const char *n[] = {"MENU", "INTRO", "CARRERA", "JETPACK", "CAYENDO", "MUERTE", "FIN", "CHECKPOINT", "TIENDA",
-                              "PERSONAJES"};
-    return s >= 0 && s < 10 ? n[s] : "?";
+                              "PERSONAJES", "TROFEOS"};
+    return s >= 0 && s < 11 ? n[s] : "?";
 }
 
 static struct {
     int frames, hitch_lines, verts, tris, draws, clip, dropped;
     float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait, sum_upd, sum_phys, sum_draw;
-    int sum_vcpu, sum_vhw;
+    int sum_vcpu, sum_vhw, sum_vskin;
     float sum_sect[8];
     unsigned long long t0;
 } win;
@@ -363,9 +363,9 @@ static void stat_line(void)
          win.sum_upd / win.frames, win.sum_phys / win.frames, win.sum_draw / win.frames,
          win.sum_vcpu / win.frames, win.sum_vhw / win.frames);
     float f = 1.0f / win.frames;
-    dlog("DIBUJO via %.1f | personajes %.1f | monedas %.1f | efectos y transparentes %.1f | entorno menu %.1f | "
+    dlog("DIBUJO via %.1f | personajes %.1f (piel por CPU %d vert) | monedas %.1f | efectos y transparentes %.1f | entorno menu %.1f | "
          "cielo %.1f | interfaz %.1f ms | recorte por software: %d triangulos",
-         win.sum_sect[2] * f, win.sum_sect[5] * f, win.sum_sect[4] * f, win.sum_sect[6] * f, win.sum_sect[3] * f,
+         win.sum_sect[2] * f, win.sum_sect[5] * f, win.sum_vskin / win.frames, win.sum_sect[4] * f, win.sum_sect[6] * f, win.sum_sect[3] * f,
          win.sum_sect[1] * f, win.sum_sect[7] * f, win.clip);
     /* avisos: lo que en la consola real acabaria en cuelgue o en tirones */
     if (m->heap_total && m->heap_used > m->heap_total / 10 * 9)
@@ -408,6 +408,7 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     win.sum_draw += dbg_draw_ms;
     win.sum_vcpu += r_stat_verts;
     win.sum_vhw += r_stat_hw;
+    win.sum_vskin += r_stat_skin_cpu;
     for (int k = 0; k < 8; k++) win.sum_sect[k] += dbg_sect_ms[k];
     if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
     win.sum_wait += wait_ms;

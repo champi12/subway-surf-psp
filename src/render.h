@@ -21,6 +21,7 @@ void r_draw_skinned(int mesh, const M34 *bones, int nbones, const int *mats, int
 void r_flush_transparent(void);
 /* estadisticas del ultimo frame */
 extern int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_hw;
+extern int r_stat_skin_cpu;   /* vertices de personajes con la piel calculada en la CPU (los caros) */
 /* uso de memoria del dibujo (pantalla de depuracion y devlog) */
 typedef struct {
     int vram_fb;                 /* 2 framebuffers + Z (fijo) */
