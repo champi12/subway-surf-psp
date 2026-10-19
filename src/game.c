@@ -522,11 +522,15 @@ static void guard_late_update(float dt)
     }
     if (gu.jump_pending && game_time >= gu.jump_at) {
         gu.jump_pending = 0;
-        anim_play(&anim_guard, "Guard_jump");
-        anim_crossfade_queued(&anim_guard, "Guard_Run", 0.2f);
-        anim_play(&anim_dog, "Dog_jump");
-        anim_crossfade_queued(&anim_dog, "Dog_Fast Run", 0.2f);
-        gu.vs = jump_vs(ch.jumpHeight) * 0.6f;
+        /* solo desde el suelo: rodando en el aire se aterriza enseguida y se vuelve a saltar, y cada salto nuevo
+         * relanzaba al inspector antes de que cayera; saltando y rodando seguido subia sin parar (un tester) */
+        if (gu.y <= gu.lg_smooth + 1.0f) {
+            anim_play(&anim_guard, "Guard_jump");
+            anim_crossfade_queued(&anim_guard, "Guard_Run", 0.2f);
+            anim_play(&anim_dog, "Dog_jump");
+            anim_crossfade_queued(&anim_dog, "Dog_Fast Run", 0.2f);
+            gu.vs = jump_vs(ch.jumpHeight) * 0.6f;
+        }
     }
     if (gu.catching) {
         float t = (game_time - gu.catch_start) / gu.catch_dur;
@@ -840,6 +844,14 @@ static void apply_gravity(float dt)
         if (hit >= 0 && (cols[hit].tag == TAG_HITMOVINGTRAIN || cols[hit].tag == TAG_HITTRAIN)) ch.trainJump = 1;
         ch.trainJumpSampleZ += 10.0f;
     }
+#ifdef AT_DT
+    {   /* prueba del salto a FPS fijos (AT_DT): largo y altura de cada salto */
+        static float jz0, jy0, ymax; static int air;
+        if (!cc.grounded && !air) { air = 1; jz0 = ch.z; jy0 = cc.pos.y; ymax = cc.pos.y; }
+        if (air && cc.pos.y > ymax) ymax = cc.pos.y;
+        if (cc.grounded && air) { air = 0; dlog("SALTO largo %.1f altura %.1f vel %.0f", ch.z - jz0, ymax - jy0, currentSpeed); }
+    }
+#endif
     ch.verticalSpeed -= GRAVITY * dt;
     if (!cc.grounded && !ch.falling && ch.verticalSpeed < VERTICAL_FALL_SPEED_LIMIT && !ch.rolling) {
         ch.falling = 1;
@@ -862,7 +874,13 @@ static void move_forward(float dt)
 {
     V3 position = cc.pos;
     float nz = ch.z + currentSpeed * dt;
-    V3 vert = v3(0, ch.verticalSpeed * dt, 0);
+    /* apply_gravity ya resto g*dt a la velocidad: con v*dt (Euler, como el original) la parabola depende de dt, y a
+     * 15-20 FPS los saltos salian mas bajos y cortos (en los tirones no se llegaba de un vagon a otro). Lo que el
+     * original hace a 30 FPS (h = 1/30) es una parabola exacta con velocidad inicial v0 - g*h/2; con este termino
+     * sale esa misma parabola a cualquier ritmo, y a 30 FPS no cambia nada. En el suelo se deja como estaba. */
+    float vy = ch.verticalSpeed;
+    if (!cc.grounded || vy > 0) vy += 0.5f * GRAVITY * (dt - 1.0f / 30.0f);
+    V3 vert = v3(0, vy * dt, 0);
     V3 p2 = track_pos(ch.x, nz);
     V3 v2 = v3(position.x, 0, position.z);
     if (ch.ssj) {
@@ -1462,7 +1480,7 @@ static void stage_menu_sequence(void)
     stop_all_char_coroutines();
     char_set_pos(v3(0, 0.8f, 0));
     nrt[n_avatar].lrot = qident();
-    nrt[n_sprayCan].rend = ginfo.character == 0;
+    nrt[n_sprayCan].rend = 1;   /* Game.StageMenuSequence: en el menu lo lleva cualquier personaje */
     cam_follow = 0;
     if (n_mainCam >= 0) {
         nrt[n_mainCam].lpos = v3(0, 0.8f + 33.0f + 0.8f, -33.0f);
@@ -2189,14 +2207,15 @@ const char *char_token_name(int i) { return TR(chars[i].tok_es, chars[i].tok_en)
 const char *char_token_sprite(int i) { return chars[i].tok_sprite; }
 
 /* CharacterModel.ChangeCharacterModel: todos los modelos comparten el esqueleto; se ve solo el elegido.
- * El spray solo lo lleva Jake (HideAllPowerups) */
+ * En el menu todos pintan con el spray (Game.StageMenuSequence lo activa sea quien sea); en la pantalla de
+ * personajes del original solo lo llevaba Jake, pero alli el modelo no pintaba: aqui es la misma animacion del
+ * menu, asi que sin spray parecia que pintaba con la mano */
 static void char_show_model(int i)
 {
     if (i < 0 || i >= NCHARS) i = 0;
     if (n_avatars >= 0)
         for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
             nrt[c].rend = !strcmp(gd.strings[gd.nodes[c].name], chars[i].model);
-    if (n_sprayCan >= 0 && (state == GS_MENU || state == GS_CHARS || state == GS_SHOP)) nrt[n_sprayCan].rend = i == 0;
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */

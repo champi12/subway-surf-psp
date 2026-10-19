@@ -163,6 +163,9 @@ int main(int argc, char **argv)
         float dt = (t0 - last) / 1000000.0f;
         last = t0;
         if (dt <= 0 || dt > 0.25f) dt = 1.0f / 30.0f;
+#ifdef AT_DT
+        dt = AT_DT;   /* prueba: FPS fijos (p. ej. -DAT_DT=0.0666667f son 15 FPS) */
+#endif
         fps = fps * 0.9f + (1.0f / dt) * 0.1f;
 
         DBG_PHASE(main, "leyendo los botones");
@@ -244,6 +247,10 @@ int main(int argc, char **argv)
             if (ginfo.state == GS_MENU && frame_no > 60) pr |= PSP_CTRL_CROSS;
 #endif
         }
+#endif
+#ifdef AT_DT
+        /* y salta cada 40 fotogramas */
+        { static int k; if (ginfo.state == GS_RUNNING && ++k % 40 == 0) pr |= PSP_CTRL_UP; }
 #endif
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
         {

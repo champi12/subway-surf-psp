@@ -379,25 +379,28 @@ void anim_apply(Animator *a)
             if (sum > 0) layer_used[b] += (1.0f - layer_used[b]) * (sum > 1.0f ? 1.0f : sum);
         }
     }
+    /* Lo que no cubren las animaciones se queda como estaba, como en la Animation de Unity: un hueso sin ninguna
+     * animacion activa no se toca. Antes volvia a la pose de reposo, que es la T: el personaje en el aire con las
+     * zapatillas (el salto acaba antes de aterrizar) y el inspector al terminar de atraparte se quedaban en T. */
     for (int b = 0; b < nb; b++) {
         Acc *A = &acc[b];
         NodeRT *r = &nrt[a->bones[b]];
         if (A->wp > 0) {
             float rest = 1.0f - A->wp;
-            r->lpos = rest > 0.001f ? v3add(A->p, v3scale(a->bind_pos[b], rest)) : v3scale(A->p, 1.0f / A->wp);
-        } else r->lpos = a->bind_pos[b];
+            r->lpos = rest > 0.001f ? v3add(A->p, v3scale(r->lpos, rest)) : v3scale(A->p, 1.0f / A->wp);
+        }
         if (A->wr > 0) {
             float rest = 1.0f - A->wr;
-            Q4 q = A->r, br = a->bind_rot[b];
+            Q4 q = A->r, br = r->lrot;
             if (rest > 0.001f) {
                 if (q.x * br.x + q.y * br.y + q.z * br.z + q.w * br.w < 0) br = q4(-br.x, -br.y, -br.z, -br.w);
                 q = q4(q.x + br.x * rest, q.y + br.y * rest, q.z + br.z * rest, q.w + br.w * rest);
             }
             r->lrot = qnorm(q);
-        } else r->lrot = a->bind_rot[b];
+        }
         if (A->ws > 0) {
             float rest = 1.0f - A->ws;
-            r->lscl = rest > 0.001f ? v3add(A->s, v3scale(a->bind_scl[b], rest)) : v3scale(A->s, 1.0f / A->ws);
-        } else r->lscl = a->bind_scl[b];
+            r->lscl = rest > 0.001f ? v3add(A->s, v3scale(r->lscl, rest)) : v3scale(A->s, 1.0f / A->ws);
+        }
     }
 }
