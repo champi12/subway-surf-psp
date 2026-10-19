@@ -1700,9 +1700,16 @@ static void blocked_check(float moved, float want, float dt)
     blocked_t += dt;
     if (blocked_t < 0.2f) return;
     blocked_t = 0;
-    dlog("ATASCADO de frente contra un obstaculo a %d m, carril %d: cuenta como choque", ginfo.meters, ch.trackIndex);
+    dlog("ATASCADO de frente a %d m, carril %d: cuenta como choque", ginfo.meters, ch.trackIndex);
+    /* contra que: el collider que se esta tocando (un tren en marcha se para con el personaje, porque su posicion
+     * depende de la de el, y los dos se quedaban quietos) */
     ch.lastHitTag = TAG_UNTAGGED;
-    anim_crossfade(&anim_char, an.hitMid, 0.07f);
+    for (int j = 0; j < nover_prev; j++)
+        for (int k = 0; k < ncols; k++)
+            if (cols[k].node == over_prev[j] && !cols[k].trigger && cols[k].layer != 0 &&
+                (cols[k].tag == TAG_HITMOVINGTRAIN || ch.lastHitTag == TAG_UNTAGGED)) ch.lastHitTag = cols[k].tag;
+    if (ch.lastHitTag == TAG_HITMOVINGTRAIN) hit_by_train_sequence();
+    else anim_crossfade(&anim_char, an.hitMid, 0.07f);
     notify_critical_hit();
 }
 
