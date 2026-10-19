@@ -227,7 +227,11 @@ static int state = GS_MENU;
 static float state_time, start_time;
 static float currentSpeed, currentLevelSpeed = SPEED_MIN;
 static int isDead;
+#ifdef AT_NOTUT
+static int tutorial_completed = 1;   /* prueba automatica: sin tutorial */
+#else
 static int tutorial_completed = 0;   /* sin partida guardada: primera vez, con tutorial */
+#endif
 static int tut_board_ok;             /* TutorialEvent.allowHoverboard: la tabla se puede usar desde ese punto */
 static int tut_arrow_on, n_tut_arrow = -1;
 
@@ -1678,6 +1682,30 @@ static void follow_camera(float dt)
     } else { cam_pos = pe; cam_target = te; }
 }
 
+/* Frenado de frente contra algo solido sin que salte el choque: el aviso de choque solo llega al entrar en el
+ * collider, y si se entra por un lado (tropiezo lateral, o al terminar de rodar) y luego el personaje queda delante
+ * de el, la capsula lo frena y se quedaba corriendo contra el pilar con el inspector detras. Si casi no avanza
+ * durante 0.2 s se trata como el choque frontal que es. */
+static float blocked_t;
+
+static void blocked_check(float moved, float want, float dt)
+{
+    /* (tras romperse la tabla el original espera a las particulas y luego quita los obstaculos de delante) */
+    int board_crash = mods[MOD_HOVERBOARD].phase == 1;
+    if (state != GS_RUNNING || ch.stopColliding || ch.immune || ch.hbt || board_crash || want < 0.05f ||
+        moved > want * 0.25f) {
+        blocked_t = 0;
+        return;
+    }
+    blocked_t += dt;
+    if (blocked_t < 0.2f) return;
+    blocked_t = 0;
+    dlog("ATASCADO de frente contra un obstaculo a %d m, carril %d: cuenta como choque", ginfo.meters, ch.trackIndex);
+    ch.lastHitTag = TAG_UNTAGGED;
+    anim_crossfade(&anim_char, an.hitMid, 0.07f);
+    notify_critical_hit();
+}
+
 static void running_tick(float dt)
 {
     track_lay_chunks(ch.z, track_ahead_distance(), 0);
@@ -1685,7 +1713,9 @@ static void running_tick(float dt)
     currentSpeed = currentLevelSpeed;
     handle_controls_running();
     apply_gravity(dt);
+    float z0 = ch.z;
     move_forward(dt);
+    blocked_check(ch.z - z0, currentSpeed * dt, dt);
     follow_camera(dt);
     /* CheckInAirJump */
     if (cc.grounded && ch.inAirJump) { character_jump(); ch.inAirJump = 0; }
