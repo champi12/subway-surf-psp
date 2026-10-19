@@ -7,6 +7,13 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 > El repositorio **no contiene ningún recurso del juego**. Cada uno genera la carpeta `data/` con su propia copia
 > del APK usando `tools/extract.py`.
 
+> **Hecho con ayuda de IA.** Este port se ha desarrollado con la ayuda de **Claude** (Anthropic), un asistente de
+> inteligencia artificial, que ha escrito gran parte del código junto al autor. Si no estás de acuerdo con el uso de
+> estas herramientas, este proyecto no es para ti.
+>
+> *Made with AI assistance: this port was developed together with Claude (Anthropic), an AI assistant that wrote
+> much of the code alongside the author. If you disagree with the use of these tools, this project is not for you.*
+
 ## Qué se ha portado
 
 | Original (Unity/C#) | Port (C) | Notas |
@@ -133,3 +140,11 @@ terminar, con las probabilidades de `MysteryBox.Roll()`. La partida se guarda en
 Ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md): el medidor de SELECT, el registro `devlog.txt` que el juego escribe en
 la Memory Stick, qué datos del emulador valen para la consola real, cómo configurar PPSSPP y la prueba automática
 `tools/autotest.sh`.
+
+## Contribuidores
+
+| | Papel |
+|---|---|
+| **champi12** | Autor del proyecto: idea, pruebas en la consola, coordinación con los testers |
+| **Claude** (Anthropic) | Asistente de IA: decompilación y traducción del código, motor gráfico, conversor de recursos y depuración |
+| Los testers | Pruebas en PSP real, devlogs, vídeos e informes de fallos |
