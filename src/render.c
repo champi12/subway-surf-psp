@@ -244,14 +244,25 @@ void r_preload_texture(const char *name)
         if (!strcmp(gd.tex[t].name, name)) { tex_ensure(t); return; }
 }
 
-static int cur_mips;
+static int cur_mips, mip_ok = 1;
 static void tex_filter(void)
 {
-    /* con mipmaps el GE elige el nivel segun la distancia (GU_TEXTURE_AUTO) */
+    /* con mipmaps el GE elige el nivel segun la distancia (GU_TEXTURE_AUTO); los objetos pequenos (monedas,
+     * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
+     * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
     int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
-    int min = !cur_mips ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
-    if (cur_mips) sceGuTexLevelMode(GU_TEXTURE_AUTO, 0.0f);
+    int use = cur_mips && mip_ok;
+    int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
+    if (cur_mips) sceGuTexLevelMode(use ? GU_TEXTURE_AUTO : GU_TEXTURE_CONST, 0.0f);
     sceGuTexFilter(min, mag);
+}
+
+/* mipmaps solo para la geometria grande (via, edificios, trenes), que es la que se pierde a lo lejos */
+static void set_mip_ok(int on)
+{
+    if (on == mip_ok) return;
+    mip_ok = on;
+    if (cur_tex >= 0 && cur_mips) tex_filter();
 }
 
 void r_bind_texture(int t)
@@ -906,6 +917,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
     if (list_full(LIST_RESERVE)) return;
     Mesh *me = &gd.meshes[mi];
     if (me->nparts <= 0) return;
+    set_mip_ok(me->radius * v3len(m34_col(world, 0)) >= 20.0f);
     M34 mv;
     m34_mul(&mv, &r_view, world);
     float kx = -0.0005f / P00, ky = -0.0003f / P11;
@@ -1036,6 +1048,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
     if (mi < 0 || mi >= gd.nmeshes || list_full(LIST_RESERVE)) return;
     Mesh *me = &gd.meshes[mi];
     if (!me->skinned) return;
+    set_mip_ok(0);
     static M34 vb[64];
     PT_START(ts0);
     int nb = nbones < 64 ? nbones : 64;
