@@ -29,6 +29,8 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 10 personajes: Jake gratis, 4 por fichas de las cajas misteriosas y 5 por monedas |
 | `Trophies`, `MysteryBox` | `src/game.c`, `src/hud.c` | Los 8 trofeos de las cajas misteriosas y su pantalla |
 | `ThemeAssets`, `HouseKeeper` (1.4) | `src/data.c`, `src/game.c` | Tema de Halloween de la 1.4 clásica y Zombie Jake (ver abajo) |
+| `DailyWord`, `DailyLetterPickup` | `src/game.c`, `src/scene.c` | Palabra del día: letras en la vía, siempre la siguiente que falta; completarla da una caja misteriosa |
+| `RenderSettings` (niebla) | `src/render.c` | Niebla lineal de 200 a 700 del original, por hardware; lo que queda detrás no se dibuja |
 | `TutorialEvent`, `Character.SetBackToCheckPoint` | `src/game.c` | Tramo de tutorial en la primera partida, con la flecha, los mensajes y la vuelta al punto de control al chocar |
 | `GameStats` | `src/game.c` | Puntos por metro × multiplicador, monedas, bonus de power-ups |
 | `Missions`, `PlayerInfo` | `src/missions.c` | Los 29 grupos de 3 misiones del original; cada grupo completado sube el multiplicador (hasta ×30) |
@@ -43,9 +45,9 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 
 ### Pendiente
 
-* La palabra del día. Las misiones que necesitan conexión (ganar a amigos, retos diarios, letras del día) se dan
-  por completadas.
-* Partículas (chispas de la tabla, polvo del jetpack): se dejan para el final porque costarían fotogramas.
+* Las misiones de ganar a amigos necesitan conexión: se dan por completadas.
+* Partículas (chispas de la tabla, polvo del jetpack) y brillos de las calabazas de Halloween: no se portan para
+  no perder fotogramas.
 
 ## Cómo generar los datos
 
@@ -138,6 +140,11 @@ compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `Characte
 La primera partida es el **tutorial** del original (saltar, rodar, cambiar de vía y la tabla), con los mensajes
 adaptados a los botones de la PSP; al chocar se vuelve al último punto de control en lugar de morir. Las partidas
 guardadas con versiones anteriores lo dan por hecho.
+
+La **palabra del día** sale en el menú. Como en el original, sus letras aparecen en la vía como un power-up más,
+siempre la siguiente que falta, y al completarla se gana una caja misteriosa (y cuenta para las misiones de letras y
+de retos diarios). El original recibía la palabra de su servidor; aquí sale de una lista según la fecha de la
+consola y cambia a medianoche.
 
 Con □ se ven los **trofeos** (`Trophies.cs`): 8 objetos de oro (gema, lingote, reloj, cadena, calavera, auriculares,
 disco y casete) que salen en las cajas misteriosas con un 5 % de probabilidad, uno que aún no se tenga; con los 8,

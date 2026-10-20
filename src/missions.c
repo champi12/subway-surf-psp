@@ -13,11 +13,12 @@ char mission_msg[64];
 float mission_msg_t;
 extern float game_time;
 
-/* misiones imposibles sin conexion (amigos, retos diarios, letras del dia): se dan por hechas */
+/* misiones imposibles sin conexion (ganar a amigos): se dan por hechas. Las letras y los retos diarios (la palabra
+ * del dia) ya se pueden hacer: la palabra sale del reloj de la consola */
 static int offline_impossible(int type)
 {
     int t = mission_tpl[type].target;
-    return t == MT_BeatFriends || t == MT_DailyQuests || t == MT_Letters;
+    return t == MT_BeatFriends;
 }
 
 int missions_multiplier(void)

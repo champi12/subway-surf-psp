@@ -22,6 +22,9 @@ static float spawn_z, spawn_spacing;
 /* UpgradeFirstSpawnMeters = 250, UpgradeSpawnSpacingMeters = 300 */
 void spawn_restart(void)
 {
+#ifdef AT_LETTERS
+    pk[0].prob = 1000.0f;   /* prueba: casi siempre letras */
+#endif
     spawn_z = 250.0f * DISTANCE_PER_METER;
     spawn_spacing = 300.0f * DISTANCE_PER_METER;
     for (int i = 0; i < 6; i++) pk[i].spawn_z = -FLT_MAX;

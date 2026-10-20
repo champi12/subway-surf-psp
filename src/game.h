@@ -46,7 +46,11 @@ int char_unlock_type(int i);
 int char_price(int i);            /* fichas o monedas necesarias */
 int char_have(int i);             /* fichas que se tienen (o el precio si ya esta comprado) */
 int char_unlocked(int i);
-int char_is_event(int i);         /* contenido de Halloween: solo se compra en esas fechas */
+int char_is_event(int i);
+/* palabra del dia */
+const char *daily_word(void);
+unsigned daily_word_mask(void);
+int daily_word_complete(void);         /* contenido de Halloween: solo se compra en esas fechas */
 const char *char_token_name(int i);
 const char *char_token_sprite(int i);
 

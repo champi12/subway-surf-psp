@@ -467,6 +467,24 @@ static void draw_trophies(void)
     text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("O volver", "O back"));
 }
 
+/* ------------------------------------------------------------ palabra del dia (DailyChallengeColorChanger) */
+/* las letras cogidas en amarillo y las que faltan en gris, como en el original */
+static void draw_daily_word(float x, float y)
+{
+    const char *w = daily_word();
+    unsigned m = daily_word_mask();
+    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 40, UIS, 0x99000000);
+    text_shadow(f_small, x + 8, y + 3, 0.55f, 0xffe0e0e0, 0,
+                daily_word_complete() ? TR("Palabra del dia: hecha!", "Daily word: done!") : TR("Palabra del dia", "Daily word"));
+    char ch[2] = {0, 0};
+    float cx = x + 8;
+    for (int i = 0; w[i]; i++) {
+        ch[0] = w[i];
+        text_shadow(f_mid, cx, y + 16, 0.8f, (m >> i & 1) ? 0xff00dbff : 0xffb0b0b0, 0, ch);
+        cx += ui_text_width(f_mid, 0.8f, ch) + 5;
+    }
+}
+
 /* ------------------------------------------------------------ menu principal (FrontUI) */
 static void draw_menu(void)
 {
@@ -505,6 +523,7 @@ static void draw_menu(void)
     text_shadow(f_mid, cx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Personajes", "Characters"));
     text_shadow(f_mid, cx + 65 * UIS, sy - 22, 0.75f, 0xffffffff, 1, "L");
     draw_trophies_button(4, 4 + 112 * UIS);
+    draw_daily_word(4, 4 + 160 * UIS);
     if (ginfo.missions_open) draw_missions_popup();
 }
 

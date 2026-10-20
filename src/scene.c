@@ -414,6 +414,57 @@ static int is_trackobject(int n)
            node_comp(n, C_DAILYLETTER, NULL);
 }
 
+/* ---- DailyLetterPickup: la letra que toca de la palabra del dia (0: ninguna, la letra no sale) ----
+ * DailyLetterPickupManager avisa a todas las letras que hay en la via cuando cambia la letra (2 s despues de coger
+ * una), asi que se guardan las activas */
+#define MAX_LETTERS 16
+static char daily_letter;
+static int letter_nodes[MAX_LETTERS], nletters;
+
+static void letter_show(int n)
+{
+    const uint32_t *c = node_comp(n, C_DAILYLETTER, NULL);
+    if (!c) return;
+    int idx = daily_letter - 'A';
+    int vis = idx >= 0 && idx < (int)c[3] && !nrt[n].picked;
+#ifdef AT_LETTERS
+    dlog("LETRA en la via %c visible %d (z %.0f)", daily_letter ? daily_letter : '-', vis, m34_pos(&nrt[n].world).z);
+#endif
+    if (vis && (int)c[2] >= 0) nrt[c[2]].letter_mesh = (int16_t)c[4 + idx];
+    if ((int)c[0] >= 0) nrt[c[0]].rend = vis;
+    if ((int)c[2] >= 0) nrt[c[2]].rend = vis;
+    scene_glow_visible((int)c[1], vis);
+    int pc = find_parent_collider(n);
+    if (pc >= 0) nrt[pc].col = vis;
+}
+
+void scene_set_daily_letter(char l)
+{
+    daily_letter = l;
+    for (int i = 0; i < nletters; i++) letter_show(letter_nodes[i]);
+}
+
+#ifdef AT_LETTERS
+/* prueba: posicion de la letra visible mas cercana por delante */
+int scene_letter_ahead(float z, V3 *out)
+{
+    float best = 1e9f;
+    for (int i = 0; i < nletters; i++) {
+        int n = letter_nodes[i];
+        if (nrt[n].picked || !daily_letter) continue;
+        V3 p = m34_pos(&nrt[n].world);
+        if (p.z > z && p.z - z < best) { best = p.z - z; *out = p; }
+    }
+    return best < 1e9f;
+}
+#endif
+
+void scene_letter_picked(int n)
+{
+    for (int k = n; k >= 0; k = gd.nodes[k].parent)
+        if (node_comp(k, C_DAILYLETTER, NULL)) { nrt[k].picked = 1; letter_show(k); return; }
+}
+
 static void obj_activate(int n)
 {
     const uint32_t *c;
@@ -438,11 +489,12 @@ static void obj_activate(int n)
         scene_glow_visible((int)c[1], 1);
         nrt[n].picked = 0;
     }
-    if ((c = node_comp(n, C_DAILYLETTER, NULL))) {
-        /* sin palabra del dia (modo sin conexion): la letra no aparece */
-        if ((int)c[0] >= 0) nrt[c[0]].rend = 0;
-        int pc = find_parent_collider(n);
-        if (pc >= 0) nrt[pc].col = 0;
+    if (node_comp(n, C_DAILYLETTER, NULL)) {
+        nrt[n].picked = 0;
+        int known = 0;
+        for (int i = 0; i < nletters; i++) known |= letter_nodes[i] == n;
+        if (!known && nletters < MAX_LETTERS) letter_nodes[nletters++] = n;
+        letter_show(n);   /* sin letra pendiente (palabra completa) no aparece */
     }
     if (node_comp(n, C_PICKUPROTATE, NULL)) {
         nrt[n].rot_phase = m34_pos(&nrt[n].world).z;
@@ -486,6 +538,10 @@ static void obj_deactivate(int n)
     }
     if ((c = node_comp(n, C_DAILYLETTER, NULL))) {
         if ((int)c[0] >= 0) nrt[c[0]].rend = 0;
+        if ((int)c[2] >= 0) nrt[c[2]].rend = 0;
+        scene_glow_visible((int)c[1], 0);
+        for (int i = 0; i < nletters; i++)
+            if (letter_nodes[i] == n) { letter_nodes[i] = letter_nodes[--nletters]; break; }
     }
     if (node_comp(n, C_PICKUPROTATE, NULL)) { nrt[n].rotating = 0; rot_remove(n); }
     if (node_comp(n, C_COINPLACE, NULL) || node_comp(n, C_COINLINE, NULL) || node_comp(n, C_COINJUMP, NULL))

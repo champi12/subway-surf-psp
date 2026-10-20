@@ -1243,6 +1243,76 @@ static void coins_tick(float dt)
 static void mod_add(int m);
 static void start_jetpack(int headstart, float hs_dist);
 
+/* ------------------------------------------------------------ palabra del dia (PlayerInfo.dailyWord)
+ * En el original la palabra la mandaba el servidor cada dia: las letras salen en la via (SpawnPointManager, un
+ * power-up mas), siempre la siguiente que falta (GetNewDailyLetter), y al completarla se gana una caja misteriosa
+ * (PickedupLetter). Sin servidor la palabra sale de esta lista segun la fecha de la consola y cambia a medianoche. */
+static const char *const daily_words[] = {
+    "SURF", "TRAIN", "SPRAY", "COINS", "JUMP", "ROLL", "BOARD", "MAGNET", "TRACK", "METRO", "GUARD", "CREW",
+    "PAINT", "TAGS", "RAIL", "SPEED", "DODGE", "RUSH", "JETPACK", "SNEAKER", "TOKEN", "STAR", "CITY", "TUNNEL",
+    "BRIDGE", "RAMP", "GRIND", "HOVER", "DASH", "SUBWAY", "GRAFFITI",
+};
+#define NDAILY ((int)(sizeof(daily_words) / sizeof(daily_words[0])))
+static int dw_day = -1;              /* dia de la palabra (ano*372 + mes*31 + dia) */
+static unsigned dw_mask;             /* letras cogidas (bit i = letra i) */
+static int dw_paid;                  /* caja ya dada */
+static float dw_next_t;              /* DailyLetterPickup: la siguiente letra sale 2 s despues */
+
+static int today_id(void)
+{
+#ifdef AUTOTEST
+    return 0;
+#else
+    ScePspDateTime t;
+    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    return t.year * 372 + (t.month - 1) * 31 + (t.day - 1);
+#endif
+}
+
+const char *daily_word(void) { return daily_words[(dw_day < 0 ? 0 : dw_day) % NDAILY]; }
+unsigned daily_word_mask(void) { return dw_mask; }
+int daily_word_complete(void) { return dw_mask == (1u << strlen(daily_word())) - 1; }
+
+/* GetNewDailyLetter: la primera que falta */
+static char daily_next_letter(void)
+{
+    const char *w = daily_word();
+    for (int i = 0; w[i]; i++) if (!(dw_mask >> i & 1)) return w[i];
+    return 0;
+}
+
+/* nuevo dia: palabra nueva desde cero (InitDailyWord) */
+static void daily_word_check(void)
+{
+    int d = today_id();
+    if (d != dw_day) { dw_day = d; dw_mask = 0; dw_paid = 0; }
+    scene_set_daily_letter(daily_next_letter());
+}
+
+static void daily_letter_picked(char letter)
+{
+    const char *w = daily_word();
+    for (int i = 0; w[i]; i++)
+        if (w[i] == letter && !(dw_mask >> i & 1)) { dw_mask |= 1u << i; break; }
+    scene_set_daily_letter(0);           /* hasta que pasen los 2 s no sale otra */
+    dw_next_t = game_time + 2.0f;
+    dlog("LETRA %c de %s (%d de %d)", letter, w, __builtin_popcount(dw_mask), (int)strlen(w));
+    static char msg[48];
+    int k = 0;
+    for (int i = 0; w[i] && k < 40; i++) { msg[k++] = (dw_mask >> i & 1) ? w[i] : '_'; msg[k++] = ' '; }
+    msg[k ? k - 1 : 0] = 0;
+    ginfo.message = msg;
+    ginfo.message_t = game_time;
+    if (daily_word_complete() && !dw_paid) {
+        dw_paid = 1;
+        ginfo.boxes_pending++;           /* _mysteryBoxesToUnlock++: se abre al terminar la carrera */
+        missions_did(M_DAILYQUESTS, 1);
+        ginfo.message = TR("Palabra del dia completada!", "Daily word complete!");
+        dlog("PALABRA DEL DIA completada: %s", w);
+    }
+    game_save();
+}
+
 static void notify_pickup(int node)
 {
     const uint32_t *p = node_comp(node, C_PICKUP, NULL);
@@ -1270,6 +1340,17 @@ static void notify_pickup(int node)
         missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
         break;
+    case PK_LETTER: {
+        /* DailyLetterPickup.PickupCoroutine */
+        char l = daily_next_letter();
+        scene_letter_picked(node);
+        score += score_multiplier() * 50;
+        missions_did(M_SCORE, score_multiplier() * 50);
+        missions_did(M_LETTERS, 1);
+        play_ci(&snd_powerup);
+        if (l) daily_letter_picked(l);
+        break;
+    }
     case PK_COIN:
         /* moneda suelta de la escena (la de MovingCoin, encima de los trenes en marcha): Coin.OnPickup.
          * Antes no hacia nada: ni sonaba ni sumaba */
@@ -1545,9 +1626,11 @@ void game_theme_check(int boot)
         if (data_theme_has_tex(t)) { r_tex_reload(t); hud_loading((float)++k / (n ? n : 1)); }
 }
 
+
 static void game_top_menu(void)
 {
     game_theme_check(0);
+    daily_word_check();
     change_state(GS_MENU);
     music_set_volume(0.25f);
     guard_mute();
@@ -1566,6 +1649,8 @@ static void game_top_menu(void)
 static void game_start_run(void)
 {
     tut_board_ok = 0; tut_arrow_on = 0; ginfo.message = NULL;
+    dw_next_t = 0;
+    daily_word_check();   /* palabra nueva si ha cambiado el dia */
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
     music_set_volume(0.3f);
@@ -2660,6 +2745,18 @@ void game_update(float dt)
             game_die();
         }
     }
+    if (dw_next_t > 0 && game_time >= dw_next_t) { dw_next_t = 0; scene_set_daily_letter(daily_next_letter()); }
+#ifdef AT_LETTERS
+    {   /* prueba: ir al carril de la letra que viene */
+        extern int scene_letter_ahead(float z, V3 *out);
+        V3 lp;
+        if (state == GS_RUNNING && !ch.trackMovement && scene_letter_ahead(cc.pos.z, &lp) && lp.z - cc.pos.z < 150.0f) {
+            int best = 0; float bd = 1e9f;
+            for (int k = 0; k < 3; k++) { float d = fabsf(track_get_x(k) - lp.x); if (d < bd) { bd = d; best = k; } }
+            if (best != ch.trackIndex) change_track(best > ch.trackIndex ? 1 : -1, 0.2f);
+        }
+    }
+#endif
     if (ch.hbt == 1) {
         float e = clamp01((game_time - ch.hbt_start) / 0.5f);
         V3 tgt = v3(ch.hbt_cam.x, ch.hbt_cam.y - 33.0f, ch.hbt_from.z);
@@ -2797,6 +2894,7 @@ void game_save(void)
     for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
     d[30] = trophies_mask;
     d[31] = event_owned;
+    d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2824,6 +2922,7 @@ void game_load(void)
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
     if (!v2 && n >= 32) event_owned = d[31] & 1;
+    if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }
 
