@@ -84,6 +84,7 @@ typedef struct {
     uint32_t file_off, palbytes, databytes;
     void *pal, *data;     /* cargados bajo demanda */
     int loaded;
+    int src;              /* 0 tex.bin, 1 hw_tex.bin (tema de Halloween) */
 } Texture;
 
 enum { TEX_T8, TEX_5650, TEX_4444, TEX_8888 };
@@ -126,6 +127,17 @@ typedef struct {
 extern GameData gd;
 
 int data_load(const char *dir);
+#define DATA_STEPS 6
+int data_load_step(const char *dir, int step);   /* 0..DATA_STEPS-1 archivos, DATA_STEPS comprobacion final */
+int data_tex_read(int i, void *pal, void *data);
+/* tema de Halloween */
+int data_theme_init_tex(void);      /* tras leer tex.bin, antes de r_init: 1 si esta hw_tex.bin */
+int data_theme_init(int need_meshes);   /* con todo cargado: 1 si hay tema de Halloween */
+int data_mesh_find(const char *name);
+int data_tex_find(const char *name);
+int data_mat_clone(const char *base, int tex);
+int data_theme_has_tex(int t);
+void data_theme_set(int on);
 const char *data_err(void);
 int data_tex_load(int i);
 const uint32_t *node_comp(int node, int type, int *nwords);    /* primer componente de ese tipo */

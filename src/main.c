@@ -123,23 +123,36 @@ int main(int argc, char **argv)
     lang_init();
     if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
     unsigned int tl = sceKernelGetSystemTimeLow();
-    if (data_load("data") != 0) fatal(data_err());
+    /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
+    if (data_load_step("data", 0) != 0) fatal(data_err());
+    data_theme_init_tex();   /* texturas de Halloween y las nuevas de la 1.4 (antes de r_init: puede anadir) */
     if (ui_load("data") != 0) dlog_error("No se pudo cargar data/ui.bin: la interfaz no tendra textos");
-    dlog("Datos cargados en %.2f s: %d objetos, %d modelos, %d texturas, %d animaciones, %d sonidos",
-         (sceKernelGetSystemTimeLow() - tl) / 1000000.0f, gd.nnodes, gd.nmeshes, gd.ntex, gd.nclips, gd.nsfx);
     r_init();
     {
         extern int r_using_vfpu(void);
         dlog("GE iniciado: VRAM framebuffers+Z %d KB, texturas hasta %d KB | VFPU %s", r_mem.vram_fb / 1024,
              (R_VRAM_TOTAL - r_mem.vram_fb) / 1024, r_using_vfpu() ? "si (autotest correcto)" : "NO (autotest fallido, se usa la CPU)");
     }
+    hud_loading(0.05f);
+    for (int st = 1; st <= DATA_STEPS; st++) {
+        if (data_load_step("data", st) != 0) fatal(data_err());
+        if (st == 2) r_init_materials();
+        hud_loading(0.05f + 0.75f * st / DATA_STEPS);
+    }
+    dlog("Datos cargados en %.2f s: %d objetos, %d modelos, %d texturas, %d animaciones, %d sonidos",
+         (sceKernelGetSystemTimeLow() - tl) / 1000000.0f, gd.nnodes, gd.nmeshes, gd.ntex, gd.nclips, gd.nsfx);
+    /* el tema (Halloween segun la fecha) antes de leer ninguna textura de los modelos: solo se carga una version */
+    extern void game_theme_check(int boot);
+    game_theme_check(1);
     /* texturas que si no se leerian de la Memory Stick en plena carrera (tiron de 50-130 ms en la consola) */
     r_preload_texture("enemies");
     r_preload_texture("jetpackSmoke");
+    hud_loading(0.9f);
     audio_init();
     scene_init();
     game_load();
     game_init();
+    hud_loading(1.0f);
     mem_query(&dbg_mem);
     dlog_boot_done();
     dlog("Arranque completo en %.2f s | monton %u/%u KB usado | libre fuera del monton %u KB",
@@ -215,6 +228,14 @@ int main(int argc, char **argv)
         if (frame_no == 150) pr |= PSP_CTRL_CROSS;
         if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 240) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_ZOMBIE)
+        /* prueba de Zombie Jake (con AT_HALLOWEEN): personajes, arriba (el ultimo), comprar y jugar */
+        if (frame_no == 30) ginfo.total_coins = 100000;
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 70) pr |= PSP_CTRL_UP;
+        if (frame_no == 110) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 140) pr |= PSP_CTRL_CIRCLE;
+        if (ginfo.state == GS_MENU && frame_no > 200) pr |= PSP_CTRL_CROSS;
 #elif defined(AT_TROPHY)
         /* prueba de trofeos: 30 cajas misteriosas, pantalla de trofeos y paso por los 8 */
         if (frame_no == 30) { extern void game_debug_boxes(int n); game_debug_boxes(30); }

@@ -12,6 +12,7 @@ float ui_text_width(int font, float scale, const char *s);
 int ui_sprite(int atlas, const char *name, float x, float y, float scale, unsigned int abgr);
 
 void hud_draw(void);
+void hud_loading(float progress);   /* pantalla de carga (un fotograma) */
 /* page: 1 resumen, 2 memoria y VRAM, 3 grafica de tiempos */
 void perf_draw(int page, float cpu_ms, float gpu_ms, float fps);
 

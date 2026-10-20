@@ -28,6 +28,7 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
 | `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 10 personajes: Jake gratis, 4 por fichas de las cajas misteriosas y 5 por monedas |
 | `Trophies`, `MysteryBox` | `src/game.c`, `src/hud.c` | Los 8 trofeos de las cajas misteriosas y su pantalla |
+| `ThemeAssets`, `HouseKeeper` (1.4) | `src/data.c`, `src/game.c` | Tema de Halloween de la 1.4 clásica y Zombie Jake (ver abajo) |
 | `TutorialEvent`, `Character.SetBackToCheckPoint` | `src/game.c` | Tramo de tutorial en la primera partida, con la flecha, los mensajes y la vuelta al punto de control al chocar |
 | `GameStats` | `src/game.c` | Puntos por metro × multiplicador, monedas, bonus de power-ups |
 | `Missions`, `PlayerInfo` | `src/missions.c` | Los 29 grupos de 3 misiones del original; cada grupo completado sube el multiplicador (hasta ×30) |
@@ -51,7 +52,7 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 Necesitas Python 3 y:
 
     pip install -r tools/requirements.txt
-    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/
+    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--halloween subway-surfers-1.4.apk]
 
 Genera:
 
@@ -65,6 +66,19 @@ Genera:
 | `ui.bin` | Atlas y fuentes de NGUI, más las fuentes pre-escaladas a los tamaños exactos de la interfaz (texto nítido en la PSP) |
 | `music/` | La música original (`Hr_music_newFunky.mp3`) |
 | `wav/` | Todos los sonidos en WAV, por si se quieren convertir a AT3 |
+| `hw_tex.bin`, `hw_mesh.bin` | Solo con `--halloween`: el tema de Halloween y Zombie Jake, sacados del APK de la 1.4 |
+
+### Halloween (1.4 clásica)
+
+Si se pasa también el APK de la **1.4** (la actualización de Halloween de 2012), el juego usa su tema del **24 de
+octubre al 4 de noviembre** según el reloj de la consola, sin botón: el escenario, los trenes y el tren del logo
+pasan a la versión de Halloween, el inspector y el perro son zombis y la niebla se vuelve verde, como en la 1.4
+(que lo quitaba el 5 de noviembre). En esas fechas se puede comprar **Zombie Jake** (95.000 monedas); quien lo
+compra lo conserva cuando acaba el evento, y si no se compra desaparece de la lista hasta el año siguiente.
+
+Solo se carga una versión de cada textura (la normal o la de Halloween, que ocupan lo mismo), así que la memoria
+es la misma; fuera de las fechas ni siquiera se leen las mallas de Halloween. `actualizar.sh` usa el APK de la 1.4
+si hay en la carpeta uno con "1.4" o "1-4" en el nombre. Los brillos de las calabazas no se han portado.
 
 ### Música en AT3 (opcional)
 

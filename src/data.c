@@ -81,16 +81,15 @@ static int load_mats(void)
     return 0;
 }
 
-static int load_meshes(void)
+/* lee un archivo SSM3 (mesh.bin o hw_mesh.bin) */
+static Mesh *parse_meshes(uint8_t *b, int *count)
 {
-    uint8_t *b = load_file("mesh.bin", NULL);
-    if (!b) return -1;
-    if (memcmp(b, "SSM3", 4)) { snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
-    gd.nmeshes = rd32(b + 4);
-    gd.meshes = calloc(gd.nmeshes, sizeof(Mesh));
-    for (int i = 0; i < gd.nmeshes; i++) {
+    int n = rd32(b + 4);
+    Mesh *meshes = calloc(n ? n : 1, sizeof(Mesh));
+    *count = n;
+    for (int i = 0; i < n; i++) {
         uint8_t *p = b + rd32(b + 8 + 4 * i);
-        Mesh *m = &gd.meshes[i];
+        Mesh *m = &meshes[i];
         int l = p[0]; if (l > 31) l = 31;
         memcpy(m->name, p + 1, l); m->name[l] = 0;
         p += 32;
@@ -146,10 +145,52 @@ static int load_meshes(void)
             }
         }
     }
+    return meshes;
+}
+
+static int load_meshes(void)
+{
+    uint8_t *b = load_file("mesh.bin", NULL);
+    if (!b) return -1;
+    if (memcmp(b, "SSM3", 4)) { snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
+    gd.meshes = parse_meshes(b, &gd.nmeshes);
     return 0;
 }
 
-static FILE *texfile;
+static FILE *texfile, *hwtexfile;
+
+/* directorio de un archivo SST1: llama a cb con la cabecera de cada textura */
+static int read_tex_dir(FILE *f, void (*cb)(int i, const char *name, int w, int h, int fmt, int alpha,
+                                            uint32_t pal, uint32_t data, uint32_t off))
+{
+    uint8_t h[8];
+    if (fread(h, 1, 8, f) != 8 || memcmp(h, "SST1", 4)) return -1;
+    int n = rd32(h + 4);
+    uint32_t *offs = malloc(4 * (n ? n : 1));
+    fread(offs, 4, n, f);
+    for (int i = 0; i < n; i++) {
+        uint8_t th[48];
+        fseek(f, offs[i], SEEK_SET);
+        fread(th, 1, 48, f);
+        char name[32];
+        int l = th[0]; if (l > 31) l = 31;
+        memcpy(name, th + 1, l); name[l] = 0;
+        uint16_t w, hh, fmt, al;
+        memcpy(&w, th + 32, 2); memcpy(&hh, th + 34, 2); memcpy(&fmt, th + 36, 2); memcpy(&al, th + 38, 2);
+        cb(i, name, w, hh, fmt, al, rd32(th + 40), rd32(th + 44), offs[i] + 48);
+    }
+    free(offs);
+    return n;
+}
+
+static void tex_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
+{
+    Texture *t = &gd.tex[i];
+    snprintf(t->name, sizeof(t->name), "%s", name);
+    t->w = w; t->h = h; t->fmt = fmt; t->alpha = alpha;
+    t->palbytes = pal; t->databytes = data;
+    t->file_off = off;
+}
 
 static int load_textures(void)
 {
@@ -161,23 +202,20 @@ static int load_textures(void)
     fread(h, 1, 8, texfile);
     gd.ntex = rd32(h + 4);
     gd.tex = calloc(gd.ntex, sizeof(Texture));
-    uint32_t *offs = malloc(4 * gd.ntex);
-    fread(offs, 4, gd.ntex, texfile);
-    for (int i = 0; i < gd.ntex; i++) {
-        uint8_t th[48];
-        fseek(texfile, offs[i], SEEK_SET);
-        fread(th, 1, 48, texfile);
-        Texture *t = &gd.tex[i];
-        int l = th[0]; if (l > 31) l = 31;
-        memcpy(t->name, th + 1, l); t->name[l] = 0;
-        uint16_t w, hh, fmt, al;
-        memcpy(&w, th + 32, 2); memcpy(&hh, th + 34, 2); memcpy(&fmt, th + 36, 2); memcpy(&al, th + 38, 2);
-        t->w = w; t->h = hh; t->fmt = fmt; t->alpha = al;
-        t->palbytes = rd32(th + 40); t->databytes = rd32(th + 44);
-        t->file_off = offs[i] + 48;
-    }
-    free(offs);
+    fseek(texfile, 0, SEEK_SET);
+    if (read_tex_dir(texfile, tex_dir_cb) < 0) { snprintf(errbuf, sizeof(errbuf), "tex.bin no valido"); return -1; }
     return 0;
+}
+
+/* lee los datos de la textura i de su archivo (el normal o el del tema) */
+int data_tex_read(int i, void *pal, void *data)
+{
+    Texture *t = &gd.tex[i];
+    FILE *f = t->src ? hwtexfile : texfile;
+    if (!f) return -1;
+    fseek(f, t->file_off, SEEK_SET);
+    if (t->palbytes && fread(pal, 1, t->palbytes, f) != t->palbytes) return -1;
+    return fread(data, 1, t->databytes, f) == t->databytes ? 0 : -1;
 }
 
 int data_tex_load(int i)
@@ -185,16 +223,147 @@ int data_tex_load(int i)
     if (i < 0 || i >= gd.ntex) return -1;
     Texture *t = &gd.tex[i];
     if (t->loaded) return 0;
-    fseek(texfile, t->file_off, SEEK_SET);
     if (t->palbytes) {
         t->pal = memalign(64, t->palbytes);
-        fread(t->pal, 1, t->palbytes, texfile);
+        if (!t->pal) return -1;
     }
     t->data = memalign(64, t->databytes);
     if (!t->data) return -1;
-    fread(t->data, 1, t->databytes, texfile);
+    if (data_tex_read(i, t->pal, t->data) < 0) dlog_error("Error leyendo la textura %s", t->name);
     t->loaded = 1;
     return 0;
+}
+
+/* ---- tema de Halloween (hw_tex.bin y hw_mesh.bin, de la 1.4) ----
+ * Las texturas del tema tienen el mismo tamano y formato que las normales: al cambiar de tema solo cambia de que
+ * archivo se leen, y si ya estaban cargadas se leen otra vez en el mismo sitio (no se tienen nunca las dos en
+ * memoria). Las mallas (inspector y perro zombis) son pequenas: se cargan las dos y se intercambian. */
+typedef struct { uint32_t off, pal, data; uint16_t fmt, alpha; } TexSrc;
+static TexSrc *tex_src[2];          /* [0] normal, [1] Halloween (data == 0: no hay) */
+static Mesh *mesh_alt;              /* la otra version de cada malla con tema */
+static int *mesh_alt_idx, mesh_nalt;
+static int theme_cur, tex_nbase;
+
+static void hw_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
+{
+    (void)i;
+    for (int t = 0; t < gd.ntex; t++) {
+        Texture *x = &gd.tex[t];
+        if (strcmp(x->name, name)) continue;
+        if (x->w != w || x->h != h || x->palbytes != pal || x->databytes != data) {
+            dlog("AVISO la textura de Halloween %s no es como la normal: no se usa", name);
+            return;
+        }
+        tex_src[1][t] = (TexSrc){off, pal, data, (uint16_t)fmt, (uint16_t)alpha};
+        return;
+    }
+    /* textura nueva de la 1.4 (Zombie Jake): se anade al final y se lee siempre de hw_tex.bin */
+    gd.tex = realloc(gd.tex, sizeof(Texture) * (gd.ntex + 1));
+    Texture *x = &gd.tex[gd.ntex++];
+    memset(x, 0, sizeof(*x));
+    snprintf(x->name, sizeof(x->name), "%s", name);
+    x->w = w; x->h = h; x->fmt = fmt; x->alpha = alpha; x->palbytes = pal; x->databytes = data;
+    x->file_off = off; x->src = 1;
+}
+
+/* 1: texturas de hw_tex.bin. Despues de leer tex.bin y antes de r_init (puede anadir texturas) */
+int data_theme_init_tex(void)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "%s/hw_tex.bin", basedir);
+    hwtexfile = fopen(path, "rb");
+    if (!hwtexfile) return 0;
+    int n0 = gd.ntex;
+    for (int k = 0; k < 2; k++) tex_src[k] = calloc(n0, sizeof(TexSrc));
+    for (int t = 0; t < n0; t++) {
+        Texture *x = &gd.tex[t];
+        tex_src[0][t] = (TexSrc){x->file_off, x->palbytes, x->databytes, (uint16_t)x->fmt, (uint16_t)x->alpha};
+    }
+    int nt = read_tex_dir(hwtexfile, hw_dir_cb);
+    tex_nbase = n0;
+    return nt > 0;
+}
+
+/* 2: mallas de hw_mesh.bin, con todo lo demas ya cargado. Las que tienen nombre de una malla de la 1.0 son su
+ * version de Halloween; las demas (Zombie Jake) se anaden al final */
+int data_theme_init(int need_meshes)
+{
+    if (!hwtexfile) return 0;
+    /* fuera de Halloween y sin Zombie Jake comprado no hacen falta (son ~350 KB de RAM) */
+    uint8_t *b = need_meshes ? load_file("hw_mesh.bin", NULL) : NULL;
+    int nextra = 0;
+    if (b && !memcmp(b, "SSM3", 4)) {
+        int n;
+        Mesh *hm = parse_meshes(b, &n);
+        mesh_alt = calloc(n ? n : 1, sizeof(Mesh));
+        mesh_alt_idx = calloc(n ? n : 1, sizeof(int));
+        for (int i = 0; i < n; i++) {
+            const char *nm = hm[i].name;
+            int halloween = !strncmp(nm, "halloween_", 10);
+            if (halloween) nm += 10;
+            int found = -1;
+            for (int m = 0; m < gd.nmeshes && halloween; m++)
+                if (!strcmp(gd.meshes[m].name, nm) && gd.meshes[m].nbind == hm[i].nbind) { found = m; break; }
+            if (found >= 0) {
+                mesh_alt[mesh_nalt] = hm[i];
+                mesh_alt_idx[mesh_nalt++] = found;
+            } else if (!halloween) {
+                gd.meshes = realloc(gd.meshes, sizeof(Mesh) * (gd.nmeshes + 1));
+                gd.meshes[gd.nmeshes++] = hm[i];
+                nextra++;
+            }
+        }
+    }
+    int nt = 0;
+    for (int t = 0; t < tex_nbase; t++) nt += tex_src[1][t].data != 0;
+    dlog("Tema de Halloween disponible: %d texturas, %d mallas; contenido nuevo: %d texturas, %d mallas",
+         nt, mesh_nalt, gd.ntex - tex_nbase, nextra);
+    return nt > 0;
+}
+
+int data_mesh_find(const char *name)
+{
+    for (int m = 0; m < gd.nmeshes; m++) if (!strcmp(gd.meshes[m].name, name)) return m;
+    return -1;
+}
+
+int data_tex_find(const char *name)
+{
+    for (int t = 0; t < gd.ntex; t++) if (!strcmp(gd.tex[t].name, name)) return t;
+    return -1;
+}
+
+/* material nuevo copiando otro con otra textura (Zombie Jake: el de Jake con avatar_zombieJake) */
+int data_mat_clone(const char *base, int tex)
+{
+    for (int i = 0; i < gd.nmats; i++) {
+        if (strcmp(gd.mats[i].name, base)) continue;
+        gd.mats = realloc(gd.mats, sizeof(MatFile) * (gd.nmats + 1));
+        gd.mats[gd.nmats] = gd.mats[i];
+        gd.mats[gd.nmats].tex = tex;
+        return gd.nmats++;
+    }
+    return -1;
+}
+
+int data_theme_has_tex(int t) { return tex_src[1] && t < tex_nbase && tex_src[1][t].data != 0; }
+
+void data_theme_set(int on)
+{
+    on = on && tex_src[1];
+    if (on == theme_cur) return;
+    theme_cur = on;
+    for (int t = 0; t < gd.ntex; t++) {
+        if (!data_theme_has_tex(t)) continue;
+        const TexSrc *s = &tex_src[on][t];
+        Texture *x = &gd.tex[t];
+        x->src = on; x->file_off = s->off; x->fmt = s->fmt; x->alpha = s->alpha;
+    }
+    for (int i = 0; i < mesh_nalt; i++) {
+        Mesh tmp = gd.meshes[mesh_alt_idx[i]];
+        gd.meshes[mesh_alt_idx[i]] = mesh_alt[i];
+        mesh_alt[i] = tmp;
+    }
 }
 
 static int load_anims(void)
@@ -282,11 +451,20 @@ static int check_alignment(void)
     return bad;
 }
 
+/* por pasos, para ir dibujando la pantalla de carga: primero el directorio de texturas (las letras de la interfaz
+ * estan ahi), luego el resto de mas pequeno a mas grande */
+int data_load_step(const char *dir, int step)
+{
+    static int (*const steps[])(void) = {load_textures, load_world, load_mats, load_sfx, load_anims, load_meshes};
+    if (step == 0) snprintf(basedir, sizeof(basedir), "%s", dir);
+    if (step < DATA_STEPS) return steps[step]();
+    if (check_alignment()) { snprintf(errbuf, sizeof(errbuf), "Datos desalineados: vuelve a generar data/ con tools/extract.py"); return -1; }
+    return 0;
+}
+
 int data_load(const char *dir)
 {
-    snprintf(basedir, sizeof(basedir), "%s", dir);
-    if (load_world() || load_mats() || load_meshes() || load_textures() || load_anims() || load_sfx()) return -1;
-    if (check_alignment()) { snprintf(errbuf, sizeof(errbuf), "Datos desalineados: vuelve a generar data/ con tools/extract.py"); return -1; }
+    for (int s = 0; s <= DATA_STEPS; s++) if (data_load_step(dir, s)) return -1;
     return 0;
 }
 

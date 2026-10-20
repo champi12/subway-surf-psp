@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <psprtc.h>
 #include "game.h"
 #include "scene.h"
 #include "physics.h"
@@ -1489,8 +1490,64 @@ static void stage_menu_sequence(void)
     anim_play(&anim_char, "idlePaint");
 }
 
+/* ------------------------------------------------------------ tema de Halloween (1.4 clasica)
+ * La 1.4 activaba el tema por el servidor y lo quitaba el 5 de noviembre de 2012 a las 00:00 (Globals.
+ * DEFAULT_ENDSEASON_DATETIME); el evento empezaba el 24 de octubre. Aqui manda el reloj de la consola: del 24 de
+ * octubre al 4 de noviembre, cualquier ano. Se mira al arrancar y cada vez que se vuelve al menu. */
+int theme_halloween;
+static int theme_available = -1;
+#define FOG_NORMAL 0xfff6e6bcu      /* (0.737, 0.902, 0.965), RenderSettings de la 1.0 */
+#define FOG_HALLOWEEN 0xff4affb5u   /* (0.710, 1.000, 0.290), ThemeAssets de la 1.4 */
+
+int halloween_season(void)
+{
+#if defined(AT_HALLOWEEN)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;   /* las pruebas automaticas no deben depender del dia */
+#else
+    ScePspDateTime t;
+    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    return (t.month == 10 && t.day >= 24) || (t.month == 11 && t.day <= 4);
+#endif
+}
+
+/* Zombie Jake comprado? (se mira en save.dat antes de game_load: decide si se cargan las mallas de la 1.4) */
+static int save_event_owned(void)
+{
+    FILE *f = fopen("save.dat", "rb");
+    if (!f) return 0;
+    int d[32];
+    int n = fread(d, 4, 32, f);
+    fclose(f);
+    return n >= 32 && d[0] == 0x53535033 && (d[31] & 1);
+}
+
+/* boot: al arrancar, antes de cargar ninguna textura (no hace falta volver a leer nada) */
+void game_theme_check(int boot)
+{
+    if (theme_available < 0) theme_available = data_theme_init(halloween_season() || save_event_owned());
+    int on = theme_available && halloween_season();
+    if (on == theme_halloween && !boot) return;
+    theme_halloween = on;
+    data_theme_set(on);
+    r_fog_color = on ? FOG_HALLOWEEN : FOG_NORMAL;
+    if (boot) {
+        if (on) dlog("TEMA de Halloween activo (fecha de la consola)");
+        return;
+    }
+    /* con el juego abierto (el evento empieza o acaba): se vuelven a leer las texturas que ya se usaban */
+    dlog("TEMA %s: cambiando texturas", on ? "de Halloween" : "normal");
+    int n = 0, k = 0;
+    for (int t = 0; t < gd.ntex; t++) n += data_theme_has_tex(t);
+    hud_loading(0);
+    for (int t = 0; t < gd.ntex; t++)
+        if (data_theme_has_tex(t)) { r_tex_reload(t); hud_loading((float)++k / (n ? n : 1)); }
+}
+
 static void game_top_menu(void)
 {
+    game_theme_check(0);
     change_state(GS_MENU);
     music_set_volume(0.25f);
     guard_mute();
@@ -2072,6 +2129,8 @@ static int find(const char *path)
 
 static int n_avatars = -1;            /* Character Model/avatar_prefab/avatars: un modelo por personaje */
 static void char_show_model(int i);
+static void zombie_init(int slick_node);
+static void char_check_selected(void);
 
 void game_init(void)
 {
@@ -2140,6 +2199,8 @@ void game_init(void)
     /* animadores */
     anim_init(&anim_char, n_avatar);
     n_avatars = node_find_child(n_avatar, "avatars");
+    zombie_init(n_avatars >= 0 ? node_find_child(n_avatars, "slick") : -1);
+    char_check_selected();
     char_show_model(ginfo.character);   /* game_load ya ha leido el personaje elegido */
     anim_init(&anim_guard, n_guard);
     anim_init(&anim_dog, n_dog);
@@ -2181,7 +2242,7 @@ void game_init(void)
 /* fichas por tipo (CharacterModels.TokenType); a los de monedas se les "dan" sus fichas al comprarlos, como en
  * PlayerInfo: un personaje esta desbloqueado cuando sus fichas llegan al precio */
 enum { TK_JAKE, TK_TRICKY, TK_FRESH, TK_SPIKE, TK_YUTANI, TK_FRANK, TK_FRIZZY, TK_KING, TK_LUCY, TK_NINJA, TK_COUNT };
-typedef struct { const char *model, *name; int unlock, token, price; const char *tok_es, *tok_en, *tok_sprite; } CharDef;
+typedef struct { const char *model, *name; int unlock, token, price; const char *tok_es, *tok_en, *tok_sprite; int event; } CharDef;
 static const CharDef chars[] = {
     {"slick", "Jake", UL_FREE, TK_JAKE, 0, "", "", NULL},
     {"tricky", "Tricky", UL_TOKENS, TK_TRICKY, 3, "Gorra de Tricky", "Tricky's Hat", "trophy_tricky_token"},
@@ -2193,16 +2254,37 @@ static const CharDef chars[] = {
     {"frank", "Frank", UL_COINS, TK_FRANK, 40000, "", "", NULL},
     {"king", "King", UL_COINS, TK_KING, 80000, "", "", NULL},
     {"frizzy", "Frizzy", UL_COINS, TK_FRIZZY, 150000, "", "", NULL},
+    /* 1.4 (Characters.cs): "Zombie Jake only appears during Halloween". Siempre el ultimo de la lista */
+    {"slick", "Zombie Jake", UL_COINS, TK_JAKE, 95000, "", "", NULL, 1},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
+#define CH_ZOMBIE (NCHARS - 1)
 static int char_tokens[TK_COUNT];
+static int event_owned;              /* bit 0: Zombie Jake comprado (se queda aunque acabe Halloween) */
 
-int char_count(void) { return NCHARS; }
+/* Zombie Jake se dibuja con el nodo de Jake (mismo esqueleto) cambiando su malla y su material */
+static uint32_t *slick_skin;
+static int slick_mesh = -1, slick_mat = -1, zj_mesh = -1, zj_mat = -1;
+static int zombie_ready(void) { return slick_skin && zj_mesh >= 0 && zj_mat >= 0; }
+
+/* solo se puede comprar en Halloween; si ya es tuyo sigue en la lista */
+static int char_visible(int i) { return !chars[i].event || (zombie_ready() && ((event_owned & 1) || theme_halloween)); }
+
+int char_count(void) { return char_visible(CH_ZOMBIE) ? NCHARS : NCHARS - 1; }
 const char *char_name(int i) { return chars[i].name; }
 int char_unlock_type(int i) { return chars[i].unlock; }
 int char_price(int i) { return chars[i].price; }
-int char_have(int i) { return char_tokens[chars[i].token]; }
-int char_unlocked(int i) { return chars[i].unlock == UL_FREE || char_tokens[chars[i].token] >= chars[i].price; }
+int char_is_event(int i) { return chars[i].event; }
+int char_have(int i)
+{
+    if (chars[i].event) return (event_owned & 1) ? chars[i].price : 0;
+    return char_tokens[chars[i].token];
+}
+int char_unlocked(int i)
+{
+    if (chars[i].event) return (event_owned & 1) && zombie_ready();
+    return chars[i].unlock == UL_FREE || char_tokens[chars[i].token] >= chars[i].price;
+}
 const char *char_token_name(int i) { return TR(chars[i].tok_es, chars[i].tok_en); }
 const char *char_token_sprite(int i) { return chars[i].tok_sprite; }
 
@@ -2216,6 +2298,34 @@ static void char_show_model(int i)
     if (n_avatars >= 0)
         for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
             nrt[c].rend = !strcmp(gd.strings[gd.nodes[c].name], chars[i].model);
+    if (slick_skin) {
+        int z = chars[i].event && zombie_ready();
+        slick_skin[0] = (uint32_t)(z ? zj_mesh : slick_mesh);
+        slick_skin[3] = (uint32_t)(z ? zj_mat : slick_mat);
+    }
+}
+
+/* como CharacterModel.Awake: si el elegido no esta desbloqueado (o falta Zombie Jake), Jake */
+static void char_check_selected(void)
+{
+    if (ginfo.character < 0 || ginfo.character >= NCHARS || !char_unlocked(ginfo.character)) ginfo.character = 0;
+}
+
+/* tras cargarlo todo: la malla y el material de Zombie Jake (de hw_mesh.bin / hw_tex.bin) */
+static void zombie_init(int slick_node)
+{
+    const uint32_t *sk = slick_node >= 0 ? node_comp(slick_node, C_SKIN, NULL) : NULL;
+    if (!sk || sk[2] < 1) return;
+    slick_skin = (uint32_t *)sk;
+    slick_mesh = (int)sk[0];
+    slick_mat = (int)sk[3];
+    zj_mesh = data_mesh_find("halloweenJake");
+    int t = data_tex_find("avatar_zombieJake");
+    if (zj_mesh >= 0 && t >= 0 && slick_mat >= 0) {
+        zj_mat = data_mat_clone(gd.mats[slick_mat].name, t);
+        r_init_materials();   /* que tenga mipmaps como los demas */
+    }
+    if (zombie_ready()) dlog("Zombie Jake disponible (%s)", theme_halloween ? "Halloween: se puede comprar" : "fuera de Halloween");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -2237,8 +2347,10 @@ static void open_chars(void)
 
 static void chars_input(unsigned in, int confirm)
 {
-    if (in & IN_UP) { ginfo.char_sel = (ginfo.char_sel + NCHARS - 1) % NCHARS; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
-    if (in & IN_DOWN) { ginfo.char_sel = (ginfo.char_sel + 1) % NCHARS; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
+    int nc = char_count();
+    /* X tambien es "arriba" y O "abajo" (saltar y rodar): aqui no deben mover la seleccion */
+    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; char_show_model(ginfo.char_sel); snd_play(sfx_tap, 0.5f, 1, 0); }
     int i = ginfo.char_sel;
     if (confirm) {
         if (char_unlocked(i)) {
@@ -2249,7 +2361,8 @@ static void chars_input(unsigned in, int confirm)
             /* UICharacterBuyButton: se paga y queda elegido */
             ginfo.total_coins -= chars[i].price;
             missions_did(M_SPENDCOIN, chars[i].price);
-            char_tokens[chars[i].token] = chars[i].price;
+            if (chars[i].event) event_owned |= 1;
+            else char_tokens[chars[i].token] = chars[i].price;
             ginfo.character = i;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
             game_save();
@@ -2683,6 +2796,7 @@ void game_save(void)
                  mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
     for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
     d[30] = trophies_mask;
+    d[31] = event_owned;
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
 }
@@ -2709,8 +2823,8 @@ void game_load(void)
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    /* como CharacterModel.Awake: si el elegido no esta desbloqueado, se vuelve a Jake */
-    if (ginfo.character < 0 || ginfo.character >= NCHARS || !char_unlocked(ginfo.character)) ginfo.character = 0;
+    if (!v2 && n >= 32) event_owned = d[31] & 1;
+    /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }
 
 void scene_on_chunk_laid(int chunk) { (void)chunk; }

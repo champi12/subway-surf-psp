@@ -522,9 +522,11 @@ static void draw_chars(void)
     ui_sprite_wh(a_ui, "coin2d", SCR_W - 8 - tw - 30 * UIS, 6 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
     ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
     float y = 32;
-    for (int i = 0; i < char_count(); i++) {
+    int nc = char_count();
+    float step = nc > 10 ? 19.5f : 22, rh = nc > 10 ? 18 : 20;   /* con Zombie Jake (Halloween) son 11 filas */
+    for (int i = 0; i < nc; i++) {
         int sel = i == ginfo.char_sel, un = char_unlocked(i);
-        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 6, y, 226, 20, 0.5f,
+        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 6, y, 226, rh, 0.5f,
                   sel ? 0xffffffff : 0xc0ffffff);
         ui_text(f_mid, 14, y + 2, 0.62f, un ? 0xffffffff : 0xffb0b0b0, 0, char_name(i));
         if (i == ginfo.character) {
@@ -542,7 +544,7 @@ static void draw_chars(void)
             ui_sprite_wh(a_ui, "coin2d", 226 - w - 18, y + 3, 15, 15, 0xffffffff);
             ui_text(f_mid, 226, y + 2, 0.62f, ginfo.total_coins >= char_price(i) ? 0xffffffff : 0xff8080ff, 2, buf);
         }
-        y += 22;
+        y += step;
     }
     int i = ginfo.char_sel;
     const char *hint;
@@ -550,6 +552,8 @@ static void draw_chars(void)
     else if (char_unlock_type(i) == UL_COINS) hint = TR("X comprar   O volver   R tienda", "X buy   O back   R shop");
     else hint = TR("Fichas en las cajas misteriosas", "Tokens come from Mystery Boxes");
     text_shadow(f_small, 119, SCR_H - 22, 0.6f, 0xffe0e0e0, 1, hint);
+    if (char_is_event(i) && !char_unlocked(i))
+        text_shadow(f_mid, 360, SCR_H - 30, 0.65f, 0xff1a8cff, 1, TR("Especial de Halloween", "Halloween Special"));
     if (!char_unlocked(i) && char_unlock_type(i) == UL_TOKENS) {
         snprintf(buf, sizeof(buf), "%s: %d/%d", char_token_name(i), char_have(i), char_price(i));
         text_shadow(f_mid, 360, SCR_H - 30, 0.65f, 0xff00dbff, 1, buf);
@@ -635,6 +639,27 @@ static void draw_gameover(void)
         r_rect(90, 110, 300, 50, 0xd0000000);
         text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
     }
+}
+
+/* pantalla de carga: al arrancar y si cambia el tema (Halloween) con el juego abierto. Es un fotograma entero */
+void hud_loading(float p)
+{
+    extern int halloween_season(void);
+    int hw = halloween_season();
+    r_begin_frame(hw ? 0xff301028 : 0xff6a3a10);   /* morado de Halloween o azul */
+    hud_fonts();
+    r_begin_2d();
+    if (f_big >= 0) {
+        text_shadow(f_big, SCR_W / 2, 70, 1.2f, 0xff00dbff, 1, "Subway Surfers");
+        if (hw) text_shadow(f_big, SCR_W / 2, 112, 0.9f, 0xff1a8cff, 1, "Halloween");
+        text_shadow(f_mid, SCR_W / 2, 176, 0.75f, 0xffffffff, 1, TR("Cargando...", "Loading..."));
+    }
+    float w = 300, x = (SCR_W - w) * 0.5f, y = 206;
+    if (p < 0) p = 0;
+    if (p > 1) p = 1;
+    r_rect(x - 2, y - 2, w + 4, 14, 0xff000000);
+    r_rect(x, y, w * p, 10, hw ? 0xff1a8cff : 0xff00dbff);
+    r_end_frame();
 }
 
 void hud_draw(void)

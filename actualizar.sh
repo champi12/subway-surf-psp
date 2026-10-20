@@ -5,6 +5,10 @@
 #   ./actualizar.sh subway.apk              APK concreto
 #   ./actualizar.sh subway.apk "/mnt/c/Users/Joan jimenez/Desktop"
 #                                           ademas copia la carpeta PSP ahi (p. ej. el escritorio de Windows)
+#
+# Halloween (1.4 clasica): si en esta carpeta hay un APK de la 1.4 (un nombre con "1.4" o "1-4", p. ej.
+# subway-surfers-1-4-0.apk), se saca tambien el tema de Halloween y Zombie Jake. Tambien se puede indicar con
+# APK14=ruta.apk ./actualizar.sh ...
 set -e
 cd "$(dirname "$0")"
 
@@ -12,8 +16,9 @@ echo "== 1/3 Bajando cambios =="
 git pull --ff-only || echo "(git pull no pudo actualizar; se compila lo que hay)"
 
 echo "== 2/3 Datos del juego =="
-APK=${1:-$(ls *.apk 2>/dev/null | head -1)}
-VER=$(cat tools/extract.py tools/unityscene.py | sha1sum | cut -c1-16)
+APK14=${APK14:-$(ls *1.4*.apk *1-4*.apk 2>/dev/null | head -1)}
+APK=${1:-$(ls *.apk 2>/dev/null | grep -v -e '1\.4' -e '1-4' | head -1)}
+VER=$( (cat tools/extract.py tools/unityscene.py; echo "halloween:$APK14") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
 else
@@ -23,7 +28,12 @@ else
     fi
     [ -f ~/venv-subway/bin/activate ] && source ~/venv-subway/bin/activate
     echo "El extractor ha cambiado (o es la primera vez): regenerando data/ desde $APK ..."
-    python3 tools/extract.py "$APK" data/
+    if [ -n "$APK14" ] && [ -f "$APK14" ]; then
+        echo "Con el tema de Halloween de $APK14"
+        python3 tools/extract.py "$APK" data/ --halloween "$APK14"
+    else
+        python3 tools/extract.py "$APK" data/
+    fi
     echo "$VER" > data/.version
 fi
 

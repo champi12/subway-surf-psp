@@ -16,7 +16,7 @@ ifdef MIPMAPS
 CFLAGS += -DMIPMAPS=$(MIPMAPS)
 endif
 ASFLAGS = $(CFLAGS)
-LIBS = -lpspgum -lpspgu -lpspmp3 -lpspatrac3 -lpspaudio -lpsputility -lpsppower -lm
+LIBS = -lpspgum -lpspgu -lpspmp3 -lpspatrac3 -lpspaudio -lpsputility -lpsppower -lpsprtc -lm
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = Subway Surfers

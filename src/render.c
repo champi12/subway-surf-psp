@@ -115,11 +115,11 @@ static inline unsigned swz_off(unsigned xb, unsigned y, unsigned wb)
     return ((y >> 3) * (wb >> 4) + (xb >> 4)) * 128 + (y & 7) * 16 + (xb & 15);
 }
 
-static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int sh)
+static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int sh, unsigned char *dst)
 {
     int dw = sw / 2, dh = sh / 2, bpp = tx->fmt == TEX_T8 ? 1 : 2;
     unsigned swb = sw * bpp, dwb = dw * bpp;
-    unsigned char *dst = memalign(16, dwb * dh);
+    if (!dst) dst = memalign(16, dwb * dh);
     if (!dst) return NULL;
     for (int y = 0; y < dh; y++)
         for (int x = 0; x < dw; x++) {
@@ -150,24 +150,46 @@ static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int s
     return dst;
 }
 
-static void mips_build(int t)
+/* src: el nivel 0 en RAM. Si ya habia mipmaps (cambio de tema) se reescriben en los mismos bufferes */
+static void mips_build(int t, const unsigned char *src)
 {
     Texture *tx = &gd.tex[t];
-    tex_nmip[t] = 0;
+    int had = tex_nmip[t];
+    if (!had) tex_nmip[t] = 0;
     if (MIPMAPS <= 0 || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return;
     int bpp = tx->fmt == TEX_T8 ? 1 : 2, w = tx->w, h = tx->h;
-    const unsigned char *src = tx->data;
     for (int l = 0; l < MIPMAPS; l++) {
         /* el swizzle necesita filas de 16 bytes y 8 lineas como minimo */
         if ((w / 2) * bpp < 16 || h / 2 < 8) break;
-        void *m = mip_make(tx, src, w, h);
+        if (had && l >= had) break;
+        void *m = mip_make(tx, src, w, h, had ? tex_mip[t][l] : NULL);
         if (!m) break;
         tex_mip[t][l] = m;
-        tex_nmip[t] = l + 1;
+        if (!had) { tex_nmip[t] = l + 1; r_mip_bytes += (w / 2) * (h / 2) * bpp; }
         w /= 2; h /= 2;
         src = m;
-        r_mip_bytes += w * h * bpp;
     }
+}
+
+/* cambio de tema con la textura ya cargada: se lee de su nuevo archivo encima de la anterior (mismo tamano) */
+void r_tex_reload(int t)
+{
+    Texture *tx = &gd.tex[t];
+    if (!tx->loaded) return;           /* aun no se ha usado: se leera del archivo nuevo cuando haga falta */
+    if (ge_busy) sceGuSync(0, 0);      /* el GE no debe estar leyendola */
+    unsigned char *buf = memalign(64, tx->databytes);
+    if (!buf) { dlog_error("Sin memoria para cambiar la textura %s", tx->name); return; }
+    if (data_tex_read(t, tx->pal, buf) < 0) { free(buf); dlog_error("Error leyendo la textura %s", tx->name); return; }
+    mips_build(t, buf);
+    if (vram_tex_ptr[t]) {
+        memcpy((void *)((unsigned)vram_tex_ptr[t] | 0x40000000), buf, tx->databytes);
+        free(buf);
+    } else {
+        free(tx->data);
+        tx->data = buf;
+    }
+    sceKernelDcacheWritebackAll();
+    if (cur_tex == t) cur_tex = -2;
 }
 
 /* lee la textura de la Memory Stick la primera vez que se usa (y la sube a la VRAM si cabe) */
@@ -187,9 +209,10 @@ static int tex_ensure(int t)
         return -1;
     }
     const char *where = "RAM";
-    mips_build(t);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
-    /* las texturas de 16 bits del escenario van a la VRAM si caben */
-    if (tx->fmt != TEX_T8 && t < 64) {
+    mips_build(t, tx->data);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
+    /* las texturas de 16 bits del escenario van a la VRAM si caben (solo las de los modelos 3D: la letra de la
+     * interfaz se carga antes, en la pantalla de carga, y si no dejaria fuera a la de los trenes) */
+    if (tx->fmt != TEX_T8 && t < 64 && tex_3d[t]) {
         void *v = vram_alloc(tx->databytes);
         if (v) {
             memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
@@ -344,6 +367,14 @@ static int bind_material(int mi, float amul)
 }
 
 /* --------------- inicializacion y frames --------------- */
+/* despues de cargar mat.bin: que texturas son de modelos 3D (llevan mipmaps) */
+void r_init_materials(void)
+{
+    for (int i = 0; i < gd.nmats; i++)
+        if (gd.mats[i].tex >= 0 && gd.mats[i].tex < gd.ntex) tex_3d[gd.mats[i].tex] = 1;
+}
+
+/* necesita el directorio de texturas (gd.ntex): se llama nada mas leer tex.bin, para la pantalla de carga */
 void r_init(void)
 {
     fbp0 = (void *)0;
@@ -357,8 +388,6 @@ void r_init(void)
     tex_3d = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
     tex_nmip = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
     tex_mip = calloc(gd.ntex > 0 ? gd.ntex : 1, sizeof(*tex_mip));
-    for (int i = 0; i < gd.nmats; i++)
-        if (gd.mats[i].tex >= 0 && gd.mats[i].tex < gd.ntex) tex_3d[gd.mats[i].tex] = 1;
     sceGuInit();
     sceGuStart(GU_DIRECT, dlists[0]);
     sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);

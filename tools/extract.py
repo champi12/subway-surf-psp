@@ -2,7 +2,12 @@
 """Convierte el APK de Subway Surfers 1.0 (Android, Unity 3.5) en los datos del port de PSP.
 
 Uso:
-    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/
+    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--halloween subway-surfers-1.4.apk]
+
+Con --halloween se saca ademas, del APK de la 1.4 clasica (Halloween de 2012), lo que cambia su tema de Halloween
+(ThemeAssets): las texturas del escenario, los trenes, el tren del logo y los enemigos, y las mallas del inspector
+y el perro zombis. Van a data/hw_tex.bin y data/hw_mesh.bin y el juego las usa en lugar de las normales del 24 de
+octubre al 4 de noviembre (segun el reloj de la consola).
 
 Genera en data/:
     world.bin   jerarquia de la escena (tramos de via, obstaculos, monedas, personaje...)
@@ -614,8 +619,10 @@ def export_textures(ex, maxsize=512, hq=()):
     body = bytearray()
     offs = []
     for to in ex.textures:
-        if isinstance(to, tuple):          # textura generada por el conversor (fuentes pre-escaladas)
+        force_t8 = False
+        if isinstance(to, tuple):          # textura generada por el conversor (fuentes pre-escaladas, Halloween)
             gen_name, gen_img = to[1], to[2]
+            force_t8 = len(to) > 3 and to[3]
             t = None
             img = gen_img.convert('RGBA')
         else:
@@ -632,7 +639,7 @@ def export_textures(ex, maxsize=512, hq=()):
         a = np.asarray(img)
         has_alpha = bool((a[:, :, 3] < 250).any())
         name = t.m_Name if t is not None else gen_name
-        if name in hq or t is None:
+        if name in hq or (t is None and not force_t8):
             if has_alpha:
                 fmt = TEX_4444
                 r = (a[:, :, 0].astype(np.uint16) >> 4)
@@ -1025,19 +1032,147 @@ def bake_fonts(ex, atlases, fonts):
 EXCLUDE_ROOTS = {'0UI', 'IngameHighScore', 'XXXTestToRemove', 'temp'}
 
 
+# ---------------------------------------------------------------- Halloween (1.4)
+HW_TEXTURES = ('main', 'trains', 'train_start', 'enemies')
+
+
+def unpack_apk(apk):
+    tmp = tempfile.mkdtemp(prefix='sspsp_')
+    with zipfile.ZipFile(apk) as z:
+        for n in z.namelist():
+            if n.startswith('assets/bin/Data/'):
+                z.extract(n, tmp)
+    return os.path.join(tmp, 'assets', 'bin', 'Data')
+
+
+def export_halloween(apk14, outdir, ex, hq):
+    """ThemeAssets de la 1.4: texturas y mallas del tema "halloween" con los mismos nombres que en la 1.0."""
+    from types import SimpleNamespace
+    print('Halloween: descomprimiendo el APK de la 1.4...')
+    sc = Scene(unpack_apk(apk14))
+    themes = None
+    for f in sc.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            try:
+                scr = sc.script_of(o)
+            except Exception:
+                continue
+            if scr and scr[2] == 'ThemeAssets':
+                themes = (o, sc.read_mono(o)[1])
+                break
+        if themes:
+            break
+    if not themes or not themes[1]:
+        print('  AVISO: el APK no tiene ThemeAssets (no es la 1.4 clasica): sin Halloween')
+        return
+    tobj, td = themes
+    by_theme = {a['theme']: a for a in td['assets']}
+    if 'halloween' not in by_theme:
+        print('  AVISO: sin tema de Halloween en ThemeAssets')
+        return
+
+    def tex_map(a):
+        r = {}
+        for tm in a['textureAndMaterials']:
+            o = sc.resolve_ptr(tobj, tm['texture'])
+            if o is not None:
+                d = o.read()
+                r[d.m_Name] = d
+        return r
+    nrm14, hw14 = tex_map(by_theme['normal']), tex_map(by_theme['halloween'])
+    v10 = {}
+    for to in ex.textures:
+        if not isinstance(to, tuple):
+            d = to.read()
+            v10.setdefault(d.m_Name, d)
+    gen = []
+    for name in HW_TEXTURES:
+        if name not in v10 or name not in nrm14 or name not in hw14:
+            print('  AVISO: falta la textura %s' % name)
+            continue
+        a = np.asarray(v10[name].image.convert('RGBA')).astype(np.int16)
+        n = np.asarray(nrm14[name].image.convert('RGBA')).astype(np.int16)
+        h = np.asarray(hw14[name].image.convert('RGBA'))
+        if a.shape != n.shape or a.shape != h.shape:
+            print('  AVISO: %s no tiene el mismo tamano en la 1.0 y la 1.4' % name)
+            continue
+        # el atlas de la 1.4 es el de la 1.0 con algun hueco reutilizado: donde la 1.4 normal no es igual que la
+        # 1.0 se deja la 1.0 (si no, algun objeto de la 1.0 saldria con trozos de otro dibujo)
+        diff = np.abs(a[:, :, :3] - n[:, :, :3]).sum(axis=2) > 30
+        out = np.where(diff[:, :, None], a.astype(np.uint8), h)
+        print('  textura %-12s %.1f %% de pixeles se quedan como en la 1.0' % (name, diff.mean() * 100))
+        gen.append(('gen', name, Image.fromarray(out, 'RGBA'), name not in hq))
+    meshes = []
+    names10 = {m.read().m_Name for m in ex.meshes}
+    a = by_theme['halloween']
+    for p in a['environmentModels'] + a['characterModels']:
+        go = sc.resolve_ptr(tobj, p)
+        if go is None:
+            continue
+        stack = [sc.go_tree(go)]
+        while stack:
+            g = stack.pop()
+            stack += g['children']
+            for c in g['comps']:
+                dd = c.get('data')
+                mp = dd.get('m_Mesh') if isinstance(dd, dict) else None
+                if not mp or not mp[2]:
+                    continue
+                mo = sc.resolve_ptr(c['obj'], mp)
+                nm = mo.read().m_Name if mo is not None else ''
+                base = nm[len('halloween_'):] if nm.startswith('halloween_') else nm
+                if base in names10:      # solo lo que existe en la 1.0 (lo nuevo de la 1.4 no tiene donde ir)
+                    meshes.append(mo)
+    # Zombie Jake (Characters.cs de la 1.4: solo se compra en Halloween). Usa el esqueleto de Jake con los mismos
+    # 18 huesos en el mismo orden; en el juego se dibuja con el nodo de Jake cambiando la malla y la textura.
+    zj = None
+    for o in sc.env.objects:
+        if o.type.name != 'SkinnedMeshRenderer':
+            continue
+        d = o.read_typetree()
+        mo = sc.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
+        if mo is None or mo.read().m_Name != 'halloweenJake':
+            continue
+        mat = sc.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
+        md = mat.read_typetree() if mat is not None else None
+        tex = None
+        for nm_, t in (md['m_SavedProperties']['m_TexEnvs'] if md else []):
+            nm_ = nm_['name'] if isinstance(nm_, dict) else nm_
+            if nm_ == '_MainTex':
+                tex = sc.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+        if tex is not None:
+            zj = (mo, tex.read())
+            break
+    if zj:
+        meshes.append(zj[0])
+        gen.append(('gen', 'avatar_zombieJake', zj[1].image, True))
+        print('  Zombie Jake: malla halloweenJake y textura avatar_zombieJake')
+    else:
+        print('  AVISO: no se encuentra Zombie Jake')
+    hm = SimpleNamespace(meshes=meshes, mesh_world=[False] * len(meshes))
+    mbin, stats = export_meshes(hm)
+    tbin = export_textures(SimpleNamespace(textures=gen), hq=hq)
+    for fn, b in (('hw_tex.bin', tbin), ('hw_mesh.bin', mbin)):
+        with open(os.path.join(outdir, fn), 'wb') as f:
+            f.write(b)
+        print('  %-11s %8d KB' % (fn, len(b) // 1024))
+    print('  mallas: %s' % ', '.join(s_[0] for s_ in stats))
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(1)
     apk, outdir = sys.argv[1], sys.argv[2]
+    apk14 = None
+    if '--halloween' in sys.argv:
+        i = sys.argv.index('--halloween')
+        apk14 = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
     os.makedirs(outdir, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix='sspsp_')
     print('Descomprimiendo el APK...')
-    with zipfile.ZipFile(apk) as z:
-        for n in z.namelist():
-            if n.startswith('assets/bin/Data/'):
-                z.extract(n, tmp)
-    data_dir = os.path.join(tmp, 'assets', 'bin', 'Data')
+    data_dir = unpack_apk(apk)
     print('Cargando la escena de Unity...')
     sc = Scene(data_dir)
     ex = Exporter(sc)
@@ -1107,7 +1242,8 @@ def main():
     tt = sum(s[2] for s in stats)
     print('  %d mallas, %d vertices, %d triangulos' % (len(stats), tv, tt))
     print('Exportando texturas...')
-    tex = export_textures(ex, hq=('main', 'trains', 'FontAtlas'))
+    hq = ('main', 'trains', 'FontAtlas')
+    tex = export_textures(ex, hq=hq)
     print('Exportando animaciones...')
     anim = export_anims(ex)
     print('  %d clips' % len(ex.clips))
@@ -1136,6 +1272,11 @@ def main():
     with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))
+    for fn in ('hw_tex.bin', 'hw_mesh.bin'):
+        if os.path.exists(os.path.join(outdir, fn)):
+            os.remove(os.path.join(outdir, fn))
+    if apk14:
+        export_halloween(apk14, outdir, ex, hq)
     print('Listo.')
 
 
