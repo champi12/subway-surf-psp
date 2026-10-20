@@ -290,7 +290,7 @@ void coins_draw(void)
     for (int i = 0; i < MAX_COINS; i++) {
         CoinRT *c = &coins[i];
         if (!c->active || !c->visible) continue;
-        if (c->pos.z < cam.z - 10.0f || c->pos.z > cam.z + r_far) continue;
+        if (c->pos.z < cam.z - 10.0f || c->pos.z > cam.z + r_fog_end) continue;
         /* PickupRotate: rotacion en Y = tiempo*180 + z*0.9 */
         float ang = game_time * 180.0f + c->rot_z * 0.9f;
         M34 w;

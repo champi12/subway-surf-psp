@@ -42,6 +42,13 @@ int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_skin_cpu;
 M34 r_view;
 V3 r_cam_pos;
 float r_near = 2.0f, r_far = 1000.0f;
+/* Niebla lineal de la escena del original (RenderSettings de level0: de 200 a 700, del color del cielo). Solo la
+ * llevan los materiales opacos (Custom/Distorted/Unlit); los transparentes del original tienen "Fog { Mode Off }".
+ * Mas alla de r_fog_end todo es del color de la niebla, asi que los objetos enteros de detras no se dibujan: el
+ * plano lejano de la proyeccion sigue en 1000 porque la curvatura del mundo depende de el. */
+float r_fog_start = 200.0f, r_fog_end = 700.0f;
+unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
+static int cur_fog;
 /* el original es vertical (retrato) con fov 60; en la pantalla apaisada de la PSP 50 encuadra parecido */
 float r_fov = 50.0f;
 
@@ -319,6 +326,8 @@ static int bind_material(int mi, float amul)
     int blend = m->blend;
     if (amul < 0.999f && blend == BLEND_OPAQUE) blend = BLEND_ALPHA;
     set_blend(blend);
+    int fog = blend == BLEND_OPAQUE && !m->sky;
+    if (fog != cur_fog) { if (fog) sceGuEnable(GU_FOG); else sceGuDisable(GU_FOG); cur_fog = fog; }
     static const float white[4] = {1, 1, 1, 1};
     unsigned int col = col_abgr((blend == BLEND_OPAQUE || blend == BLEND_ALPHA) && m->color[3] < 0.01f ? white :
                                 (blend == BLEND_OPAQUE ? white : m->color), amul);
@@ -398,6 +407,8 @@ void r_begin_frame(unsigned int clear)
     bones_zero = 0;
     /* lista "llamable": se construye mientras el GE sigue con el fotograma anterior */
     sceGuStart(GU_CALL, dlist);
+    sceGuFog(r_fog_start, r_fog_end, r_fog_color);
+    sceGuDisable(GU_FOG); cur_fog = 0;
     cur_tex = -2; cur_blend = -1; cur_color = 0; cur_st[0] = -1;
     sceGuDrawBufferList(GU_PSM_5650, frame_par ? fbp1 : fbp0, BUF_W);
     sceGuClearColor(clear);
@@ -623,7 +634,7 @@ static int sphere_visible_v(V3 p, float r)
 {
     float d = p.z;
     if (d + r < r_near) return 0;
-    if (d - r > r_far) return 0;
+    if (d - r > r_fog_end) return 0;   /* entero dentro de la niebla: del color del fondo */
     /* se aplica la curvatura al centro (como hace el shader con cada vertice) */
     float zc = ZA * d + ZB, zz = zc * zc;
     float x = p.x + (-0.0005f / P00) * zz, y = p.y + (-0.0003f / P11) * zz;
@@ -1109,6 +1120,7 @@ typedef struct { float u, v; unsigned int c; float x, y, z; } SV;
 void r_begin_2d(void)
 {
     model_identity();
+    if (cur_fog) { sceGuDisable(GU_FOG); cur_fog = 0; }
     set_blend(BLEND_ALPHA);
     sceGuDisable(GU_DEPTH_TEST);
     sceGuDisable(GU_CULL_FACE);

@@ -291,7 +291,7 @@ int main(int argc, char **argv)
 #ifdef AT_CRACKS
         r_begin_frame(0xffff00ff);   /* prueba de grietas: fondo magenta */
 #else
-        r_begin_frame(0xfff6e6bc);   /* color de fondo de la camara (0.737, 0.902, 0.965) */
+        r_begin_frame(r_fog_color);   /* color de fondo de la camara = el de la niebla */
 #endif
         game_draw();
         DBG_PHASE(main, "hud_draw (interfaz)");

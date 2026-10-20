@@ -41,6 +41,8 @@ extern RMem r_mem;
 extern M34 r_view;
 extern V3 r_cam_pos;
 extern float r_near, r_far, r_fov;
+extern float r_fog_start, r_fog_end;
+extern unsigned int r_fog_color;   /* ABGR; tambien es el color de fondo */
 
 /* 2D (pantalla, en pixeles) */
 void r_begin_2d(void);
