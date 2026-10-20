@@ -9,6 +9,7 @@
 void r_init(void);
 void r_init_materials(void);
 void r_tex_reload(int t);   /* cambio de tema: vuelve a leer una textura ya cargada */
+void r_tex_unload(int t);   /* libera una textura de la RAM (se vuelve a leer si se usa) */
 void r_begin_frame(unsigned int clear_abgr);
 void r_end_frame(void);
 void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capturas) */

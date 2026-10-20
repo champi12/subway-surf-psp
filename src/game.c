@@ -2349,6 +2349,8 @@ static int event_owned;              /* bit 0: Zombie Jake comprado (se queda au
 
 /* Zombie Jake se dibuja con el nodo de Jake (mismo esqueleto) cambiando su malla y su material */
 static uint32_t *slick_skin;
+static int n_slick_node = -1;
+static int char_tex(int i);
 static int slick_mesh = -1, slick_mat = -1, zj_mesh = -1, zj_mat = -1;
 static int zombie_ready(void) { return slick_skin && zj_mesh >= 0 && zj_mat >= 0; }
 
@@ -2388,6 +2390,27 @@ static void char_show_model(int i)
         slick_skin[0] = (uint32_t)(z ? zj_mesh : slick_mesh);
         slick_skin[3] = (uint32_t)(z ? zj_mat : slick_mat);
     }
+    /* en memoria solo las texturas del que se ve y del elegido: el resto se libera */
+    int keep1 = char_tex(i), keep2 = char_tex(ginfo.character);
+    for (int c = 0; c < NCHARS; c++) {
+        int t = char_tex(c);
+        if (t >= 0 && t != keep1 && t != keep2) r_tex_unload(t);
+    }
+}
+
+/* textura del personaje i (la de su material de piel; la de Zombie Jake es la de su material propio) */
+static int char_tex(int i)
+{
+    if (chars[i].event) return zj_mat >= 0 ? gd.mats[zj_mat].tex : -1;
+    if (n_avatars < 0) return -1;
+    for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling) {
+        if (strcmp(gd.strings[gd.nodes[c].name], chars[i].model)) continue;
+        const uint32_t *sk = node_comp(c, C_SKIN, NULL);
+        if (!sk || sk[2] < 1) return -1;
+        int m = (c == n_slick_node && slick_mat >= 0) ? slick_mat : (int)sk[3];   /* Jake: su material, no el de Zombie */
+        return m >= 0 && m < gd.nmats ? gd.mats[m].tex : -1;
+    }
+    return -1;
 }
 
 /* como CharacterModel.Awake: si el elegido no esta desbloqueado (o falta Zombie Jake), Jake */
@@ -2402,6 +2425,7 @@ static void zombie_init(int slick_node)
     const uint32_t *sk = slick_node >= 0 ? node_comp(slick_node, C_SKIN, NULL) : NULL;
     if (!sk || sk[2] < 1) return;
     slick_skin = (uint32_t *)sk;
+    n_slick_node = slick_node;
     slick_mesh = (int)sk[0];
     slick_mat = (int)sk[3];
     zj_mesh = data_mesh_find("halloweenJake");

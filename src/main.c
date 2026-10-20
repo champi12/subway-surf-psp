@@ -236,6 +236,13 @@ int main(int argc, char **argv)
         if (frame_no == 110) pr |= PSP_CTRL_CROSS;
         if (frame_no == 140) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 200) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_IDLE)
+        /* prueba: quieto en el menu */
+#elif defined(AT_CHARCYCLE)
+        /* prueba de memoria: recorre todos los personajes dos veces y vuelve al menu */
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no > 60 && frame_no < 60 + 22 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
+        if (frame_no == 60 + 22 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
 #elif defined(AT_TROPHY)
         /* prueba de trofeos: 30 cajas misteriosas, pantalla de trofeos y paso por los 8 */
         if (frame_no == 30) { extern void game_debug_boxes(int n); game_debug_boxes(30); }

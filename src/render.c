@@ -171,6 +171,26 @@ static void mips_build(int t, const unsigned char *src)
     }
 }
 
+/* libera una textura de la RAM (las de los personajes que solo se han mirado en la pantalla de personajes: cada
+ * una son ~340 KB con sus mipmaps y, pasando por todos, la PSP-1000 se quedaba sin memoria). Se vuelve a leer de la
+ * Memory Stick si hace falta. Las de la VRAM no se tocan */
+void r_tex_unload(int t)
+{
+    if (t < 0 || t >= gd.ntex) return;
+    Texture *tx = &gd.tex[t];
+    if (!tx->loaded || (t < 64 && vram_tex_ptr[t])) return;
+    if (ge_busy) sceGuSync(0, 0);      /* el GE puede estar dibujando el fotograma anterior con ella */
+    free(tx->data); tx->data = NULL;
+    free(tx->pal); tx->pal = NULL;
+    for (int l = 0; l < tex_nmip[t]; l++) { free(tex_mip[t][l]); tex_mip[t][l] = NULL; }
+    tex_nmip[t] = 0;
+    r_mem.ram_tex -= (int)(tx->databytes + tx->palbytes);
+    r_mem.ram_tex_n--;
+    tx->loaded = 0;
+    tex_failed[t] = 0;
+    if (cur_tex == t) cur_tex = -2;
+}
+
 /* cambio de tema con la textura ya cargada: se lee de su nuevo archivo encima de la anterior (mismo tamano) */
 void r_tex_reload(int t)
 {
