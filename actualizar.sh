@@ -12,8 +12,12 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "== 1/3 Bajando cambios =="
-git pull --ff-only || echo "(git pull no pudo actualizar; se compila lo que hay)"
+if [ -z "$SS_ACTUALIZADO" ]; then
+    echo "== 1/3 Bajando cambios =="
+    git pull --ff-only || echo "(git pull no pudo actualizar; se compila lo que hay)"
+    # si git pull ha cambiado este mismo script, bash seguiria leyendo la version vieja: se vuelve a empezar
+    SS_ACTUALIZADO=1 exec "$0" "$@"
+fi
 
 echo "== 2/3 Datos del juego =="
 APK14=${APK14:-$(ls *1.4*.apk *1-4*.apk 2>/dev/null | head -1)}
