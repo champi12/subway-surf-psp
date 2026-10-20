@@ -2953,6 +2953,21 @@ void game_load(void)
 void scene_on_chunk_laid(int chunk) { (void)chunk; }
 
 #ifdef AUTOTEST
+/* para la prueba automatica: todo desbloqueado (personajes, Zombie Jake, trofeos, mejoras, tablas, headstarts) */
+void game_debug_unlock_all(void)
+{
+    for (int i = 0; i < NCHARS; i++) if (!chars[i].event) char_tokens[chars[i].token] = chars[i].price;
+    event_owned |= 1;
+    trophies_mask = (1 << NTROPHIES) - 1;
+    for (int k = 0; k < PW_COUNT; k++) upgrade_tier[k] = 5;
+    ginfo.total_coins = 999999; ginfo.hoverboards = 99; ginfo.hs500 = 20; ginfo.hs2000 = 20;
+    ginfo.boxes_pending = 5;
+    ginfo.character = zombie_ready() ? CH_ZOMBIE : 0;
+    char_show_model(ginfo.character);
+    game_save();
+    dlog("PRUEBA todo desbloqueado, personaje %s", chars[ginfo.character].name);
+}
+
 /* para la prueba automatica: abrir n cajas misteriosas de golpe */
 void game_debug_boxes(int n)
 {

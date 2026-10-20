@@ -236,6 +236,32 @@ int main(int argc, char **argv)
         if (frame_no == 110) pr |= PSP_CTRL_CROSS;
         if (frame_no == 140) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 200) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_MAXOUT)
+        /* prueba de memoria del peor caso: todo desbloqueado, todas las pantallas y carreras con todos los power-ups */
+        {
+            extern void game_debug_unlock_all(void);
+            static int runs;
+            static unsigned last_state = 99;
+            if (frame_no == 20) game_debug_unlock_all();
+            if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;                                   /* personajes */
+            if (frame_no > 50 && frame_no < 50 + 24 * 8 && frame_no % 8 == 0) pr |= PSP_CTRL_DOWN;
+            if (frame_no == 250) pr |= PSP_CTRL_RTRIGGER;                                  /* a la tienda */
+            if (frame_no > 260 && frame_no < 400 && frame_no % 8 == 0) pr |= PSP_CTRL_DOWN;
+            if (frame_no == 410) pr |= PSP_CTRL_LTRIGGER;                                  /* a personajes */
+            if (frame_no == 430) pr |= PSP_CTRL_CIRCLE;                                    /* menu */
+            if (frame_no == 450) pr |= PSP_CTRL_SQUARE;                                    /* trofeos */
+            if (frame_no > 460 && frame_no < 540 && frame_no % 8 == 0) pr |= PSP_CTRL_RIGHT;
+            if (frame_no == 550) pr |= PSP_CTRL_CIRCLE;
+            if (frame_no == 570) pr |= PSP_CTRL_TRIANGLE;                                  /* misiones */
+            if (frame_no == 590) pr |= PSP_CTRL_TRIANGLE;
+            if (ginfo.state == GS_MENU && frame_no > 620) pr |= PSP_CTRL_CROSS;            /* jugar */
+            if (ginfo.state == GS_RUNNING && (unsigned)ginfo.state != last_state) {
+                runs++;
+                pr |= (runs & 1) ? PSP_CTRL_RTRIGGER : PSP_CTRL_LTRIGGER;              /* headstart */
+            }
+            if (ginfo.state == GS_RUNNING && frame_no % 600 == 300) pr |= PSP_CTRL_SQUARE; /* tabla */
+            last_state = ginfo.state;
+        }
 #elif defined(AT_IDLE)
         /* prueba: quieto en el menu */
 #elif defined(AT_CHARCYCLE)
