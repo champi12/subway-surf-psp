@@ -134,6 +134,8 @@ int data_tex_read(int i, void *pal, void *data);
 int data_theme_init_tex(void);      /* tras leer tex.bin, antes de r_init: 1 si esta hw_tex.bin */
 int data_theme_init(int need_meshes);   /* con todo cargado: 1 si hay tema de Halloween */
 int data_mesh_find(const char *name);
+int data_mesh_acquire(int mesh);     /* personajes de la 1.4: lee la malla si no esta */
+void data_mesh_release(int mesh);    /* y la libera */
 int data_tex_find(const char *name);
 int data_mat_clone(const char *base, int tex);
 int data_theme_has_tex(int t);

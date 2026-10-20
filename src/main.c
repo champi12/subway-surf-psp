@@ -224,7 +224,7 @@ int main(int argc, char **argv)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
-        if (frame_no >= 60 && frame_no <= 120 && frame_no % 12 == 0) pr |= PSP_CTRL_DOWN;
+        if (frame_no >= 60 && frame_no < 120 && frame_no % 12 == 0) pr |= PSP_CTRL_DOWN;   /* 5 veces: Lucy */
         if (frame_no == 150) pr |= PSP_CTRL_CROSS;
         if (frame_no == 180) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 240) pr |= PSP_CTRL_CROSS;
@@ -267,8 +267,8 @@ int main(int argc, char **argv)
 #elif defined(AT_CHARCYCLE)
         /* prueba de memoria: recorre todos los personajes dos veces y vuelve al menu */
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
-        if (frame_no > 60 && frame_no < 60 + 22 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
-        if (frame_no == 60 + 22 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no > 60 && frame_no < 60 + 32 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
+        if (frame_no == 60 + 32 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
 #elif defined(AT_TROPHY)
         /* prueba de trofeos: 30 cajas misteriosas, pantalla de trofeos y paso por los 8 */
         if (frame_no == 30) { extern void game_debug_boxes(int n); game_debug_boxes(30); }

@@ -542,13 +542,22 @@ static void draw_chars(void)
     ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
     float y = 32;
     int nc = char_count();
-    float step = nc > 10 ? 19.5f : 22, rh = nc > 10 ? 18 : 20;   /* con Zombie Jake (Halloween) son 11 filas */
-    for (int i = 0; i < nc; i++) {
+    /* 10 filas a la vista (con los de la 1.4 son 15 o 16): la lista se desplaza con la seleccion */
+    const int rows = 10;
+    static int top;
+    if (ginfo.char_sel < top) top = ginfo.char_sel;
+    if (ginfo.char_sel >= top + rows) top = ginfo.char_sel - rows + 1;
+    if (top > nc - rows) top = nc - rows;
+    if (top < 0) top = 0;
+    float step = 20, rh = 18;
+    if (top > 0) text_shadow(f_small, 226, 20, 0.55f, 0xffe0e0e0, 2, "...");
+    if (top + rows < nc) text_shadow(f_small, 226, 32 + rows * step - 6, 0.55f, 0xffe0e0e0, 2, "...");
+    for (int i = top; i < nc && i < top + rows; i++) {
         int sel = i == ginfo.char_sel, un = char_unlocked(i);
         ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 6, y, 226, rh, 0.5f,
                   sel ? 0xffffffff : 0xc0ffffff);
         ui_text(f_mid, 14, y + 2, 0.62f, un ? 0xffffffff : 0xffb0b0b0, 0, char_name(i));
-        if (i == ginfo.character) {
+        if (char_is_selected(i)) {
             ui_text(f_mid, 226, y + 2, 0.62f, 0xff80ff80, 2, TR("Elegido", "Selected"));
         } else if (un) {
             ui_text(f_mid, 226, y + 2, 0.62f, 0xffffffff, 2, TR("Disponible", "Unlocked"));

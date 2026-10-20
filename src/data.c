@@ -82,14 +82,21 @@ static int load_mats(void)
 }
 
 /* lee un archivo SSM3 (mesh.bin o hw_mesh.bin) */
+static void parse_mesh(uint8_t *p, Mesh *m);
+
 static Mesh *parse_meshes(uint8_t *b, int *count)
 {
     int n = rd32(b + 4);
     Mesh *meshes = calloc(n ? n : 1, sizeof(Mesh));
     *count = n;
-    for (int i = 0; i < n; i++) {
-        uint8_t *p = b + rd32(b + 8 + 4 * i);
-        Mesh *m = &meshes[i];
+    for (int i = 0; i < n; i++) parse_mesh(b + rd32(b + 8 + 4 * i), &meshes[i]);
+    return meshes;
+}
+
+/* una malla de un archivo SSM3: los vertices quedan apuntando dentro de p (que no se puede liberar mientras se use) */
+static void parse_mesh(uint8_t *p, Mesh *m)
+{
+    {
         int l = p[0]; if (l > 31) l = 31;
         memcpy(m->name, p + 1, l); m->name[l] = 0;
         p += 32;
@@ -145,7 +152,6 @@ static Mesh *parse_meshes(uint8_t *b, int *count)
             }
         }
     }
-    return meshes;
 }
 
 static int load_meshes(void)
@@ -286,9 +292,12 @@ int data_theme_init_tex(void)
 
 /* 2: mallas de hw_mesh.bin, con todo lo demas ya cargado. Las que tienen nombre de una malla de la 1.0 son su
  * version de Halloween; las demas (Zombie Jake) se anaden al final */
+static void chars14_init(void);
+
 int data_theme_init(int need_meshes)
 {
     if (!hwtexfile) return 0;
+    chars14_init();
     /* fuera de Halloween y sin Zombie Jake comprado no hacen falta (son ~350 KB de RAM) */
     uint8_t *b = need_meshes ? load_file("hw_mesh.bin", NULL) : NULL;
     int nextra = 0;
@@ -319,6 +328,79 @@ int data_theme_init(int need_meshes)
     dlog("Tema de Halloween disponible: %d texturas, %d mallas; contenido nuevo: %d texturas, %d mallas",
          nt, mesh_nalt, gd.ntex - tex_nbase, nextra);
     return nt > 0;
+}
+
+/* ---- personajes de la 1.4 (chars14.bin): cada malla se lee solo mientras se usa ----
+ * La entrada en gd.meshes existe siempre (con el nombre) pero vacia (nparts = nbatches = 0: no se dibuja nada)
+ * hasta data_mesh_acquire; data_mesh_release la vacia otra vez y devuelve la memoria (~140 KB cada una). */
+#define MAX_LAZY 16
+static FILE *charsfile;
+static struct { int mesh; uint32_t off, len; uint8_t *buf; } lazy[MAX_LAZY];
+static int nlazy;
+
+static void chars14_init(void)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "%s/chars14.bin", basedir);
+    charsfile = fopen(path, "rb");
+    if (!charsfile) return;
+    uint8_t h[8];
+    if (fread(h, 1, 8, charsfile) != 8 || memcmp(h, "SSM3", 4)) { fclose(charsfile); charsfile = NULL; return; }
+    int n = rd32(h + 4);
+    if (n > MAX_LAZY) n = MAX_LAZY;
+    uint32_t offs[MAX_LAZY + 1];
+    fread(offs, 4, n, charsfile);
+    fseek(charsfile, 0, SEEK_END);
+    offs[n] = ftell(charsfile);
+    for (int i = 0; i < n; i++) {
+        uint8_t nb[32];
+        fseek(charsfile, offs[i], SEEK_SET);
+        fread(nb, 1, 32, charsfile);
+        gd.meshes = realloc(gd.meshes, sizeof(Mesh) * (gd.nmeshes + 1));
+        Mesh *m = &gd.meshes[gd.nmeshes];
+        memset(m, 0, sizeof(*m));
+        int l = nb[0]; if (l > 31) l = 31;
+        memcpy(m->name, nb + 1, l); m->name[l] = 0;
+        m->skinned = 1;
+        lazy[nlazy].mesh = gd.nmeshes++;
+        lazy[nlazy].off = offs[i];
+        lazy[nlazy].len = offs[i + 1] - offs[i];
+        lazy[nlazy].buf = NULL;
+        nlazy++;
+    }
+    dlog("Personajes de la 1.4: %d (se cargan al verlos)", nlazy);
+}
+
+int data_mesh_acquire(int mesh)
+{
+    for (int i = 0; i < nlazy; i++) {
+        if (lazy[i].mesh != mesh) continue;
+        if (lazy[i].buf) return 0;
+        uint8_t *b = memalign(64, lazy[i].len + 16);
+        if (!b) { dlog_error("Sin memoria para la malla %s (%d KB)", gd.meshes[mesh].name, (int)(lazy[i].len / 1024)); return -1; }
+        fseek(charsfile, lazy[i].off, SEEK_SET);
+        if (fread(b, 1, lazy[i].len, charsfile) != lazy[i].len) { free(b); return -1; }
+        lazy[i].buf = b;
+        parse_mesh(b, &gd.meshes[mesh]);
+        return 0;
+    }
+    return 0;   /* malla normal: siempre cargada */
+}
+
+void data_mesh_release(int mesh)
+{
+    for (int i = 0; i < nlazy; i++) {
+        if (lazy[i].mesh != mesh || !lazy[i].buf) continue;
+        Mesh *m = &gd.meshes[mesh];
+        free(m->parts); free(m->batches); free(m->bind);
+        char name[32];
+        memcpy(name, m->name, sizeof(name));
+        memset(m, 0, sizeof(*m));
+        memcpy(m->name, name, sizeof(name));
+        m->skinned = 1;
+        free(lazy[i].buf);
+        lazy[i].buf = NULL;
+    }
 }
 
 int data_mesh_find(const char *name)

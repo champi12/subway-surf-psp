@@ -1125,15 +1125,23 @@ def export_halloween(apk14, outdir, ex, hq):
                 base = nm[len('halloween_'):] if nm.startswith('halloween_') else nm
                 if base in names10:      # solo lo que existe en la 1.0 (lo nuevo de la 1.4 no tiene donde ir)
                     meshes.append(mo)
-    # Zombie Jake (Characters.cs de la 1.4: solo se compra en Halloween). Usa el esqueleto de Jake con los mismos
-    # 18 huesos en el mismo orden; en el juego se dibuja con el nodo de Jake cambiando la malla y la textura.
-    zj = None
+    # Personajes de la 1.4 que no estan en la 1.0 (Characters.cs): Tagbot, Tasha, Zoe, Brody, Prince K y Zombie Jake
+    # (solo en Halloween). Todos usan el esqueleto de Jake con los mismos 18 huesos en el mismo orden: en el juego se
+    # dibujan con el nodo de Jake cambiando la malla y la textura. Sus mallas van a chars14.bin, aparte, para que el
+    # juego cargue solo la del personaje que se esta viendo (cada una son ~150-250 KB de RAM).
+    want = {'tag': 'tag', 'tasha': 'tasha', 'zoe': 'zoe', 'brody': 'brody', 'princek': 'princek',
+            'zombiejake': 'halloweenJake'}
+    found = {}
     for o in sc.env.objects:
         if o.type.name != 'SkinnedMeshRenderer':
             continue
         d = o.read_typetree()
         mo = sc.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
-        if mo is None or mo.read().m_Name != 'halloweenJake':
+        if mo is None:
+            continue
+        mname = mo.read().m_Name
+        key_ = next((k for k, v in want.items() if v == mname), None)
+        if key_ is None or key_ in found:
             continue
         mat = sc.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
         md = mat.read_typetree() if mat is not None else None
@@ -1143,14 +1151,21 @@ def export_halloween(apk14, outdir, ex, hq):
             if nm_ == '_MainTex':
                 tex = sc.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
         if tex is not None:
-            zj = (mo, tex.read())
-            break
-    if zj:
-        meshes.append(zj[0])
-        gen.append(('gen', 'avatar_zombieJake', zj[1].image, True))
-        print('  Zombie Jake: malla halloweenJake y textura avatar_zombieJake')
-    else:
-        print('  AVISO: no se encuentra Zombie Jake')
+            found[key_] = (mo, tex.read())
+    cmeshes = []
+    for k in want:
+        if k not in found:
+            print('  AVISO: no se encuentra el personaje %s' % k)
+            continue
+        mo, td = found[k]
+        cmeshes.append(mo)
+        gen.append(('gen', 'avatar_' + ('zombieJake' if k == 'zombiejake' else k), td.image, True))
+    print('  personajes de la 1.4: %s' % ', '.join(k for k in want if k in found))
+    cm = SimpleNamespace(meshes=cmeshes, mesh_world=[False] * len(cmeshes))
+    cbin, cstats = export_meshes(cm)
+    with open(os.path.join(outdir, 'chars14.bin'), 'wb') as f:
+        f.write(cbin)
+    print('  %-11s %8d KB (%s)' % ('chars14.bin', len(cbin) // 1024, ', '.join(s_[0] for s_ in cstats)))
     hm = SimpleNamespace(meshes=meshes, mesh_world=[False] * len(meshes))
     mbin, stats = export_meshes(hm)
     tbin = export_textures(SimpleNamespace(textures=gen), hq=hq)
@@ -1272,7 +1287,7 @@ def main():
     with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))
-    for fn in ('hw_tex.bin', 'hw_mesh.bin'):
+    for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
         if os.path.exists(os.path.join(outdir, fn)):
             os.remove(os.path.join(outdir, fn))
     if apk14:

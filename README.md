@@ -26,7 +26,7 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `FollowingGuard` | `src/game.c` | Inspector y perro: persecución, salto retrasado, captura |
 | `Jetpack`, `Hoverboard`, `SuperSneakers`, `CoinMagnet`, `DoubleScoreMultiplier` | `src/game.c` | Duraciones de `Upgrades.cs` |
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
-| `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 10 personajes: Jake gratis, 4 por fichas de las cajas misteriosas y 5 por monedas |
+| `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 15 personajes base: Jake gratis, 4 por fichas de las cajas misteriosas y 10 por monedas (5 de ellos de la 1.4) |
 | `Trophies`, `MysteryBox` | `src/game.c`, `src/hud.c` | Los 8 trofeos de las cajas misteriosas y su pantalla |
 | `ThemeAssets`, `HouseKeeper` (1.4) | `src/data.c`, `src/game.c` | Tema de Halloween de la 1.4 clásica y Zombie Jake (ver abajo) |
 | `DailyWord`, `DailyLetterPickup` | `src/game.c`, `src/scene.c` | Palabra del día: letras en la vía, siempre la siguiente que falta; completarla da una caja misteriosa |
@@ -68,7 +68,8 @@ Genera:
 | `ui.bin` | Atlas y fuentes de NGUI, más las fuentes pre-escaladas a los tamaños exactos de la interfaz (texto nítido en la PSP) |
 | `music/` | La música original (`Hr_music_newFunky.mp3`) |
 | `wav/` | Todos los sonidos en WAV, por si se quieren convertir a AT3 |
-| `hw_tex.bin`, `hw_mesh.bin` | Solo con `--halloween`: el tema de Halloween y Zombie Jake, sacados del APK de la 1.4 |
+| `hw_tex.bin`, `hw_mesh.bin` | Solo con `--halloween`: el tema de Halloween y las texturas de los personajes nuevos, sacados del APK de la 1.4 |
+| `chars14.bin` | Solo con `--halloween`: las mallas de Tagbot, Tasha, Zoe, Brody, Prince K y Zombie Jake (se leen al verlos) |
 
 ### Halloween (1.4 clásica)
 
@@ -135,7 +136,11 @@ los textos originales de `Missions.cs` y `Upgrades.cs`.
 
 En el menú, L abre los **personajes**: Jake viene desbloqueado; Tricky, Fresh, Spike y Yutani se consiguen
 juntando sus fichas (3, 50, 200 y 500), que salen en las cajas misteriosas, y Lucy, Ninja, Frank, King y Frizzy se
-compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `CharacterModels.cs`.
+compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `CharacterModels.cs`. Con el APK de la 1.4
+se añaden los otros 5 personajes base: Tagbot (12.000), Tasha (30.000), Zoe (120.000), Brody (350.000) y Prince K
+(980.000), ordenados por precio en la lista. Para no gastar memoria, la malla (~140 KB) y la textura (~260 KB) de
+cada uno solo se cargan mientras se ve en la pantalla de personajes o si es el elegido; con todo desbloqueado el
+pico medido es de 15,8 MB de los 18,7 MB de una PSP-1000.
 
 La primera partida es el **tutorial** del original (saltar, rodar, cambiar de vía y la tabla), con los mensajes
 adaptados a los botones de la PSP; al chocar se vuelve al último punto de control en lugar de morir. Las partidas

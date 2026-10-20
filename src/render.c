@@ -171,6 +171,9 @@ static void mips_build(int t, const unsigned char *src)
     }
 }
 
+/* espera a que el GE termine el fotograma que esta dibujando (antes de liberar memoria que use) */
+void r_wait_idle(void) { if (ge_busy) sceGuSync(0, 0); }
+
 /* libera una textura de la RAM (las de los personajes que solo se han mirado en la pantalla de personajes: cada
  * una son ~340 KB con sus mipmaps y, pasando por todos, la PSP-1000 se quedaba sin memoria). Se vuelve a leer de la
  * Memory Stick si hace falta. Las de la VRAM no se tocan */

@@ -47,6 +47,7 @@ int char_price(int i);            /* fichas o monedas necesarias */
 int char_have(int i);             /* fichas que se tienen (o el precio si ya esta comprado) */
 int char_unlocked(int i);
 int char_is_event(int i);
+int char_is_selected(int i);     /* fila i = personaje elegido */
 /* palabra del dia */
 const char *daily_word(void);
 unsigned daily_word_mask(void);
