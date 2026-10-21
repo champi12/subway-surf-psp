@@ -21,7 +21,7 @@ if [ "$DEVLOG" != 0 ]; then
     cp subway.elf dist/subway.elf   # para traducir crash.txt a funcion y linea (tools/crash.sh); no va a la PSP
 fi
 if [ -d data ]; then
-    cp -r data dist/PSP/GAME/SUBWAY/
+    cp -rL data dist/PSP/GAME/SUBWAY/   # -L: si data es un enlace, se copia lo que hay dentro
     rm -rf dist/PSP/GAME/SUBWAY/data/{wav,meshes.txt,.version,ICON0.PNG,PIC1.PNG}
 fi
 [ "$DEVLOG" != 0 ] && echo "Version de PRUEBAS (con devlog)" || echo "Version publica (sin devlog)"
