@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 SECS=${1:-60}; OUT=$(realpath -m ${2:-autotest_out}); DATA=$(realpath ${3:-data})
 PPSSPP_HEADLESS=${PPSSPP_HEADLESS:-PPSSPPHeadless}
 make clean >/dev/null
-make -j4 AUTOTEST=1 EXTRA="-DAT_SHOT=${SHOT:-150} $XFLAGS" 2>&1 | grep -E "error" || true
+make -j4 AUTOTEST=1 DEVLOG=1 EXTRA="-DAT_SHOT=${SHOT:-150} $XFLAGS" 2>&1 | grep -E "error" || true
 rm -rf "$OUT"; mkdir -p "$OUT"
 make -C exhandler >/dev/null 2>&1 || true
 make -C exhandler/loader >/dev/null 2>&1 || true

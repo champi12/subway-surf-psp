@@ -2,9 +2,9 @@
 """Convierte el APK de Subway Surfers 1.0 (Android, Unity 3.5) en los datos del port de PSP.
 
 Uso:
-    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--halloween subway-surfers-1.4.apk]
+    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--apk14 subway-surfers-1.4.apk]
 
-Con --halloween se saca ademas, del APK de la 1.4 clasica (Halloween de 2012), lo que cambia su tema de Halloween
+Con --apk14 (o --halloween) se saca ademas, del APK de la 1.4 clasica (Halloween de 2012), lo que cambia su tema de Halloween
 (ThemeAssets): las texturas del escenario, los trenes, el tren del logo y los enemigos, y las mallas del inspector
 y el perro zombis. Van a data/hw_tex.bin y data/hw_mesh.bin y el juego las usa en lugar de las normales del 24 de
 octubre al 4 de noviembre (segun el reloj de la consola).
@@ -1048,7 +1048,7 @@ def unpack_apk(apk):
 def export_halloween(apk14, outdir, ex, hq):
     """ThemeAssets de la 1.4: texturas y mallas del tema "halloween" con los mismos nombres que en la 1.0."""
     from types import SimpleNamespace
-    print('Halloween: descomprimiendo el APK de la 1.4...')
+    print('Descomprimiendo el APK de la 1.4...')
     sc = Scene(unpack_apk(apk14))
     themes = None
     for f in sc.files.values():
@@ -1176,18 +1176,34 @@ def export_halloween(apk14, outdir, ex, hq):
     print('  mallas: %s' % ', '.join(s_[0] for s_ in stats))
 
 
+def export_eboot_art(data_dir, outdir):
+    """ICON0.PNG (144x80) y PIC1.PNG (480x272) del EBOOT, recortados de la pantalla de carga del APK (splash.png)."""
+    f = os.path.join(data_dir, 'splash.png')
+    if not os.path.exists(f):
+        return
+    sp = Image.open(f).convert('RGB')
+    W, H = sp.size
+    y0 = int(H * 0.31)            # fondo: Jake, Fresh, el inspector y el perro
+    sp.crop((0, y0, W, y0 + int(W * 272 / 480))).resize((480, 272), Image.LANCZOS).save(os.path.join(outdir, 'PIC1.PNG'))
+    w = int(W * 0.92)             # icono: el logo con el cielo
+    x0 = (W - w) // 2
+    sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(1)
     apk, outdir = sys.argv[1], sys.argv[2]
     apk14 = None
-    if '--halloween' in sys.argv:
-        i = sys.argv.index('--halloween')
-        apk14 = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
+    for opt in ('--apk14', '--halloween'):
+        if opt in sys.argv:
+            i = sys.argv.index(opt)
+            apk14 = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
+    export_eboot_art(data_dir, outdir)
     print('Cargando la escena de Unity...')
     sc = Scene(data_dir)
     ex = Exporter(sc)

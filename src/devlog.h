@@ -5,7 +5,7 @@
  *   - cada 5 s: FPS, ms de CPU y de GPU, vertices, memoria, VRAM, buffers del GE, bateria
  *   - eventos: cambios de estado, muertes, texturas cargadas en plena partida, tirones, avisos y errores
  * Escribe un hilo de baja prioridad cada 5 s (o al momento si hay un error) para no provocar tirones.
- * Viene activado; "make DEVLOG=0" lo quita del todo.
+ * Viene desactivado (version publica); "make DEVLOG=1" lo activa para las versiones de prueba.
  */
 #ifndef DEVLOG_H
 #define DEVLOG_H
@@ -36,7 +36,7 @@ void mem_query(MemInfo *m);
 void dbg_frame(float frame_ms, float cpu_ms, float wait_ms);
 
 #ifndef DEVLOG
-#define DEVLOG 1
+#define DEVLOG 0
 #endif
 
 /* fase en la que esta cada hilo y contador de vueltas, para el vigilante (watchdog): si el bucle principal deja

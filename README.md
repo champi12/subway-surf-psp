@@ -1,6 +1,7 @@
 # Subway Surfers para PSP
 
-Port nativo para PSP de **Subway Surfers 1.0** (Android, Kiloo/SYBO, 2012). No es un juego "parecido": el código
+Port nativo para PSP de **Subway Surfers** clásico (Android, Kiloo/SYBO, 2012): la **1.0** con todo el contenido
+hasta la **1.4** integrado. No es un juego "parecido": el código
 del juego original (C# de Unity, `Assembly-CSharp.dll`) se ha decompilado y **traducido a C** clase por clase, y
 los modelos, texturas, animaciones, sonidos y la estructura de los tramos de vía se **extraen del propio APK**.
 
@@ -28,7 +29,6 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
 | `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 15 personajes base: Jake gratis, 4 por fichas de las cajas misteriosas y 10 por monedas (5 de ellos de la 1.4) |
 | `Trophies`, `MysteryBox` | `src/game.c`, `src/hud.c` | Los 8 trofeos de las cajas misteriosas y su pantalla |
-| `ThemeAssets`, `HouseKeeper` (1.4) | `src/data.c`, `src/game.c` | Tema de Halloween de la 1.4 clásica y Zombie Jake (ver abajo) |
 | `DailyWord`, `DailyLetterPickup` | `src/game.c`, `src/scene.c` | Palabra del día: letras en la vía, siempre la siguiente que falta; completarla da una caja misteriosa |
 | `RenderSettings` (niebla) | `src/render.c` | Niebla lineal de 200 a 700 del original, por hardware; lo que queda detrás no se dibuja |
 | `TutorialEvent`, `Character.SetBackToCheckPoint` | `src/game.c` | Tramo de tutorial en la primera partida, con la flecha, los mensajes y la vuelta al punto de control al chocar |
@@ -46,15 +46,14 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 ### Pendiente
 
 * Las misiones de ganar a amigos necesitan conexión: se dan por completadas.
-* Partículas (chispas de la tabla, polvo del jetpack) y brillos de las calabazas de Halloween: no se portan para
-  no perder fotogramas.
+* Partículas (chispas de la tabla, polvo del jetpack): no se portan para no perder fotogramas.
 
 ## Cómo generar los datos
 
 Necesitas Python 3 y:
 
     pip install -r tools/requirements.txt
-    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--halloween subway-surfers-1.4.apk]
+    python3 tools/extract.py com.kiloo.subwaysurf_1.0.apk data/ [--apk14 subway-surfers-1.4.apk]
 
 Genera:
 
@@ -68,20 +67,14 @@ Genera:
 | `ui.bin` | Atlas y fuentes de NGUI, más las fuentes pre-escaladas a los tamaños exactos de la interfaz (texto nítido en la PSP) |
 | `music/` | La música original (`Hr_music_newFunky.mp3`) |
 | `wav/` | Todos los sonidos en WAV, por si se quieren convertir a AT3 |
-| `hw_tex.bin`, `hw_mesh.bin` | Solo con `--halloween`: el tema de Halloween y las texturas de los personajes nuevos, sacados del APK de la 1.4 |
-| `chars14.bin` | Solo con `--halloween`: las mallas de Tagbot, Tasha, Zoe, Brody, Prince K y Zombie Jake (se leen al verlos) |
+| `hw_tex.bin`, `hw_mesh.bin`, `chars14.bin` | Solo con `--apk14`: el contenido de la 1.4 (las mallas de los personajes nuevos se leen al verlos) |
+| `ICON0.PNG`, `PIC1.PNG` | Icono y fondo del menú de la PSP, recortados de la pantalla de carga del APK (van dentro del EBOOT) |
 
-### Halloween (1.4 clásica)
+### Contenido de la 1.4
 
-Si se pasa también el APK de la **1.4** (la actualización de Halloween de 2012), el juego usa su tema del **24 de
-octubre al 4 de noviembre** según el reloj de la consola, sin botón: el escenario, los trenes y el tren del logo
-pasan a la versión de Halloween, el inspector y el perro son zombis y la niebla se vuelve verde, como en la 1.4
-(que lo quitaba el 5 de noviembre). En esas fechas se puede comprar **Zombie Jake** (95.000 monedas); quien lo
-compra lo conserva cuando acaba el evento, y si no se compra desaparece de la lista hasta el año siguiente.
-
-Solo se carga una versión de cada textura (la normal o la de Halloween, que ocupan lo mismo), así que la memoria
-es la misma; fuera de las fechas ni siquiera se leen las mallas de Halloween. `actualizar.sh` usa el APK de la 1.4
-si hay en la carpeta uno con "1.4" o "1-4" en el nombre. Los brillos de las calabazas no se han portado.
+Si se pasa también el APK de la **1.4**, el juego integra todo lo que trae hasta esa versión, como los personajes
+nuevos. `actualizar.sh` lo usa solo si hay en la carpeta un APK con "1.4" o "1-4" en el nombre. Sin él, el juego
+funciona igual con el contenido de la 1.0.
 
 ### Música en AT3 (opcional)
 
@@ -98,7 +91,9 @@ Toolchain [pspdev](https://github.com/pspdev/pspdev):
     make                # genera EBOOT.PBP
     ./build_dist.sh     # arma dist/PSP/GAME/SUBWAY con el EBOOT y data/
 
-`make DEVLOG=0` quita el registro `devlog.txt` (ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)).
+La compilación normal es la versión pública: no escribe nada en la Memory Stick salvo la partida. `make DEVLOG=1`
+(o `DEVLOG=1 ./build_dist.sh`) genera la versión de pruebas, con el registro `devlog.txt` y el capturador de cuelgues
+`crash.txt` (ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)).
 
 ### Actualizar y recompilar después de cada cambio
 
@@ -163,8 +158,8 @@ terminar, con las probabilidades de `MysteryBox.Roll()`. La partida se guarda en
 
 ## Rendimiento y pruebas sin PSP
 
-Ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md): el medidor de SELECT, el registro `devlog.txt` que el juego escribe en
-la Memory Stick, qué datos del emulador valen para la consola real, cómo configurar PPSSPP y la prueba automática
+Ver [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md): el medidor de SELECT, el registro `devlog.txt` que la versión de pruebas
+escribe en la Memory Stick, qué datos del emulador valen para la consola real, cómo configurar PPSSPP y la prueba automática
 `tools/autotest.sh`.
 
 ## Contribuidores

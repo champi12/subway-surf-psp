@@ -774,10 +774,6 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
-    /* (diagnostico del cuelgue al rodar en la consola real: se escribe en la tarjeta al momento) */
-    dlog("RUEDA carril %d altura %d en el aire %d a %d m", ch.trackIndex, (int)cc.pos.y, !cc.grounded, ginfo.meters);
-    dlog_flush();
-    dbg_trace_start("rodada", 2);
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -976,6 +972,9 @@ static void on_char_enter(const Col *c)
         }
         k = -1;
     }
+    /* ya muerto (p. ej. tras el tren en marcha, otro vagon en el mismo fotograma): un tropiezo pondria la
+     * animacion de correr encima de la de la muerte y Jake se quedaba corriendo hasta que salia el fin */
+    if (isDead) return;
     if (c->layer == 0) {
         if (c->trigger && cc.grounded) on_grounded();
         if (c->trigger) {
@@ -1045,8 +1044,11 @@ static void on_char_enter(const Col *c)
         return;
     }
     if (impactZ == 0 && flag) {
-        if (c->tag == TAG_HITMOVINGTRAIN) { hit_by_train_sequence(); notify_critical_hit(); }
-        else if (c->layer == 13) {
+        if (c->tag == TAG_HITMOVINGTRAIN) {
+            hit_by_train_sequence();
+            notify_critical_hit();
+            if (isDead) return;   /* el original sigue y pone el tropiezo de esquina (y correr) sobre la muerte */
+        } else if (c->layer == 13) {
             anim_crossfade(&anim_char, an.stumble, 0.05f);
             anim_crossfade_queued(&anim_char, an.run, 0.5f);
         } else force_change_track(-ch.trackMovement, 0.5f);
@@ -1153,6 +1155,7 @@ static void collect_coin(int i)
     coins[i].visible = 0;
     coins[i].collider = 0;
     coins[i].pulling = 0;
+    if (coins[i].owner == -3) coins[i].active = 0;   /* la que vino de un tren en marcha: se libera */
 }
 
 /* esfera de la moneda (r=4.5) contra la capsula del personaje (eje a-b) */
@@ -1176,11 +1179,24 @@ static void coins_tick(float dt)
     V3 magc = v3add(cc.pos, v3(0, 5.7f + 5.0f, 10.0f));
     if (magnet && !ch.stopColliding) {
         /* el iman tambien atrae las monedas sueltas de la escena (las de los trenes en marcha): CoinMagnet.CoinHit.
-         * Aqui se recogen al entrar en su radio, sin el vuelo hasta Jake */
+         * La moneda del tren se oculta y en su sitio sale una del pool (sin dueno, -3) que vuela hasta Jake */
         for (int i = 0; i < ncols; i++) {
             const Col *k = &cols[i];
             if (k->type != COL_SPHERE || nrt[k->node].taken || !node_comp(k->node, C_COIN, NULL)) continue;
-            if (v3len(v3sub(k->p0, magc)) < 60.0f + k->r) notify_pickup(k->node);
+            if (v3len(v3sub(k->p0, magc)) >= 60.0f + k->r) continue;
+            int ci = coin_spawn(v3sub(k->p0, v3(0, 6, 0)), -3);
+            if (ci < 0) { notify_pickup(k->node); continue; }   /* pool lleno: se recoge al momento */
+            nrt[k->node].taken = 1;
+            CoinRT *pc = &coins[ci];
+            pc->collider = 0;
+            pc->pulling = 1;
+            pc->pull_t = game_time;
+            pc->pull_from = k->p0;
+            pc->pull_dur = v3len(v3sub(k->p0, cc.pos)) / (MAGNET_PULL * normalized_speed());
+            if (pc->pull_dur < 0.01f) pc->pull_dur = 0.01f;
+#ifdef AUTOTEST
+            dlog("MONEDA de tren en marcha atraida por el iman (vuelo %.2f s)", pc->pull_dur);
+#endif
         }
     }
     for (int i = 0; i < MAX_COINS; i++) {
@@ -2816,9 +2832,12 @@ void game_update(float dt)
     }
 #endif
     if (ch.hbt == 1) {
+        /* Character.HitByTrainSequence: pTween de 0,5 s; luego cae con la gravedad (SwitchToDieStateWhenGrounded).
+         * Antes se quedaba clavado delante de la camara y, si el inspector no estaba, la partida tardaba en acabar */
         float e = clamp01((game_time - ch.hbt_start) / 0.5f);
         V3 tgt = v3(ch.hbt_cam.x, ch.hbt_cam.y - 33.0f, ch.hbt_from.z);
         char_set_pos(v3lerp(ch.hbt_from, tgt, e));
+        if (e >= 1.0f) ch.hbt = 0;
     } else if (ch.hbt == 2) {
         float e = clamp01(game_time - ch.hbt_start);
         char_set_pos(v3lerp(ch.hbt_from, v3(ch.hbt_from.x, -5.0f, ch.hbt_from.z), e));

@@ -155,7 +155,8 @@ para formatearlos.
 | `Alineacion de los datos` | Al arrancar se comprueba que modelos, animaciones y sonidos están alineados en memoria (la CPU real se cuelga si no) |
 | `Idioma de la consola` | El idioma del sistema y el de la interfaz |
 
-Para no generarlo (versión final): `make clean && make DEVLOG=0`. El medidor de SELECT sigue funcionando.
+Solo lo escribe la **versión de pruebas**: `make clean && make DEVLOG=1` o `DEVLOG=1 ./actualizar.sh ...`. La versión
+normal (pública) no lo lleva; el medidor de SELECT funciona en las dos.
 
 ## 3. ¿Qué datos del emulador valen para la consola real?
 

@@ -311,6 +311,9 @@ int main(int argc, char **argv)
             extern void game_debug_powerup(int k);
             static const int at_frames[] = {500, 1100, 1600, 2100, 3000};
             for (int k = 0; k < 5; k++) if (frame_no == at_frames[k]) game_debug_powerup(k == 0 ? 0 : k == 1 ? 1 : k == 2 ? 3 : k == 3 ? 2 : 4);
+#ifdef AT_MAGNET
+            if (frame_no % 300 == 0) game_debug_powerup(0);   /* iman siempre (monedas de los trenes en marcha) */
+#endif
         }
 
 #endif

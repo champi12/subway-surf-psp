@@ -20,8 +20,12 @@ LIBS = -lpspgum -lpspgu -lpspmp3 -lpspatrac3 -lpspaudio -lpsputility -lpsppower 
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = Subway Surfers
-ifneq ($(wildcard ICON0.PNG),)
-PSP_EBOOT_ICON = ICON0.PNG
+# icono y fondo del menu de la PSP: los genera tools/extract.py en data/ a partir del APK
+ifneq ($(wildcard data/ICON0.PNG),)
+PSP_EBOOT_ICON = data/ICON0.PNG
+endif
+ifneq ($(wildcard data/PIC1.PNG),)
+PSP_EBOOT_PIC1 = data/PIC1.PNG
 endif
 
 PSPSDK = $(shell psp-config --pspsdk-path)
