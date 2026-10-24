@@ -10,7 +10,10 @@ enum {
     M_DODGEBARRIERS = 21, M_CRASHBARRIERS = 22, M_CRASHTRAINS = 23, M_POWERUPS = 24, M_HEADSTART = 25,
     M_COINSWITHMAGNET = 26, M_BUYMYSTERYBOX = 27, M_TIMEDEATH = 29, M_BUMPTRAIN = 30, M_BUMPBUSH = 31,
     M_BUMPLIGHTSIGNAL = 32, M_BUMPBARRIER = 33, M_HOVERBOARD = 34, M_HOVERBOARDEXPIRE = 35,
-    M_NOCOINSBEFORESCORE = 36, M_DOUBLEMULTIPLIER = 38, M_GUARDJUMP = 40
+    M_NOCOINSBEFORESCORE = 36, M_DOUBLEMULTIPLIER = 38, M_GUARDJUMP = 40,
+    /* de la 1.4 */
+    M_LANDONTRAININROW = 49, M_STAYINONELANE = 50, M_DAILYQUESTINROW = 51, M_NOJUMPSBEFORESCORE = 52,
+    M_NOROLLSBEFORESCORE = 53, M_NOPOWERUPSBEFORESCORE = 54, M_ONEOFEACHPOWERUP = 55
 };
 
 extern int mission_set;
@@ -19,6 +22,7 @@ extern char mission_msg[64];
 extern float mission_msg_t;
 
 void missions_did(int target, int magnitude);
+void missions_reset(int target);   /* RemoveProgressForThis */
 void missions_run_start(void);
 void missions_run_end(void);
 int missions_multiplier(void);

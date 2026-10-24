@@ -1,9 +1,11 @@
-/* missions.c - Missions.cs: 29 grupos de 3 misiones; al completar un grupo sube el multiplicador */
+/* missions.c - Missions.cs de la 1.4: 29 grupos de 3 misiones de historia y 20 repetibles despues; al completar un
+ * grupo sube el multiplicador (hasta x30) y, en los repetibles, se gana una super caja misteriosa */
 #include <stdio.h>
 #include <string.h>
 #include "missions.h"
 #include "missions_data.h"
 #include "lang.h"
+#include "devlog.h"
 
 int mission_set;                   /* PlayerInfo.currentMissionSet */
 int mission_progress[3];
@@ -31,11 +33,16 @@ int missions_goal(int i) { return mission_set < MISSION_SETS ? mission_sets[miss
 
 static void check_offline(void);
 
+extern void missions_super_box(void);   /* game.c */
+
 static void set_complete_check(void)
 {
-    if (mission_set >= MISSION_SETS) return;
+    if (mission_set >= MISSION_SETS) mission_set = MISSION_STORY;   /* partidas de antes ("todas completadas") */
     for (int i = 0; i < 3; i++) if (mission_progress[i] < missions_goal(i)) return;
-    mission_set++;
+    /* Missions.Complete: pasado el ultimo grupo de la historia, cada grupo da una super caja misteriosa; del ultimo
+     * repetible se vuelve al primero */
+    if (mission_set + 1 > MISSION_STORY) missions_super_box();
+    mission_set = mission_set < MISSION_SETS - 1 ? mission_set + 1 : MISSION_STORY;
     memset(mission_progress, 0, sizeof(mission_progress));
     memset(run_progress, 0, sizeof(run_progress));
     snprintf(mission_msg, sizeof(mission_msg), TR("Multiplicador x%d", "Multiplier x%d"), missions_multiplier());
@@ -48,6 +55,7 @@ static void complete(int i)
     char buf[64];
     missions_text(i, buf, sizeof(buf));
     snprintf(mission_msg, sizeof(mission_msg), TR("Misión: %s", "Mission: %s"), buf);
+    dlog("MISION completada (grupo %d): %s", mission_set + 1, buf);
     mission_msg_t = game_time;
     set_complete_check();
 }
@@ -64,6 +72,8 @@ void missions_text(int i, char *buf, int n)
 {
     if (mission_set >= MISSION_SETS) { snprintf(buf, n, "%s", TR("Todas las misiones completadas", "All missions completed")); return; }
     int type = mission_sets[mission_set][i].type;
+    if (mission_tpl[type].target == MT_OneOfEachPowerup && missions_goal(i) == 1 && lang_es)
+        { snprintf(buf, n, "Coge un power-up de cada en una carrera"); return; }
     /* en ingles, el texto original con singular o plural segun el objetivo */
     const char *txt = lang_es ? mission_tpl[type].text : mission_en[type][missions_goal(i) == 1 ? 0 : 1];
     char goal[16];
@@ -111,6 +121,17 @@ void missions_did(int target, int magnitude)
         }
         break;
     }
+}
+
+/* RemoveProgressForThis: se pierde lo que se llevaba (racha de trenes, de dias o de segundos en el carril) */
+void missions_reset(int target)
+{
+    if (mission_set >= MISSION_SETS) return;
+    for (int i = 0; i < 3; i++)
+        if (mission_tpl[mission_sets[mission_set][i].type].target == target && mission_progress[i] < missions_goal(i)) {
+            mission_progress[i] = 0;
+            run_progress[i] = 0;
+        }
 }
 
 void missions_run_start(void) { in_run = 1; memset(run_progress, 0, sizeof(run_progress)); check_offline(); }

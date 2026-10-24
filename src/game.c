@@ -283,6 +283,33 @@ static struct {
 /* puntuacion (GameStats) */
 static float meters_last;
 static int score, coins_run, meters;
+/* GameStats de la 1.4: lo que se lleva hecho en la carrera para las misiones nuevas (sin saltar, sin rodar, sin
+ * power-ups, uno de cada power-up) y el momento del ultimo cambio de carril (StayInOneLane) */
+static int run_jumps, run_rolls, run_pickups, run_pk[4];
+static float lane_t;
+/* GameStats.CalculateScore / AddScoreForPickup */
+static void score_missions(int num, int from_meters)
+{
+    missions_did(M_SCORE, num);
+    if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
+    if (run_rolls <= 0) missions_did(M_NOROLLSBEFORESCORE, num);
+    if (run_jumps <= 0) missions_did(M_NOJUMPSBEFORESCORE, num);
+    if (from_meters && run_pickups <= 0) missions_did(M_NOPOWERUPSBEFORESCORE, num);
+}
+/* power-up recogido: jetpack, zapatillas, iman, multiplicador (OneOfEachPowerup: el producto de los cuatro) */
+static void powerup_picked(int k)
+{
+    run_pickups++;
+    if (k >= 0) run_pk[k]++;
+    missions_did(M_ONEOFEACHPOWERUP, run_pk[0] * run_pk[1] * run_pk[2] * run_pk[3]);
+}
+/* Character.ChangeTrack: los segundos que se llevaban en el carril cuentan para StayInOneLane y se empieza de cero */
+static void lane_time_flush(void)
+{
+    missions_did(M_STAYINONELANE, (int)(game_time - lane_t));
+    missions_reset(M_STAYINONELANE);
+    lane_t = game_time;
+}
 static int double_score;
 static int coin_stairway, fly_way;
 
@@ -753,6 +780,7 @@ static void character_jump(void)
             ch.trainJumpSampleZ = ch.z + 10.0f;
         }
         if (gu.enabled) guard_jump();
+        run_jumps++;
         missions_did(M_JUMP, 1);
     } else if (ch.verticalSpeed < 0) ch.inAirJump = 1;
 }
@@ -774,6 +802,7 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
+    run_rolls++;
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -824,6 +853,8 @@ static void apply_gravity(float dt)
             ch.jumping = 0;
             ch.falling = 0;
             on_grounded();
+            if (ch.runPosition == RP_GROUND) missions_reset(M_LANDONTRAININROW);
+            else if (ch.runPosition == RP_TRAIN || ch.runPosition == RP_MOVINGTRAIN) missions_did(M_LANDONTRAININROW, 1);
             if (!ch.rolling) {
                 SetRunAnim();
                 if (ch.fallAnim) {
@@ -1285,9 +1316,40 @@ static int today_id(void)
 #endif
 }
 
+/* dia de verdad (dias desde 1970) para saber si la racha de la palabra sigue: today_id no es correlativo entre meses */
+static int day_number(void)
+{
+#ifdef AUTOTEST
+    return 20000;
+#else
+    ScePspDateTime t;
+    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    int y = t.year - (t.month <= 2), m = t.month, era = y / 400, yoe = y - era * 400;
+    int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + t.day - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+#endif
+}
+static int dw_streak, dw_last_paid;  /* dias seguidos con la palabra completada y el ultimo dia que se pago */
+
 const char *daily_word(void) { return daily_words[(dw_day < 0 ? 0 : dw_day) % NDAILY]; }
 unsigned daily_word_mask(void) { return dw_mask; }
 int daily_word_complete(void) { return dw_mask == (1u << strlen(daily_word())) - 1; }
+
+/* DailyWord.GetRewardForDay: monedas del dia n de la racha (1..5); 0 = super caja misteriosa */
+int daily_prize(int day)
+{
+    static const int coins[5] = {500, 750, 1050, 1500, 0};
+    return coins[day < 1 ? 0 : day > 5 ? 4 : day - 1];
+}
+int daily_streak(void) { return dw_streak; }
+/* dia de la racha del proximo premio: el de hoy si falta completar la palabra, si no el de manana (PauseUI: "Come back
+ * and win") */
+int daily_day_next(void)
+{
+    if (dw_paid) return dw_streak + 1;
+    return day_number() - dw_last_paid == 1 ? dw_streak + 1 : 1;
+}
+int daily_prize_next(void) { return daily_prize(daily_day_next()); }
 
 /* GetNewDailyLetter: la primera que falta */
 static char daily_next_letter(void)
@@ -1302,6 +1364,8 @@ static void daily_word_check(void)
 {
     int d = today_id();
     if (d != dw_day) { dw_day = d; dw_mask = 0; dw_paid = 0; }
+    /* PlayerInfo.CheckIfWeShouldRemoveProgressForDailyQuestInRow: si ayer no se completo, se pierde la racha */
+    if (dw_streak && day_number() - dw_last_paid > 1) { dw_streak = 0; missions_reset(M_DAILYQUESTINROW); }
     scene_set_daily_letter(daily_next_letter());
 }
 
@@ -1320,11 +1384,26 @@ static void daily_letter_picked(char letter)
     ginfo.message = msg;
     ginfo.message_t = game_time;
     if (daily_word_complete() && !dw_paid) {
+        /* PlayerInfo.PickedupLetter de la 1.4: el premio depende de los dias seguidos (DailyWord.REWARDS):
+         * 500, 750, 1050 y 1500 monedas, y desde el quinto dia una super caja misteriosa */
         dw_paid = 1;
-        ginfo.boxes_pending++;           /* _mysteryBoxesToUnlock++: se abre al terminar la carrera */
+        int today = day_number();
+        dw_streak = today - dw_last_paid == 1 ? dw_streak + 1 : 1;
+        dw_last_paid = today;
         missions_did(M_DAILYQUESTS, 1);
-        ginfo.message = TR("¡Palabra del día completada!", "Daily word complete!");
-        dlog("PALABRA DEL DIA completada: %s", w);
+        missions_did(M_DAILYQUESTINROW, 1);
+        int prize = daily_prize(dw_streak);
+        char buf[48];
+        if (prize > 0) {
+            ginfo.total_coins += prize;
+            snprintf(buf, sizeof(buf), TR("+%d monedas", "+%d coins"), prize);
+        } else {
+            ginfo.sboxes_pending++;
+            snprintf(buf, sizeof(buf), "%s", TR("Súper caja misteriosa", "Super Mystery Box"));
+        }
+        hud_slide(TR("¡Palabra del día completada!", "Daily Challenge completed"), buf);
+        ginfo.message = NULL;
+        dlog("PALABRA DEL DIA completada: %s (racha %d)", w, dw_streak);
     }
     game_save();
 }
@@ -1344,15 +1423,16 @@ static void notify_pickup(int node)
     }
     nrt[node].picked = 1;
     switch (kind) {
-    case PK_MAGNET: mod_add(MOD_MAGNET); play_ci(&snd_powerup); missions_did(M_MAGNETS, 1); break;
-    case PK_SNEAKERS: mod_add(MOD_SNEAKERS); play_ci(&snd_powerup); missions_did(M_SUPERSNEAKERS, 1); break;
-    case PK_DOUBLE: mod_add(MOD_DOUBLE); play_ci(&snd_powerup); missions_did(M_DOUBLEMULTIPLIER, 1); break;
-    case PK_JETPACK: start_jetpack(0, 0); play_ci(&snd_powerup); missions_did(M_JETPACK, 1); break;
+    case PK_MAGNET: mod_add(MOD_MAGNET); play_ci(&snd_powerup); missions_did(M_MAGNETS, 1); powerup_picked(2); break;
+    case PK_SNEAKERS: mod_add(MOD_SNEAKERS); play_ci(&snd_powerup); missions_did(M_SUPERSNEAKERS, 1); powerup_picked(1); break;
+    case PK_DOUBLE: mod_add(MOD_DOUBLE); play_ci(&snd_powerup); missions_did(M_DOUBLEMULTIPLIER, 1); powerup_picked(3); break;
+    case PK_JETPACK: start_jetpack(0, 0); play_ci(&snd_powerup); missions_did(M_JETPACK, 1); powerup_picked(0); break;
     case PK_MYSTERY:
         /* MysteryBoxPickup: se abre al terminar la carrera */
         ginfo.boxes_pending++;
+        powerup_picked(-1);
         score += score_multiplier() * 50;
-        missions_did(M_SCORE, score_multiplier() * 50);
+        score_missions(score_multiplier() * 50, 0);
         missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
         break;
@@ -1361,7 +1441,7 @@ static void notify_pickup(int node)
         char l = daily_next_letter();
         scene_letter_picked(node);
         score += score_multiplier() * 50;
-        missions_did(M_SCORE, score_multiplier() * 50);
+        score_missions(score_multiplier() * 50, 0);
         missions_did(M_LETTERS, 1);
         play_ci(&snd_powerup);
         if (l) daily_letter_picked(l);
@@ -1742,6 +1822,9 @@ static void intro_tick(void)
     if (track_running_tutorial) { guard_reset_catch_up(); ch.stumble = 0; }
     running_begin();
     ginfo.headstart_until = (ginfo.hs500 > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
+    run_jumps = run_rolls = run_pickups = 0;
+    memset(run_pk, 0, sizeof(run_pk));
+    lane_t = game_time;
     missions_run_start();
 }
 
@@ -1822,6 +1905,7 @@ static void handle_controls_running(void)
     autopilot();
 #endif
     float dur = CHANGE_TRACK_LENGTH / (currentSpeed > 1 ? currentSpeed : 1);
+    if (in_left || in_right) lane_time_flush();
     if (in_left) change_track(-1, dur);
     if (in_right) change_track(1, dur);
     if (in_up) character_jump();
@@ -1856,8 +1940,7 @@ static void calculate_score(void)
         meters_last = meters;
         int num = (int)(ms * score_multiplier());
         score += num;
-        missions_did(M_SCORE, num);
-        if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
+        score_missions(num, 1);
     }
 }
 
@@ -2017,6 +2100,7 @@ static void jetpack_tick(float dt)
 {
     /* HandleControls (solo izquierda/derecha) */
     float dur = JET_CHANGE_TRACK_LENGTH / (currentSpeed > 1 ? currentSpeed : 1);
+    if (in_left || in_right) lane_time_flush();
     if (in_left) change_track(-1, dur);
     if (in_right) change_track(1, dur);
     in_left = in_right = in_up = in_down = in_board = 0;
@@ -2138,6 +2222,7 @@ static void die_tick(float dt)
         if (e < 2.0f && !in_up) return;
         in_up = 0;
         /* fin de la partida: puntuacion final = puntos + monedas*2*multiplicador */
+        lane_time_flush();
         missions_run_end();
         ginfo.final_score = score + coins_run * 2 * missions_multiplier();
         ginfo.total_coins += coins_run;
@@ -2679,61 +2764,95 @@ int shop_amount(int i)
     return ginfo.boxes_pending;
 }
 
-/* MysteryBox.Roll() (los personajes y trofeos del original se convierten en monedas) */
-static void mystery_open(void)
+/* MysteryBox.Roll de la 1.4: tablas de premios con peso (_lootTables) para la caja normal y la super. Las tres primeras
+ * cajas normales dan 1000 monedas, una ficha de Tricky y 3 hoverboards. Random.Range con enteros no incluye el maximo */
+enum { LT_TOKEN, LT_TROPHY, LT_COINS, LT_HOVER, LT_HS500, LT_HS2000 };
+typedef struct { int type; float weight; int min, max; } Loot;
+static const Loot loot_normal[] = {
+    {LT_TOKEN, 40, 1, 1}, {LT_TROPHY, 2, 1, 1}, {LT_COINS, 18, 200, 300}, {LT_HS500, 10.15f, 1, 1},
+    {LT_COINS, 11, 500, 500}, {LT_HOVER, 7, 2, 2}, {LT_COINS, 3, 1000, 1000}, {LT_COINS, 2, 1500, 1500},
+    {LT_HOVER, 1, 3, 9}, {LT_HS2000, 3, 1, 1}, {LT_COINS, 1, 2500, 2500}, {LT_HOVER, 0.8f, 10, 10},
+    {LT_COINS, 0.5f, 5000, 5000}, {LT_HS2000, 0.5f, 3, 3}, {LT_COINS, 0.05f, 100000, 100000},
+};
+static const Loot loot_super[] = {
+    {LT_TOKEN, 25, 3, 3}, {LT_HS500, 12, 3, 3}, {LT_COINS, 25, 1500, 1500}, {LT_HOVER, 10, 4, 8},
+    {LT_COINS, 10, 3000, 3000}, {LT_HS2000, 3, 2, 2}, {LT_COINS, 8, 4000, 4000}, {LT_HOVER, 1, 9, 19},
+    {LT_HS2000, 2, 3, 3}, {LT_HOVER, 1, 20, 20}, {LT_COINS, 1, 8000, 8000}, {LT_HS2000, 1, 5, 5},
+    {LT_HOVER, 0.5f, 40, 40}, {LT_COINS, 0.4f, 50000, 50000}, {LT_COINS, 0.1f, 300000, 300000},
+};
+
+static const Loot *loot_roll(int super)
 {
-    if (ginfo.boxes_pending <= 0) return;
-    ginfo.boxes_pending--;
-    ginfo.boxes_opened++;
-    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1;
-    if (ginfo.boxes_opened == 1) tok = 1;
-    else if (ginfo.boxes_opened == 2) h5 = 1;
-    else if (ginfo.boxes_opened == 3) coins = 600;
-    else {
-        float r = rnd01();
-        if (r < 0.40f) tok = 1;
-        else if (r < 0.45f) {
-            trophy = trophy_roll();
-            if (trophy < 0) coins = 100;   /* ya estan todos: 100 monedas, como el original */
-        }
-        else if (r < 0.69f) coins = rnd_range(200, 300);
-        else if (r < 0.73f) h5 = 1;
-        else if (r < 0.80f) coins = 500;
-        else if (r < 0.87f) hb = 2;
-        else if (r < 0.92f) coins = 1000;
-        else if (r < 0.95f) coins = 1500;
-        else if (r < 0.96f) hb = rnd_range(0, 7) + 3;
-        else if (r < 0.97f) h20 = 1;
-        else if (r < 0.98f) coins = 2500;
-        else if (r < 0.988f) hb = 10;
-        else if (r < 0.993f) coins = 5000;
-        else if (r < 0.998f) h20 = 3;
-        else coins = 10000;
-    }
-    int tc = -1;
-    if (tok) {
-        /* ficha de un personaje que aun la necesite; si ya no queda ninguno, 100 monedas (como el original) */
-        tc = char_useful_token();
-        if (tc < 0) { tok = 0; coins = 100; }
+    const Loot *t = super ? loot_super : loot_normal;
+    int n = super ? (int)(sizeof(loot_super) / sizeof(Loot)) : (int)(sizeof(loot_normal) / sizeof(Loot));
+    float tot = 0, acc = 0;
+    for (int i = 0; i < n; i++) tot += t[i].weight;
+    float r = rnd01() * tot;
+    for (int i = 0; i < n; i++) { acc += t[i].weight; if (r <= acc) return &t[i]; }
+    return &t[n - 1];
+}
+
+/* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
+static void mystery_open_type(int super)
+{
+    if (super) { if (ginfo.sboxes_pending <= 0) return; ginfo.sboxes_pending--; ginfo.sboxes_opened++; }
+    else { if (ginfo.boxes_pending <= 0) return; ginfo.boxes_pending--; ginfo.boxes_opened++; }
+    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1;
+    Loot first = {LT_COINS, 0, 0, 0};
+    const Loot *l = &first;
+    if (!super && ginfo.boxes_opened == 1) first.min = 1000;
+    else if (!super && ginfo.boxes_opened == 2) { first.type = LT_TOKEN; first.min = 1; tc = 1; }   /* Tricky */
+    else if (!super && ginfo.boxes_opened == 3) { first.type = LT_HOVER; first.min = 3; }
+    else l = loot_roll(super);
+    int amount = l->max > l->min ? rnd_range(l->min, l->max) : l->min;
+    switch (l->type) {
+    case LT_COINS: coins = amount; break;
+    case LT_HOVER: hb = amount; break;
+    case LT_HS500: h5 = amount; break;
+    case LT_HS2000: h20 = amount; break;
+    case LT_TROPHY:
+        trophy = trophy_roll();
+        if (trophy < 0) coins = 500;          /* TROPHY_CONSOLATION_REWARD */
+        break;
+    case LT_TOKEN:
+        /* ficha de un personaje que aun la necesite; si no queda ninguno, 500 monedas (TOKEN_CONSOLATION_REWARD) */
+        if (tc < 0 || !(chars[tc].unlock == UL_TOKENS && char_tokens[chars[tc].token] < chars[tc].price)) tc = char_useful_token();
+        if (tc < 0) coins = 500;
         else {
-            char_tokens[chars[tc].token]++;
-            if (char_tokens[chars[tc].token] >= chars[tc].price) hud_slide(TR("Has desbloqueado", "You unlocked"), chars[tc].name);
+            tok = amount;
+            int have = char_tokens[chars[tc].token];
+            char_tokens[chars[tc].token] = have + tok > chars[tc].price ? chars[tc].price : have + tok;
+            if (have < chars[tc].price && char_tokens[chars[tc].token] >= chars[tc].price)
+                hud_slide(TR("Has desbloqueado", "You unlocked"), chars[tc].name);
         }
+        break;
     }
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     if (coins) missions_did(M_EARNCOIN, coins);
-    if (tok) missions_did(M_TOKENS, 1);
+    if (tok) missions_did(M_TOKENS, tok);
     if (trophy >= 0) {
         trophies_mask |= 1 << trophy;
         dlog("TROFEO %s (%d de %d)", trophies[trophy].name, trophies_collected(), NTROPHIES);
         snprintf(ginfo.reward, sizeof(ginfo.reward), TR("Trofeo: %s", "Trophy: %s"), trophy_name(trophy));
-    } else if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "1x %s", char_token_name(tc));
+    } else if (tok) snprintf(ginfo.reward, sizeof(ginfo.reward), "%dx %s", tok, char_token_name(tc));
     else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d monedas", "%d coins"), coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
-    else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "Headstart 250");
+    else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 250", h5);
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
+    ginfo.reward_super = super;
     ginfo.reward_t = game_time;
     snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+    game_save();
+}
+
+/* primero las super */
+static void mystery_open(void) { mystery_open_type(ginfo.sboxes_pending > 0); }
+
+/* Missions.Complete: cada grupo de misiones repetibles da una super caja (se abre en el fin de carrera) */
+void missions_super_box(void)
+{
+    ginfo.sboxes_pending++;
+    hud_slide(TR("Grupo de misiones completado", "Mission Set complete"), TR("Súper caja misteriosa", "Super Mystery Box"));
     game_save();
 }
 
@@ -2754,7 +2873,7 @@ static void shop_buy(int i)
         else ginfo.hs2000++;
     } else if (it->kind == SK_TIER) upgrade_tier[it->idx]++;
     else if (it->kind == SK_SKIP) missions_skip(it->idx);
-    else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); mystery_open(); }
+    else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); mystery_open_type(0); }
     snd_play(sfx_find("Hr_gui_coin"), 0.8f, 1.0f, 0);
     game_save();
 }
@@ -2836,9 +2955,9 @@ void game_input(unsigned in)
          * de la carrera se abren antes, una a una */
         if (confirm || (in & IN_START)) {
             if (ginfo.reward[0]) ginfo.reward[0] = 0;
-            else if (ginfo.boxes_pending > 0) mystery_open();
+            else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) mystery_open();
             else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); game_start_run(); }
-        } else if (ginfo.boxes_pending > 0 || ginfo.reward[0]) {
+        } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
             break;
         } else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); open_shop(); }
@@ -3097,6 +3216,9 @@ void game_save(void)
     d[31] = owned14 | (hw_popup_year & 0xff) << 16;
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     fwrite(d, sizeof(d), 1, f);
+    /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
+    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened};
+    fwrite(e, sizeof(e), 1, f);
     fclose(f);
 }
 
@@ -3107,7 +3229,11 @@ void game_load(void)
     int d[32];
     memset(d, 0, sizeof(d));
     int n = fread(d, 4, 32, f);
+    int e[8];
+    memset(e, 0, sizeof(e));
+    int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
     fclose(f);
+    if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;
     if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;

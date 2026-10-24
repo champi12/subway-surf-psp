@@ -852,18 +852,21 @@ static void draw_gameover(void)
     foot_btn(-46, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
     foot_play(74, TR("JUGAR", "PLAY"), 28, "X");
     /* cajas misteriosas de la carrera (MysteryBoxPopup): se abren una a una con X */
-    if (ginfo.boxes_pending > 0 || ginfo.reward[0]) {
+    if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
         r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
         float bx = SCR_W * 0.5f, byy = 104;
-        spr_c("background_superglow", bx, byy, 150, 150, 0x60ffffffu);
-        spr_c("icon_upgrades_mysteryBox", bx, byy, 96, 96, C_WHITE);
+        /* super caja (SuperMysteryBoxEffect): la grande dorada con mas brillo */
+        int sup = ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0;
+        spr_c("background_superglow", bx, byy, sup ? 190 : 150, sup ? 190 : 150, sup ? 0x90ffffffu : 0x60ffffffu);
+        spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx, byy, sup ? 110 : 96, sup ? 102 : 96, C_WHITE);
+        if (sup) labc(1, bx, 32, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
         if (ginfo.reward[0]) {
             labc(0, bx, 178, 18, C_WHITE, 1, 1, TR("Has conseguido", "You got"));
             labfit(1, bx, 204, 30, SCR_W - 40, 0xff00dbffu, 1, 1, ginfo.reward);
             labc(0, bx, 240, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
         } else {
             labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
-            snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending);
+            snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
             labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
         }
     }
@@ -893,6 +896,20 @@ static void draw_pause(void)
             lab(1, cx, lby - 15, 26, (m >> i & 1) ? C_LETTER_ON : C_LETTER_OFF, 0, 0, ch);
             cx += labw(1, 26, ch) + 5;
         }
+    }
+    {
+        /* premio: monedas segun la racha, o la super caja desde el quinto dia (DailyWord.REWARDS) */
+        int pz = daily_prize_next();
+        float rx = 203, ry = lby + 48;
+        spr_c("background_splat", rx, ry, U(96), U(98), 0xff00c985u);
+        if (pz > 0) {
+            spr_c("Icon_coin_pouch_larger", rx, ry - U(10), U(39), U(53), C_WHITE);
+            snprintf(buf, sizeof(buf), "%d", pz);
+            spr_c("coin2d", rx - U(14), ry + U(26), U(16), U(16), C_WHITE);
+            labc(0, rx + U(6), ry + U(26), 15, C_WHITE, 1, 1, buf);
+        } else spr_c("icon_bigSuperMysteryBox", rx, ry, U(66), U(62), C_WHITE);
+        snprintf(buf, sizeof(buf), TR("Día %d", "Day %d"), daily_day_next());
+        labc(0, rx, ry - U(48), 15, C_WHITE, 1, 1, buf);
     }
     if (daily_word_complete()) {
         lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Siguiente desafío en", "Next challenge in"));

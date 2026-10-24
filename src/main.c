@@ -220,6 +220,10 @@ int main(int argc, char **argv)
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
+#ifdef AT_MISS14
+        /* prueba de la 1.4: misiones repetibles (grupo 30) y super cajas */
+        if (frame_no == 20) { extern int mission_set; extern int mission_progress[3]; mission_set = 29; memset(mission_progress, 0, 12); ginfo.sboxes_pending = 2; ginfo.boxes_pending = 3; }
+#endif
 #ifdef AT_UI
         /* recorrido por las pantallas de la 1.4: personajes, tienda, misiones, trofeos, carrera con pausa y fin */
         if (frame_no == 30) ginfo.total_coins = 25000;
