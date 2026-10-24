@@ -1323,7 +1323,7 @@ static void daily_letter_picked(char letter)
         dw_paid = 1;
         ginfo.boxes_pending++;           /* _mysteryBoxesToUnlock++: se abre al terminar la carrera */
         missions_did(M_DAILYQUESTS, 1);
-        ginfo.message = TR("Palabra del dia completada!", "Daily word complete!");
+        ginfo.message = TR("¡Palabra del día completada!", "Daily word complete!");
         dlog("PALABRA DEL DIA completada: %s", w);
     }
     game_save();
@@ -1659,6 +1659,7 @@ void game_theme_check(int boot)
     theme_halloween = on;
     data_theme_set(on);
     r_fog_color = on ? FOG_HALLOWEEN : FOG_NORMAL;
+    r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
     if (boot) {
         if (on) dlog("TEMA de Halloween activo (fecha de la consola)");
         return;
@@ -2166,9 +2167,9 @@ static void tutorial_event(const uint32_t *t)
 #endif
     if (t[0]) {
         const char *txt = (int)t[1] >= 0 ? gd.strings[t[1]] : "";
-        if (strstr(txt, "GO")) tut_message(TR("Genial! Ahora a correr!", "You rock! Now GO!"));
-        else if (strstr(txt, "Hoverboard")) tut_message(TR("Cuadrado o triangulo: tabla", "Square or triangle: Hoverboard"));
-        else if (strstr(txt, "Fresh")) tut_message(TR("Buenos movimientos!", "Fresh Moves!"));
+        if (strstr(txt, "GO")) tut_message(TR("¡Genial! ¡Ahora a correr!", "You rock! Now GO!"));
+        else if (strstr(txt, "Hoverboard")) tut_message(TR("Cuadrado o triángulo: tabla", "Square or triangle: Hoverboard"));
+        else if (strstr(txt, "Fresh")) tut_message(TR("¡Buenos movimientos!", "Fresh Moves!"));
         else tut_message(txt);
     }
     if (t[2] && (int)t[3] >= 0) {
@@ -2180,8 +2181,8 @@ static void tutorial_event(const uint32_t *t)
         tut_arrow_on = 1;
         /* direccion de la flecha: 0 arriba, 180 abajo, 90 izquierda, -90 derecha */
         if (fabsf(tut_arrow_dir) > 135.0f) tut_message(TR("ABAJO o O: rodar", "DOWN or O: roll"));
-        else if (tut_arrow_dir > 45.0f) tut_message(TR("IZQUIERDA: cambiar de via", "LEFT: change lane"));
-        else if (tut_arrow_dir < -45.0f) tut_message(TR("DERECHA: cambiar de via", "RIGHT: change lane"));
+        else if (tut_arrow_dir > 45.0f) tut_message(TR("IZQUIERDA: cambiar de vía", "LEFT: change lane"));
+        else if (tut_arrow_dir < -45.0f) tut_message(TR("DERECHA: cambiar de vía", "RIGHT: change lane"));
         else tut_message(TR("ARRIBA o X: saltar", "UP or X: jump"));
     }
     if (t[7]) tut_board_ok = 1;
@@ -2601,14 +2602,14 @@ static void chars_input(unsigned in, int confirm)
 
 /* ------------------------------------------------------------ trofeos (Trophies.cs) */
 static const struct { const char *name, *name_en, *desc, *desc_en, *sprite; } trophies[NTROPHIES] = {
-    {"Gema", "Gemstone", "Su sitio esta en un museo!", "It belongs in a museum!", "trophy_diamond"},
+    {"Gema", "Gemstone", "¡Su sitio está en un museo!", "It belongs in a museum!", "trophy_diamond"},
     {"Lingote de oro", "Gold Bar", "Directo de Fort Knox.", "Directly from Fort Knox.", "trophy_gold"},
-    {"Reloj con clase", "Classy Clock", "Luce estilo como Flavor Flav!", "Show your style like Flavor Flav!", "trophy_goldChainClock"},
-    {"Cadena de dolar", "Dollar Chain", "Pon brillo en la fiesta.", "Bring some bling to the party.", "trophy_goldChainDollar"},
-    {"El pisapapeles", "The Paperweight", "Un pequeno Gold Sapiens.", "A little Gold Sapiens.", "trophy_goldSkull"},
-    {"Auriculares", "Headphones", "El ritmo esta en el corazon.", "Groove is in the heart.", "trophy_headphones"},
-    {"Disco de platino", "Platinum Record", "Que vuelva el ritmo!", "Bring the beat back!", "trophy_lpBlack"},
-    {"Cinta de casete", "Cassette Tape", "Musica retro.", "Retro musicology.", "trophy_tapeBlack"},
+    {"Reloj con clase", "Classy Clock", "¡Luce estilo como Flavor Flav!", "Show your style like Flavor Flav!", "trophy_goldChainClock"},
+    {"Cadena de dólar", "Dollar Chain", "Pon brillo en la fiesta.", "Bring some bling to the party.", "trophy_goldChainDollar"},
+    {"El pisapapeles", "The Paperweight", "Un pequeño Gold Sapiens.", "A little Gold Sapiens.", "trophy_goldSkull"},
+    {"Auriculares", "Headphones", "El ritmo está en el corazón.", "Groove is in the heart.", "trophy_headphones"},
+    {"Disco de platino", "Platinum Record", "¡Que vuelva el ritmo!", "Bring the beat back!", "trophy_lpBlack"},
+    {"Cinta de casete", "Cassette Tape", "Música retro.", "Retro musicology.", "trophy_tapeBlack"},
 };
 static int trophies_mask;
 
@@ -2638,9 +2639,9 @@ const ShopItem shop_items[] = {
     {"Super Sneakers", "Super Sneakers", "icon_upgrades_superSneakers", SK_TIER, PW_SNEAKERS},
     {"Coin Magnet", "Coin Magnet", "icon_upgrades_coinMagnet", SK_TIER, PW_MAGNET},
     {"2x Multiplier", "2x Multiplier", "icon_upgrades_doubleScore", SK_TIER, PW_DOUBLE},
-    {"Saltar mision 1", "Skip Mission 1", "icon_upgrades_skipMission1", SK_SKIP, 0},
-    {"Saltar mision 2", "Skip Mission 2", "icon_upgrades_skipMission2", SK_SKIP, 1},
-    {"Saltar mision 3", "Skip Mission 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
+    {"Saltar misión 1", "Skip Mission 1", "icon_upgrades_skipMission1", SK_SKIP, 0},
+    {"Saltar misión 2", "Skip Mission 2", "icon_upgrades_skipMission2", SK_SKIP, 1},
+    {"Saltar misión 3", "Skip Mission 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
 };
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
 static const char *const shop_descs[][2] = {
@@ -2648,13 +2649,13 @@ static const char *const shop_descs[][2] = {
     {"Avanza 250 metros al empezar.", "Skip ahead 250 meters in a run."},
     {"Avanza 1000 metros al empezar.", "Skip ahead 1000 meters in a run."},
     {"Monedas, hoverboards, fichas y trofeos.", "Coins, hoverboards, tokens and trophies."},
-    {"Dura mas el jetpack del spray.", "Increases the duration of the Spray Can Jetpack pickup."},
-    {"Duran mas las Super Sneakers.", "Increases the duration of the Super Sneakers."},
-    {"Dura mas el iman de monedas.", "Increases the duration of the Coin Magnet pickup."},
-    {"Dura mas el multiplicador doble.", "Increases the duration of the Double Multiplier pickup."},
-    {"Salta tu mision 1 actual.", "Skip your current mission 1"},
-    {"Salta tu mision 2 actual.", "Skip your current mission 2"},
-    {"Salta tu mision 3 actual.", "Skip your current mission 3"},
+    {"Dura más el jetpack del spray.", "Increases the duration of the Spray Can Jetpack pickup."},
+    {"Duran más las Super Sneakers.", "Increases the duration of the Super Sneakers."},
+    {"Dura más el imán de monedas.", "Increases the duration of the Coin Magnet pickup."},
+    {"Dura más el multiplicador doble.", "Increases the duration of the Double Multiplier pickup."},
+    {"Salta tu misión 1 actual.", "Skip your current mission 1"},
+    {"Salta tu misión 2 actual.", "Skip your current mission 2"},
+    {"Salta tu misión 3 actual.", "Skip your current mission 3"},
 };
 const char *shop_desc(int i) { return TR(shop_descs[i][0], shop_descs[i][1]); }
 static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
@@ -3048,7 +3049,7 @@ void game_draw(void)
         return;
     }
     /* el cielo va pegado a la camara: se dibuja primero */
-#ifdef AT_CRACKS
+#if defined(AT_CRACKS) && !defined(AT_CRACKS_SKY)
     if (0) {   /* prueba de grietas: sin cielo, el fondo magenta se ve por cualquier hueco */
 #else
     if (n_sky >= 0) {

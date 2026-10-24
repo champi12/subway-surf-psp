@@ -47,7 +47,7 @@ static void complete(int i)
 {
     char buf[64];
     missions_text(i, buf, sizeof(buf));
-    snprintf(mission_msg, sizeof(mission_msg), TR("Mision: %s", "Mission: %s"), buf);
+    snprintf(mission_msg, sizeof(mission_msg), TR("Misión: %s", "Mission: %s"), buf);
     mission_msg_t = game_time;
     set_complete_check();
 }

@@ -613,6 +613,16 @@ def swizzle(data, width_bytes, height):
 TEX_T8, TEX_5650, TEX_4444, TEX_8888 = 0, 1, 2, 3
 
 
+def tex_rgba(t):
+    """Imagen RGBA de una Texture2D. Las "ARGB4444" de este APK (formato 2: la estela del jetpack, jetpackSmoke) estan
+    guardadas en realidad como RGBA4444 y UnityPy les cambia el orden de los canales: el arcoiris del original salia
+    azul, rojo y morado."""
+    img = t.image.convert('RGBA')
+    if int(t.m_TextureFormat) == 2:
+        img = Image.fromarray(np.ascontiguousarray(np.asarray(img)[:, :, [3, 0, 1, 2]]), 'RGBA')
+    return img
+
+
 def export_textures(ex, maxsize=512, hq=()):
     out = bytearray(b'SST1')
     out += struct.pack('<I', len(ex.textures))
@@ -627,7 +637,7 @@ def export_textures(ex, maxsize=512, hq=()):
             img = gen_img.convert('RGBA')
         else:
             t = to.read()
-            img = t.image.convert('RGBA')
+            img = tex_rgba(t)
         w, h = img.size
         nw = 1 << max(0, (w - 1).bit_length())
         nh = 1 << max(0, (h - 1).bit_length())
@@ -1063,9 +1073,74 @@ def export_ui(sc, ex, sc14=None):
 # Tamanos en pixeles a los que la interfaz del port dibuja cada familia (ver hud.c). Las letras se generan ya a
 # ese tamano desde la textura original a resolucion completa (1024x512, que no cabe en la PSP) y se dibujan 1:1:
 # sin esto el texto sale de la textura reducida a la mitad y ampliado, y se ve borroso en la consola.
-BAKE_SIZES = {'Lilita': [9, 10, 12, 14, 16, 18, 20, 24, 28, 34], 'Titan': [17, 20, 30, 52, 69]}
+BAKE_SIZES = {'Lilita': [14, 16, 18, 20, 24, 28, 34], 'Titan': [17, 20, 30, 52, 69]}   # hud.c no baja de 14 px
 # caracteres por familia y tamano (None = todos): la Titan grande solo hace falta para los numeros
 BAKE_CHARS = {'Lilita': {}, 'Titan': {52: '0123456789', 69: '0123456789'}}
+
+
+# letras que la fuente del original no tiene (solo trae ASCII): se componen con la letra base y el acento dibujado
+SPANISH = {'á': ('a', 'acute'), 'é': ('e', 'acute'), 'í': ('i', 'acute'), 'ó': ('o', 'acute'), 'ú': ('u', 'acute'),
+           'Á': ('A', 'acute'), 'É': ('E', 'acute'), 'Í': ('I', 'acute'), 'Ó': ('O', 'acute'), 'Ú': ('U', 'acute'),
+           'ñ': ('n', 'tilde'), 'Ñ': ('N', 'tilde'), 'ü': ('u', 'diaer'), 'Ü': ('U', 'diaer'),
+           '¿': ('?', 'flip'), '¡': ('!', 'flip')}
+
+
+def accent_mark(kind, px):
+    """Acento, tilde o dieresis en blanco con alfa, dibujado a 4x y reducido (bordes suaves)."""
+    from PIL import ImageDraw
+    S = 4
+    w, h = max(3, int(round(px * 0.34))), max(2, int(round(px * 0.2)))
+    t = max(1.3, px / 8.0) * S
+    im = Image.new('L', (w * S, h * S), 0)
+    d = ImageDraw.Draw(im)
+    if kind == 'acute':
+        d.line([(w * S * 0.2, h * S - t * 0.5), (w * S * 0.85, t * 0.5)], fill=255, width=int(t))
+    elif kind == 'tilde':
+        pts = [(w * S * i / 12.0, h * S * 0.5 - math.sin(i / 12.0 * 2 * math.pi) * (h * S * 0.5 - t * 0.5)) for i in range(13)]
+        d.line(pts, fill=255, width=int(t), joint='curve')
+    else:
+        r = t * 0.65
+        for cx in (w * S * 0.25, w * S * 0.75):
+            d.ellipse([cx - r, h * S * 0.5 - r, cx + r, h * S * 0.5 + r], fill=255)
+    a = im.resize((w, h), Image.LANCZOS)
+    return Image.merge('RGBA', (Image.new('L', (w, h), 255),) * 3 + (a,))
+
+
+def spanish_glyphs(px, same):
+    """Glifos compuestos (indice Latin-1) a partir de los de un tamano: [(px, tupla, imagen)]."""
+    by = {gi[1][0]: gi for gi in same}
+    out = []
+    xg = by.get(ord('x'))
+    xtop = xg[1][6] if xg else None
+    for ch, (b, kind) in SPANISH.items():
+        bg = by.get(ord(b))
+        if bg is None or bg[2] is None:
+            continue
+        _, _, _, w, h, ox, oy, adv = bg[1]
+        img = bg[2]
+        if kind == 'flip':
+            # signos de apertura: el del final girado, con la parte de arriba a la altura de la x
+            out.append((px, (ord(ch), 0, 0, w, h, ox, xtop if xtop is not None else oy, adv), img.rotate(180)))
+            continue
+        top = oy
+        if b == 'i' and xtop is not None and xtop > oy:
+            img = img.crop((0, xtop - oy, w, h))           # i sin punto
+            h, top = h - (xtop - oy), xtop
+            oy = top
+        elif b.islower() and xtop is not None:
+            top = xtop
+        m = accent_mark(kind, px)
+        mw, mh = m.size
+        gap = max(1, int(round(px / 14.0)))
+        mox = ox + (w - mw) // 2 + (1 if kind == 'acute' else 0)
+        moy = top - gap - mh
+        x0, y0 = min(ox, mox), min(oy, moy)
+        x1, y1 = max(ox + w, mox + mw), max(oy + h, moy + mh)
+        comp = Image.new('RGBA', (x1 - x0, y1 - y0), (255, 255, 255, 0))
+        comp.alpha_composite(img, (ox - x0, oy - y0))
+        comp.alpha_composite(m, (mox - x0, moy - y0))
+        out.append((px, (ord(ch), 0, 0, x1 - x0, y1 - y0, x0, y0, adv), comp))
+    return out
 
 
 def bake_fonts(ex, atlases, fonts):
@@ -1096,7 +1171,12 @@ def bake_fonts(ex, atlases, fonts):
                 if chars is not None and chr(g['index']) not in chars:
                     continue
                 w, h = g['width'], g['height']
-                adv = int(round(g['advance'] * k))
+                # a tamanos pequenos el redondeo dejaba letras montadas y espacios de 2 pixeles: un poco de aire entre
+                # letras y un espacio de al menos un 30 % del tamano
+                track = 1.0 if px <= 16 else 0.6 if px <= 24 else 0.0
+                adv = int(round(g['advance'] * k + track))
+                if g['index'] == 32:
+                    adv = max(adv, int(round(px * 0.3)))
                 ox, oy = int(round(g['offsetX'] * k)), int(round(g['offsetY'] * k))
                 if w <= 0 or h <= 0:
                     glyph_imgs.append((px, (g['index'], 0, 0, 0, 0, ox, oy, adv), None))
@@ -1107,6 +1187,8 @@ def bake_fonts(ex, atlases, fonts):
                 gi = crop.convert('RGBa').resize((nw, nh), Image.LANCZOS).convert('RGBA')
                 glyph_imgs.append((px, (g['index'], 0, 0, nw, nh, ox, oy, adv), gi))
             base = int(round(f['mBase'] * k))
+            if chars is None and px <= (30 if family == 'Titan' else 24):   # los grandes de Lilita son nombres
+                glyph_imgs += spanish_glyphs(px, [gi for gi in glyph_imgs if gi[0] == px])
             baked_fonts.append({'name': '%s@%d' % (family, px), 'atlas': len(baked_atlases), 'size': px, 'base': base,
                                 'spacing': int(round(src['spacing'][0] * k)), 'glyphs': [], 'px': px})
         # empaquetado por estantes, de mas alto a mas bajo, con 1 pixel de separacion
@@ -1121,7 +1203,8 @@ def bake_fonts(ex, atlases, fonts):
             pos[i] = (x, y)
             x += gw + 1
             shelf = max(shelf, gh)
-        H = 1 << max(3, (y + shelf).bit_length())
+        print('  fuente %s: %d glifos, alto usado %d' % (family, len(order), y + shelf))
+        H = 1 << max(3, (y + shelf - 1).bit_length())
         if H > 512:
             raise SystemExit('Las fuentes %s no caben en 512x512 (hacen falta %d de alto)' % (family, y + shelf))
         sheet = Image.new('RGBA', (W, H), (255, 255, 255, 0))

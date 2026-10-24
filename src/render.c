@@ -48,6 +48,9 @@ float r_near = 2.0f, r_far = 1000.0f;
  * plano lejano de la proyeccion sigue en 1000 porque la curvatura del mundo depende de el. */
 float r_fog_start = 200.0f, r_fog_end = 700.0f;
 unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
+/* color de borrado: el cielo tapa todo el fondo, asi que solo asoma por las juntas de un pixel entre dos tramos de via
+ * (precision del GE); con el color de la niebla (casi blanco) se veian lineas blancas en el suelo, con el del suelo no */
+unsigned int r_clear_color = 0xff3c5e74u;   /* ABGR: marron del suelo */
 static int cur_fog;
 /* el original es vertical (retrato) con fov 60; en la pantalla apaisada de la PSP 50 encuadra parecido */
 float r_fov = 50.0f;
@@ -389,6 +392,11 @@ static int bind_material(int mi, float amul)
     unsigned int col = col_abgr((blend == BLEND_OPAQUE || blend == BLEND_ALPHA) && m->color[3] < 0.01f ? white :
                                 (blend == BLEND_OPAQUE ? white : m->color), amul);
     if (blend == BLEND_ALPHA && m->color[3] > 0.01f) col = col_abgr(m->color, amul);
+    if (blend == BLEND_ADD && amul < 0.999f) {
+        /* aditivo que se desvanece (brillo de las monedas con la distancia): se oscurece el color, no el alfa */
+        float c[4] = {m->color[0] * amul, m->color[1] * amul, m->color[2] * amul, m->color[3]};
+        col = col_abgr(c, 1.0f);
+    }
     if (col != cur_color) { sceGuColor(col); cur_color = col; }
     /* uv' = uv * escala + desplazamiento (v ya viene invertida: v' = v*sv + 1 - sv - ov) */
     float st[4] = {m->st[0], m->st[1], m->st[2] + (mi < 256 ? r_mat_uoff[mi] : 0), 1.0f - m->st[1] - m->st[3]};

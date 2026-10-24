@@ -158,14 +158,35 @@ static void resolve_font(int *fi, float *scale, int *snap)
     else *scale = ratio;
 }
 
+/* siguiente caracter: los textos estan en UTF-8 y las letras del espanol (a con tilde, ene, abrir interrogacion...)
+ * son de Latin-1: dos bytes C2/C3 xx -> 0x80-0xFF, que es su indice en la fuente */
+static unsigned next_char(const char **ps)
+{
+    const unsigned char *p = (const unsigned char *)*ps;
+    unsigned c = *p++;
+    if ((c == 0xc2 || c == 0xc3) && (*p & 0xc0) == 0x80) c = ((c & 0x1f) << 6) | (*p++ & 0x3f);
+    *ps = (const char *)p;
+    return c;
+}
+
+/* si un tamano no tiene la letra con tilde (los grandes no la llevan), la letra sin tilde */
+static UGlyph *glyph_of(UFont *t, unsigned c)
+{
+    UGlyph *g = t->map[c];
+    if (g || c < 0xa1) return g;
+    static const char fold[] = "!.......ca...r.o.........o....?AAAAAAACEEEEIIIIDNOOOOOxOUUUUYPsaaaaaaaceeeeiiiidnooooo/ouuuuypy";   /* 0xa1-0xff sin tilde */
+    return t->map[(unsigned char)fold[c - 0xa1]];
+}
+
 static float text_width_raw(int fi, float scale, const char *s)
 {
     UFont *t = &fnt[fi];
     float w = 0;
-    for (; *s; s++) {
-        UGlyph *g = t->map[(unsigned char)*s];
+    while (*s) {
+        unsigned c = next_char(&s);
+        UGlyph *g = glyph_of(t, c);
         if (g) w += (g->adv + t->spacing) * scale;
-        else if (*s == ' ') w += t->size * 0.3f * scale;
+        else if (c == ' ') w += t->size * 0.3f * scale;
     }
     return w;
 }
@@ -193,9 +214,10 @@ float ui_text(int fi, float x, float y, float scale, unsigned int col, int align
     /* todas las letras de la frase en una sola llamada de dibujo */
     static float q[64 * 8];
     int nq = 0;
-    for (; *s; s++) {
-        UGlyph *g = t->map[(unsigned char)*s];
-        if (!g) { if (*s == ' ') x += t->size * 0.3f * scale; continue; }
+    while (*s) {
+        unsigned c = next_char(&s);
+        UGlyph *g = glyph_of(t, c);
+        if (!g) { if (c == ' ') x += t->size * 0.3f * scale; continue; }
         if (g->w > 0 && g->h > 0) {
             float *o = &q[nq * 8];
             o[0] = x + g->ox * scale; o[1] = y + g->oy * scale; o[2] = g->w * scale; o[3] = g->h * scale;
@@ -517,7 +539,7 @@ static void slide_box(float t, const char *l1, const char *l2, int tick)
 
 static void draw_slides(void)
 {
-    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Mision completada", "Mission Complete"), 1);
+    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Misión completada", "Mission Complete"), 1);
     slide_box(ginfo.time - slide_t, slide1, slide2, 0);
 }
 
@@ -587,8 +609,8 @@ static void draw_menu(void)
 {
     char buf[48];
     /* arriba a la izquierda: Misiones (triangulo) y la palabra del dia */
-    top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triangulo", "triangle"));
-    top_button(U(144), U(26), U(110), daily_word_complete() ? TR("Palabra: hecha!", "Word: done!") : TR("Palabra del dia", "Daily Challenge"), NULL);
+    top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triángulo", "triangle"));
+    top_button(U(144), U(26), U(110), daily_word_complete() ? TR("¡Palabra hecha!", "Word: done!") : TR("Palabra del día", "Daily Challenge"), NULL);
     {
         const char *w = daily_word();
         unsigned m = daily_word_mask();
@@ -634,20 +656,20 @@ static void draw_menu(void)
 static void draw_halloween_popup(void)
 {
     r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
-    float w = 400, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
     panel(x, y, w, h);
     /* bocadillo naranja con el titulo y los murcielagos */
     float bx = x + 82, by = y + 64;
     ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_ORANGE);
     spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_ORANGE);
     spr_c("popup_cloud_bats", bx + U(56), by - U(70), U(91), U(80), C_WHITE);
-    labc(1, bx, by - U(32), 24, 0xff69f0ffu, 1, 1, TR("Feliz", "Happy"));
+    labc(1, bx, by - U(32), 24, 0xff69f0ffu, 1, 1, TR("¡Feliz", "Happy"));
     labfit(1, bx, by, 30, U(150), 0xff69f0ffu, 1, 1, "Halloween");
     labc(1, bx, by + U(32), 24, 0xff69f0ffu, 1, 1, TR("a todos!", "Everyone!"));
     static const char *const lines[3][4] = {
-        {"Consigue a Zombie Jake ESPECIAL!", "Get SPECIAL Zombie Jake!", "Solo en la tienda por tiempo LIMITADO", "Only in the Shop for a LIMITED time"},
-        {"Un aspecto ESPANTOSO!", "SPOOKTACULAR new look!", "Ponte a tono para la fiesta!", "Get in the MOOD for the holiday!"},
-        {"Hasta el 4 de noviembre!", "Until November 4!", "Despues vuelve el aspecto CLASICO", "Then the CLASSIC look comes back"},
+        {"¡Consigue a Zombie Jake ESPECIAL!", "Get SPECIAL Zombie Jake!", "Solo en la tienda por tiempo LIMITADO", "Only in the Shop for a LIMITED time"},
+        {"¡Un aspecto ESPANTOSO!", "SPOOKTACULAR new look!", "¡Ponte a tono para la fiesta!", "Get in the MOOD for the holiday!"},
+        {"¡Hasta el 4 de noviembre!", "Until November 4!", "Después vuelve el aspecto CLÁSICO", "Then the CLASSIC look comes back"},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {
@@ -725,7 +747,7 @@ static void draw_shop(void)
     if (top > 0) lab(0, SCR_W * 0.5f, 22, 14, C_WHITE, 1, 1, "...");
     if (top + 3 < rows) lab(0, SCR_W * 0.5f, 34 + 3 * 56 - 8, 14, C_WHITE, 1, 1, "...");
     /* pie: Menu, Mejoras (esta), Personajes */
-    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
+    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), NULL);
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L/R");
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) hud_slide(TR("Has conseguido", "You got"), ginfo.reward), ginfo.reward[0] = 0;
@@ -735,7 +757,7 @@ static void draw_shop(void)
 static void fmt_time(char *buf, int n, int secs, int with_days)
 {
     int d = secs / 86400, h = secs / 3600 % 24, m = secs / 60 % 60, s = secs % 60;
-    if (with_days) snprintf(buf, n, TR("%d dia%s %02d:%02d:%02d", "%d day%s %02d:%02d:%02d"), d, d == 1 ? "" : "s", h, m, s);
+    if (with_days) snprintf(buf, n, TR("%d día%s %02d:%02d:%02d", "%d day%s %02d:%02d:%02d"), d, d == 1 ? "" : "s", h, m, s);
     else snprintf(buf, n, "%02d:%02d:%02d", h + d * 24, m, s);
 }
 
@@ -754,9 +776,9 @@ static void draw_chars(void)
         float sx = 14 + nw + U(36), sy = 26;
         spr_c("background_sticker_medium", sx, sy, U(57), U(57), C_ORANGE);
         int d = secs / 86400;
-        if (d < 1) { labc(0, sx, sy - 6, 14, C_WHITE, 1, 0, TR("ULTIMO", "LAST")); labc(0, sx, sy + 7, 14, C_WHITE, 1, 0, TR("DIA", "DAY")); }
+        if (d < 1) { labc(0, sx, sy - 6, 14, C_WHITE, 1, 0, TR("ÚLTIMO", "LAST")); labc(0, sx, sy + 7, 14, C_WHITE, 1, 0, TR("DÍA", "DAY")); }
         else {
-            snprintf(buf, sizeof(buf), TR("%d DIA%s", "%d DAY%s"), d, d == 1 ? "" : "S");
+            snprintf(buf, sizeof(buf), TR("%d DÍA%s", "%d DAY%s"), d, d == 1 ? "" : "S");
             labfit(0, sx, sy - 6, 14, U(48), C_WHITE, 1, 0, buf);
             labc(0, sx, sy + 7, 14, C_WHITE, 1, 0, TR("QUEDAN", "LEFT"));
         }
@@ -796,7 +818,7 @@ static void draw_chars(void)
     }
     lab(0, 8, 178, 14, C_WHITE, 0, 1, "<");
     lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
-    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
+    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
 }
@@ -820,15 +842,15 @@ static void draw_gameover(void)
     float tw = labw(0, 20, buf);
     spr_c("coin2d", cx - tw * 0.5f - U(12), cy + U(4), U(18), U(18), C_WHITE);
     labc(0, cx + U(6), cy + U(4), 20, C_WHITE, 1, 1, buf);
-    snprintf(buf, sizeof(buf), TR("Record: %d", "Best: %d"), ginfo.highscore);
+    snprintf(buf, sizeof(buf), TR("Récord: %d", "Best: %d"), ginfo.highscore);
     labfit(0, cx, cy + U(40), 15, U(150), C_WHITE, 1, 1, buf);
     /* a la derecha (donde la 1.4 tiene la clasificacion de amigos): las misiones */
     float px = 248, py = 30;
     panel(px, py, 222, 160);
     draw_missions_panel(px + 6, py + 4, 210);
-    foot_btn(-117, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
-    foot_btn(-39, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
-    foot_play(78, TR("JUGAR", "PLAY"), 28, "X");
+    foot_btn(-132, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
+    foot_btn(-46, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
+    foot_play(74, TR("JUGAR", "PLAY"), 28, "X");
     /* cajas misteriosas de la carrera (MysteryBoxPopup): se abren una a una con X */
     if (ginfo.boxes_pending > 0 || ginfo.reward[0]) {
         r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
@@ -854,7 +876,7 @@ static void draw_pause(void)
     bg_fallback();
     /* izquierda: desafio diario (la palabra del dia) */
     float x = 14, y = 12;
-    lab(1, x, y, 30, C_SCORE, 0, 0, TR("Palabra del dia", "Daily Challenge"));
+    lab(1, x, y, 30, C_SCORE, 0, 0, TR("Palabra del día", "Daily Challenge"));
     const char *w = daily_word();
     unsigned m = daily_word_mask();
     float lbx = x + U(85), lby = y + 62;
@@ -873,7 +895,7 @@ static void draw_pause(void)
         }
     }
     if (daily_word_complete()) {
-        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Siguiente desafio en", "Next challenge in"));
+        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Siguiente desafío en", "Next challenge in"));
         fmt_time(buf, sizeof(buf), day_seconds_left(), 0);
         lab(1, x, lby + 54, 26, C_WHITE, 0, 1, buf);
     } else {
@@ -919,7 +941,7 @@ static void draw_trophies(void)
         labc(0, SCR_W * 0.5f, ty + 12, 18, C_NAVY, 1, 0, "???");
         labc(0, SCR_W * 0.5f, ty + 32, 15, C_LIMITED, 1, 0, TR("Sale en las cajas misteriosas", "Find it in Mystery Boxes"));
     }
-    foot_btn(0, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
+    foot_btn(0, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
 }
 
 /* pantalla de carga: al arrancar y si cambia el tema (Halloween) con el juego abierto. Es un fotograma entero */

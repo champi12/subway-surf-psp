@@ -298,12 +298,16 @@ void coins_draw(void)
         m34_trs(&w, p, qeuler(0, ang, 0), v3(1, 1, 1));
         r_draw_mesh(m[0], &w, mats, 1, 1.0f);
         if (g) {
-            /* el brillo esta en el pivote, desplazado 3.3 en z y sin rotar */
-            M34 gw;
-            const NodeRT *gr = &nrt[gd.nodes[coin_glow_node].first_child >= 0 ? coin_glow_node : coin_glow_node];
-            (void)gr;
-            m34_trs(&gw, v3add(p, v3(0, 0, 3.3f)), qident(), v3(1, 1, 1));
-            r_draw_mesh(g[0], &gw, gmats, 1, 1.0f);
+            /* Glow/Plane: un plano levantado de cara a la camara (-90 grados en x), 3.3 por delante de la moneda y sin
+             * girar con ella. Antes salia tumbado (sin su rotacion) y se veia como un cuadro con el borde dorado.
+             * Additive (falloff): la intensidad baja con la distancia, 1 - (d / 200)^2 */
+            const NodeRT *gr = &nrt[coin_glow_node];
+            float d = v3len(v3sub(p, cam)) / 200.0f, k = 1.0f - d * d;
+            if (k > 0.02f) {
+                M34 gw;
+                m34_trs(&gw, v3add(p, gr->lpos), gr->lrot, gr->lscl);
+                r_draw_mesh(g[0], &gw, gmats, 1, k);
+            }
         }
     }
 }
