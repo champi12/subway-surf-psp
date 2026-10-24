@@ -51,6 +51,7 @@ extern unsigned int r_fog_color;   /* ABGR; tambien es el color de fondo */
 /* 2D (pantalla, en pixeles) */
 void r_begin_2d(void);
 void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, float u1, float v1, unsigned int abgr);
+void r_background(int tex);   /* fondo a pantalla completa antes del 3D */
 void r_rect(float x, float y, float w, float h, unsigned int abgr);
 void r_sprites(int tex, const float *quads, int n, unsigned int abgr);   /* n x (x, y, w, h, u0, v0, u1, v1) */
 void r_bind_texture(int tex);

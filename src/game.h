@@ -29,7 +29,9 @@ typedef struct {
     int char_sel;                 /* personaje marcado en la pantalla de personajes */
     int trophy_sel;               /* trofeo marcado en la pantalla de trofeos */
     int missions_open;            /* ventana de misiones abierta en el menu */
+    int popup;                    /* ventana encima del menu (POPUP_...) */
 } GameInfo;
+enum { POPUP_NONE, POPUP_HALLOWEEN };
 
 typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
 extern const ShopItem shop_items[];
@@ -54,6 +56,11 @@ unsigned daily_word_mask(void);
 int daily_word_complete(void);         /* contenido de Halloween: solo se compra en esas fechas */
 const char *char_token_name(int i);
 const char *char_token_sprite(int i);
+
+int halloween_season(void);
+int season_seconds_left(void);    /* lo que queda del evento de Halloween (0 fuera de temporada) */
+int day_seconds_left(void);       /* lo que queda del dia (palabra del dia) */
+const char *shop_desc(int i);     /* descripcion de Upgrades.cs */
 
 /* trofeos (Trophies.cs): 8 objetos de oro que salen en las cajas misteriosas */
 #define NTROPHIES 8

@@ -1609,6 +1609,47 @@ int halloween_season(void)
 #endif
 }
 
+/* segundos que quedan del evento (hasta el 5 de noviembre a las 00:00: el contador "13 days 03:12:34" de la 1.4) y
+ * del dia (la palabra del dia cambia a medianoche) */
+int season_seconds_left(void)
+{
+#ifdef AUTOTEST
+    return halloween_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
+#else
+    ScePspDateTime t;
+    if (!halloween_season() || sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    int days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;     /* dias enteros despues de hoy */
+    return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
+#endif
+}
+
+int day_seconds_left(void)
+{
+#ifdef AUTOTEST
+    return 5 * 3600 + 42 * 60 + 7;
+#else
+    ScePspDateTime t;
+    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    return 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
+#endif
+}
+
+/* HalloweenThemePopup: la primera vez que se abre el menu en cada temporada */
+static int hw_popup_year;            /* ano - 2000 en que ya se enseno */
+static void halloween_popup_check(void)
+{
+    if (!theme_halloween || ginfo.popup) return;
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (sceRtcGetCurrentClockLocalTime(&t) >= 0) y = t.year - 2000;
+#endif
+    if (hw_popup_year == y) return;
+    hw_popup_year = y;
+    ginfo.popup = POPUP_HALLOWEEN;
+    game_save();
+}
+
 /* boot: al arrancar, antes de cargar ninguna textura (no hace falta volver a leer nada) */
 void game_theme_check(int boot)
 {
@@ -1649,6 +1690,17 @@ static void game_top_menu(void)
     anim_crossfade(&anim_cam, "menuIdle", 0.1f);
     snd_stop(h_jetloop); h_jetloop = -1;
     ginfo.state = GS_MENU;
+}
+
+/* PauseScreen "Home" (UIScreenController.GoToMainMenuFromGame): se deja la carrera y se vuelve al menu. Las monedas
+ * recogidas se guardan */
+static void game_quit_run(void)
+{
+    ginfo.paused = 0; ginfo.countdown = 0;
+    snd_pause_all(0); music_pause(0);
+    ginfo.total_coins += coins_run; coins_run = 0;
+    game_save();
+    game_top_menu();
 }
 
 static void game_start_run(void)
@@ -2507,7 +2559,10 @@ static void open_chars(void)
 static void chars_input(unsigned in, int confirm)
 {
     int nc = char_count();
-    /* X tambien es "arriba" y O "abajo" (saltar y rodar): aqui no deben mover la seleccion */
+    /* carrusel de la 1.4: izquierda y derecha (y arriba y abajo). X tambien es "arriba" y O "abajo" (saltar y
+     * rodar): aqui no deben mover la seleccion */
+    if (in & IN_LEFT) in |= IN_UP;
+    if (in & IN_RIGHT) in |= IN_DOWN;
     if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; char_show_model(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
     if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; char_show_model(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
     int i = char_id(ginfo.char_sel);
@@ -2524,14 +2579,20 @@ static void chars_input(unsigned in, int confirm)
             else char_tokens[chars[i].token] = chars[i].price;
             ginfo.character = i;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+            hud_slide(TR("Has desbloqueado", "You unlocked"), chars[i].name);
             game_save();
-        } else snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+        } else {
+            snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+            if (chars[i].unlock == UL_COINS) hud_slide(TR("No tienes monedas suficientes", "Not enough coins"), chars[i].name);
+            else hud_slide(TR("Consigue sus fichas en las", "Get the tokens from"), TR("cajas misteriosas", "Mystery Boxes"));
+        }
     }
-    if (in & IN_R) {
+    if (in & (IN_L | IN_R)) {
+        /* L y R pasan de una pestana del pie a la otra (Mejoras / Personajes) */
         snd_play(sfx_tap, 1, 1, 0);
         char_show_model(ginfo.character);
         open_shop();
-    } else if (in & (IN_CIRCLE | IN_L | IN_START)) {
+    } else if (in & (IN_CIRCLE | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         change_state(GS_MENU); ginfo.state = GS_MENU;
         char_show_model(ginfo.character);
@@ -2582,6 +2643,20 @@ const ShopItem shop_items[] = {
     {"Saltar mision 3", "Skip Mission 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
 };
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
+static const char *const shop_descs[][2] = {
+    {"Te protege de un choque durante 30 s (cuadrado).", "Protect yourself from crashing for 30 seconds (Square)."},
+    {"Avanza 250 metros al empezar.", "Skip ahead 250 meters in a run."},
+    {"Avanza 1000 metros al empezar.", "Skip ahead 1000 meters in a run."},
+    {"Monedas, hoverboards, fichas y trofeos.", "Coins, hoverboards, tokens and trophies."},
+    {"Dura mas el jetpack del spray.", "Increases the duration of the Spray Can Jetpack pickup."},
+    {"Duran mas las Super Sneakers.", "Increases the duration of the Super Sneakers."},
+    {"Dura mas el iman de monedas.", "Increases the duration of the Coin Magnet pickup."},
+    {"Dura mas el multiplicador doble.", "Increases the duration of the Double Multiplier pickup."},
+    {"Salta tu mision 1 actual.", "Skip your current mission 1"},
+    {"Salta tu mision 2 actual.", "Skip your current mission 2"},
+    {"Salta tu mision 3 actual.", "Skip your current mission 3"},
+};
+const char *shop_desc(int i) { return TR(shop_descs[i][0], shop_descs[i][1]); }
 static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
 
 int shop_price(int i)
@@ -2639,7 +2714,10 @@ static void mystery_open(void)
         /* ficha de un personaje que aun la necesite; si ya no queda ninguno, 100 monedas (como el original) */
         tc = char_useful_token();
         if (tc < 0) { tok = 0; coins = 100; }
-        else char_tokens[chars[tc].token]++;
+        else {
+            char_tokens[chars[tc].token]++;
+            if (char_tokens[chars[tc].token] >= chars[tc].price) hud_slide(TR("Has desbloqueado", "You unlocked"), chars[tc].name);
+        }
     }
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     if (coins) missions_did(M_EARNCOIN, coins);
@@ -2661,7 +2739,11 @@ static void mystery_open(void)
 static void shop_buy(int i)
 {
     int price = shop_price(i);
-    if (price < 0 || ginfo.total_coins < price) { snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0); return; }
+    if (price < 0 || ginfo.total_coins < price) {
+        snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+        if (price >= 0) hud_slide(TR("No tienes monedas suficientes", "Not enough coins"), TR(shop_items[i].name, shop_items[i].name_en));
+        return;
+    }
     ginfo.total_coins -= price;
     missions_did(M_SPENDCOIN, price);
     const ShopItem *it = &shop_items[i];
@@ -2701,12 +2783,19 @@ void game_input(unsigned in)
         return;
     }
     if (ginfo.paused) {
-        if (confirm && ginfo.countdown <= 0) ginfo.countdown = 3.0f;
+        /* PauseUI de la 1.4: X (o START) seguir, O "Home" deja la carrera y vuelve al menu */
+        if (ginfo.countdown > 0) return;
+        if (confirm) ginfo.countdown = 3.0f;
+        else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_quit_run(); }
         return;
     }
     switch (state) {
     case GS_MENU:
         /* menu: X jugar, triangulo misiones, L personajes y R tienda (como pestanas a izquierda y derecha) */
+        if (ginfo.popup) {
+            if (in & (IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
+            break;
+        }
         if (ginfo.missions_open) {
             if (in & (IN_TRIANGLE | IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 0; }
             break;
@@ -2728,18 +2817,30 @@ void game_input(unsigned in)
         if ((in & (IN_LEFT | IN_RIGHT | IN_UP | IN_DOWN)) && !(in & (IN_CROSS | IN_CIRCLE))) snd_play(sfx_tap, 0.5f, 1, 0);
         if (in & (IN_CIRCLE | IN_SQUARE | IN_CROSS | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
-    case GS_SHOP:
-        if ((in & IN_UP) && !(in & IN_CROSS)) ginfo.shop_sel = (ginfo.shop_sel + shop_count - 1) % shop_count;
-        if ((in & IN_DOWN) && !(in & IN_CIRCLE)) ginfo.shop_sel = (ginfo.shop_sel + 1) % shop_count;
+    case GS_SHOP: {
+        /* tarjetas en dos columnas */
+        int sel = ginfo.shop_sel, old = sel;
+        if ((in & IN_UP) && !(in & IN_CROSS) && sel >= 2) sel -= 2;
+        if ((in & IN_DOWN) && !(in & IN_CIRCLE) && sel + 2 < shop_count) sel += 2;
+        if ((in & IN_LEFT) && (sel & 1)) sel--;
+        if ((in & IN_RIGHT) && !(sel & 1) && sel + 1 < shop_count) sel++;
+        if (sel != old) { ginfo.shop_sel = sel; snd_play(sfx_tap, 0.5f, 1, 0); }
         if (confirm) shop_buy(ginfo.shop_sel);
-        if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
-        else if (in & (IN_CIRCLE | IN_R | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
+        if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
+        else if (in & (IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
+    }
     case GS_GAMEOVER:
+        /* GameoverUI de la 1.4: X "PLAY" (otra carrera), O "Home" (menu), R "Boosts" (tienda). Las cajas misteriosas
+         * de la carrera se abren antes, una a una */
         if (confirm || (in & IN_START)) {
-            if (ginfo.boxes_pending > 0) mystery_open();
-            else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
-        }
+            if (ginfo.reward[0]) ginfo.reward[0] = 0;
+            else if (ginfo.boxes_pending > 0) mystery_open();
+            else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); game_start_run(); }
+        } else if (ginfo.boxes_pending > 0 || ginfo.reward[0]) {
+            break;
+        } else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
+        else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); open_shop(); }
         break;
     case GS_DIE:
         if (in & (IN_UP | IN_CROSS)) in_up = 1;
@@ -2773,6 +2874,7 @@ static int extra_cols[8];
 
 void game_update(float dt)
 {
+    if (state == GS_MENU) halloween_popup_check();
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -2897,6 +2999,11 @@ void game_update(float dt)
     }
 }
 
+#ifndef CHARS_CAM_Y
+#define CHARS_CAM_Y 0.8f      /* sobre la cadera */
+#define CHARS_CAM_X 7.5f      /* el personaje queda a la derecha del centro */
+#define CHARS_CAM_D 20.0f     /* distancia */
+#endif
 void game_draw(void)
 {
     /* camara */
@@ -2924,6 +3031,22 @@ void game_draw(void)
                                               "game_draw: monedas", "game_draw: personajes (Jake, inspector, perro)",
                                               "game_draw: efectos y transparentes", "game_draw: fin"};
     SECT(0);   /* camara */
+    if (hud_background()) {
+        /* tienda, personajes, fin de carrera y pausa de la 1.4: fondo desenfocado en lugar del escenario (no se dibuja
+         * el 3D); en personajes, el personaje elegido delante */
+        if (state == GS_CHARS) {
+            /* camara del menu acercada al personaje (mirandolo desde donde esta la del menu), para que se vea grande a la
+             * derecha, como el modelo de la pantalla de personajes de la 1.4 */
+            V3 cp = m34_pos(&nrt[n_mainCam].world);
+            V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));   /* el esqueleto: la animacion lo mueve */
+            V3 f = v3norm(v3sub(chest, cp)), rt = v3norm(v3cross(v3(0, 1, 0), f));
+            V3 tgt = v3sub(chest, v3scale(rt, CHARS_CAM_X));
+            r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
+            scene_draw_subtree(n_character);
+            r_flush_transparent();
+        }
+        return;
+    }
     /* el cielo va pegado a la camara: se dibuja primero */
 #ifdef AT_CRACKS
     if (0) {   /* prueba de grietas: sin cielo, el fondo magenta se ve por cualquier hueco */
@@ -2970,7 +3093,7 @@ void game_save(void)
                  mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
     for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
     d[30] = trophies_mask;
-    d[31] = owned14;
+    d[31] = owned14 | (hw_popup_year & 0xff) << 16;
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     fwrite(d, sizeof(d), 1, f);
     fclose(f);
@@ -2998,7 +3121,7 @@ void game_load(void)
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    if (!v2 && n >= 32) owned14 = d[31] & 0x3f;
+    if (!v2 && n >= 32) { owned14 = d[31] & 0x3f; hw_popup_year = (d[31] >> 16) & 0xff; }
     if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }

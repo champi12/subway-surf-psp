@@ -1194,6 +1194,17 @@ void r_begin_2d(void)
     sceGuColor(0xffffffff); cur_color = 0xffffffff;
 }
 
+/* fondo a pantalla completa antes del 3D (pantallas de la 1.4): despues se puede dibujar el personaje encima */
+void r_background(int tex)
+{
+    r_begin_2d();
+    sceGuDepthMask(GU_TRUE);     /* sin escribir profundidad: el personaje de delante debe pasar el test */
+    r_sprite(tex, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, 0xffffffff);
+    sceGuDepthMask(GU_FALSE);
+    sceGuEnable(GU_DEPTH_TEST);
+    sceGuEnable(GU_CULL_FACE);
+}
+
 void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, float u1, float v1, unsigned int abgr)
 {
     if (list_full(1024)) return;

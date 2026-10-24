@@ -873,7 +873,106 @@ def export_audio(ex, outdir):
 
 
 # ---------------------------------------------------------------- interfaz (NGUI)
-def export_ui(sc, ex):
+def ui_sprites_used():
+    """Nombres de sprite que usa el port: las cadenas entre comillas de src/*.c (los que no existen se ignoran)."""
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
+    names = set()
+    for fn in os.listdir(src):
+        if fn.endswith('.c'):
+            names |= set(re.findall(r'"([A-Za-z][A-Za-z0-9_]*)"', open(os.path.join(src, fn), encoding='utf-8', errors='ignore').read()))
+    return names
+
+
+def read_atlas(sc, name):
+    """(imagen, sprites) del UIAtlas con ese nombre que tiene textura propia."""
+    for f in sc.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            cl, fl = sc.read_mono(o)
+            if cl != 'UIAtlas' or not fl or not fl['material'][2]:
+                continue
+            go = sc.resolve_ptr(o, fl['m_GameObject'])
+            if go is None or go.read().m_Name != name:
+                continue
+            d = sc.resolve_ptr(o, fl['material']).read_typetree()
+            mat = sc.resolve_ptr(o, fl['material'])
+            for _, t in d['m_SavedProperties']['m_TexEnvs']:
+                tex = sc.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                if tex is not None:
+                    return tex.read().image.convert('RGBA'), {sp['name']: sp for sp in fl['sprites']}
+    return None, {}
+
+
+def build_psp_atlas(sc, sc14):
+    """Interfaz de la 1.4 en el mismo espacio que la de la 1.0: el LowResAtlas de la 1.4 mide 1024x512 (la PSP no
+    admite mas de 512), asi que se reempaquetan en una hoja de 512x512 solo los sprites que usa el port, sacados de
+    la 1.4 (o de la 1.0 si la 1.4 no los tiene). Devuelve (imagen, sprites) o None si no caben."""
+    img14, sp14 = read_atlas(sc14, 'LowResAtlas')
+    img10, sp10 = read_atlas(sc, 'LowResAtlas')
+    if img14 is None:
+        return None
+    used = ui_sprites_used()
+    items = []
+    for n in sorted(used):
+        src = (img14, sp14[n]) if n in sp14 else (img10, sp10[n]) if n in sp10 else None
+        if src is None:
+            continue
+        o = src[1]['outer']
+        items.append((n, src[0], src[1], int(round(o['width'])), int(round(o['height']))))
+    # estantes, de mas alto a mas bajo, 2 pixeles de separacion
+    W = H = 512
+    items.sort(key=lambda it: (-it[4], -it[3]))
+    x = y = shelf = 0
+    place = {}
+    for n, im, sp, w, h in items:
+        if x + w > W:
+            x, y, shelf = 0, y + shelf + 2, 0
+        if y + h > H:
+            print('  AVISO: los sprites de la 1.4 no caben en 512x512: se usa la interfaz de la 1.0')
+            return None
+        place[n] = (x, y)
+        x += w + 2
+        shelf = max(shelf, h)
+    sheet = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    sprites = []
+    for n, im, sp, w, h in items:
+        o, i = sp['outer'], sp['inner']
+        px, py = place[n]
+        sheet.paste(im.crop((int(o['x']), int(o['y']), int(o['x']) + w, int(o['y']) + h)), (px, py))
+        dx, dy = px - o['x'], py - o['y']
+        sprites.append({'name': n, 'outer': {'x': px, 'y': py, 'width': w, 'height': h},
+                        'inner': {'x': i['x'] + dx, 'y': i['y'] + dy, 'width': i['width'], 'height': i['height']}})
+    n14 = sum(1 for it in items if it[0] in sp14)
+    print('  interfaz de la 1.4: %d sprites (%d de la 1.4, %d de la 1.0) en 512x512, hasta y=%d' %
+          (len(items), n14, len(items) - n14, y + shelf))
+    return sheet, sprites
+
+
+def ui_backgrounds(sc14):
+    """Fondo desenfocado de las pantallas de la 1.4 (BackgroundHelper): normal y Halloween, recortados a apaisado."""
+    for f in sc14.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            cl, fl = sc14.read_mono(o)
+            if cl != 'BackgroundHelper' or not fl:
+                continue
+            res = []
+            for k in ('normalTex', 'halloweenTex'):
+                t = sc14.resolve_ptr(o, fl[k])
+                if t is None:
+                    return None
+                im = t.read().image.convert('RGB')
+                w, h = im.size
+                ch = int(w * 272 / 480)          # franja apaisada de la imagen vertical (tren y grafiti)
+                y0 = int(h * 0.30)
+                res.append(im.crop((0, y0, w, y0 + ch)).resize((256, 128), Image.LANCZOS))
+            return res
+    return None
+
+
+def export_ui(sc, ex, sc14=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
     fonts = []
@@ -908,6 +1007,18 @@ def export_ui(sc, ex):
                 fonts.append({'name': gname, 'atlas_key': key(at) if at else None, 'font': fl['mFont'],
                               'spacing': (fl['mSpacingX'], fl['mSpacingY'])})
     baked_atlases, baked_fonts = bake_fonts(ex, atlases, fonts)
+    if sc14 is not None:
+        pa = build_psp_atlas(sc, sc14)
+        if pa:
+            for a in atlases:
+                if a['name'] == 'LowResAtlas':
+                    a['tex'] = len(ex.textures)
+                    a['w'], a['h'], a['sprites'] = 512, 512, pa[1]
+                    ex.textures.append(('generada', 'LowResAtlas14', pa[0], True))
+        bg = ui_backgrounds(sc14)
+        if bg:
+            ex.textures.append(('generada', 'ui_bg', bg[0]))
+            ex.ui_bg_halloween = bg[1]
     out = bytearray(b'SSU1')
     out += struct.pack('<II', len(atlases) + len(baked_atlases), len(fonts) + len(baked_fonts))
     akeys = [a['key'] for a in atlases]
@@ -952,8 +1063,9 @@ def export_ui(sc, ex):
 # Tamanos en pixeles a los que la interfaz del port dibuja cada familia (ver hud.c). Las letras se generan ya a
 # ese tamano desde la textura original a resolucion completa (1024x512, que no cabe en la PSP) y se dibujan 1:1:
 # sin esto el texto sale de la textura reducida a la mitad y ampliado, y se ve borroso en la consola.
-BAKE_SIZES = {'Lilita': [9, 10, 12, 14, 16, 18, 20, 24, 28, 34], 'Titan': [52, 69]}
-BAKE_CHARS = {'Lilita': None, 'Titan': '0123456789'}    # None = todas
+BAKE_SIZES = {'Lilita': [9, 10, 12, 14, 16, 18, 20, 24, 28, 34], 'Titan': [17, 20, 30, 52, 69]}
+# caracteres por familia y tamano (None = todos): la Titan grande solo hace falta para los numeros
+BAKE_CHARS = {'Lilita': {}, 'Titan': {52: '0123456789', 69: '0123456789'}}
 
 
 def bake_fonts(ex, atlases, fonts):
@@ -979,7 +1091,7 @@ def bake_fonts(ex, atlases, fonts):
             sp = next((s_ for s_ in at['sprites'] if s_['name'] == f['mSpriteName']), None)
             sx, sy = (sp['outer']['x'], sp['outer']['y']) if sp else (0, 0)
             k = px / f['mSize']
-            chars = BAKE_CHARS[family]
+            chars = BAKE_CHARS[family].get(px)
             for g in f['mSaved']:
                 if chars is not None and chr(g['index']) not in chars:
                     continue
@@ -999,7 +1111,7 @@ def bake_fonts(ex, atlases, fonts):
                                 'spacing': int(round(src['spacing'][0] * k)), 'glyphs': [], 'px': px})
         # empaquetado por estantes, de mas alto a mas bajo, con 1 pixel de separacion
         order = sorted([i for i, gi in enumerate(glyph_imgs) if gi[2] is not None], key=lambda i: -glyph_imgs[i][2].size[1])
-        W = 512 if family == 'Lilita' else 256
+        W = 512
         x = y = shelf = 0
         pos = {}
         for i in order:
@@ -1023,7 +1135,10 @@ def bake_fonts(ex, atlases, fonts):
             bf['glyphs'].append(gt)
         name = 'FontBaked' + family
         tid = len(ex.textures)
-        ex.textures.append(('generada', name, sheet))
+        # letras blancas con alfa: en T8 (paleta de 256 niveles de alfa) ocupan la mitad que en 4444 y tienen mas
+        # niveles de transparencia; el color lo pone el vertice al dibujar
+        sheet = Image.merge('RGBA', (Image.new('L', sheet.size, 255),) * 3 + (sheet.split()[3],))
+        ex.textures.append(('generada', name, sheet, True))
         baked_atlases.append({'name': name, 'tex': tid, 'w': W, 'h': H})
         print('  fuente %s pre-escalada a %s px: atlas %dx%d' % (family, sizes, W, H))
     return baked_atlases, baked_fonts
@@ -1045,11 +1160,9 @@ def unpack_apk(apk):
     return os.path.join(tmp, 'assets', 'bin', 'Data')
 
 
-def export_halloween(apk14, outdir, ex, hq):
+def export_halloween(sc, outdir, ex, hq):
     """ThemeAssets de la 1.4: texturas y mallas del tema "halloween" con los mismos nombres que en la 1.0."""
     from types import SimpleNamespace
-    print('Descomprimiendo el APK de la 1.4...')
-    sc = Scene(unpack_apk(apk14))
     themes = None
     for f in sc.files.values():
         for o in f.objects.values():
@@ -1104,6 +1217,8 @@ def export_halloween(apk14, outdir, ex, hq):
         out = np.where(diff[:, :, None], a.astype(np.uint8), h)
         print('  textura %-12s %.1f %% de pixeles se quedan como en la 1.0' % (name, diff.mean() * 100))
         gen.append(('gen', name, Image.fromarray(out, 'RGBA'), name not in hq))
+    if getattr(ex, 'ui_bg_halloween', None) is not None:
+        gen.append(('gen', 'ui_bg', ex.ui_bg_halloween))     # fondo de las pantallas en Halloween
     meshes = []
     names10 = {m.read().m_Name for m in ex.meshes}
     a = by_theme['halloween']
@@ -1265,8 +1380,12 @@ def main():
     for o in sc.env.objects:
         if o.type.name == 'AudioClip':
             ex.audio_id(o)
+    sc14 = None
+    if apk14:
+        print('Descomprimiendo el APK de la 1.4...')
+        sc14 = Scene(unpack_apk(apk14))
     print('Exportando interfaz...')
-    ui = export_ui(sc, ex)
+    ui = export_ui(sc, ex, sc14)
     print('Exportando mallas...')
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)
@@ -1306,8 +1425,8 @@ def main():
     for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
         if os.path.exists(os.path.join(outdir, fn)):
             os.remove(os.path.join(outdir, fn))
-    if apk14:
-        export_halloween(apk14, outdir, ex, hq)
+    if sc14 is not None:
+        export_halloween(sc14, outdir, ex, hq)
     print('Listo.')
 
 

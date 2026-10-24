@@ -12,6 +12,10 @@ float ui_text_width(int font, float scale, const char *s);
 int ui_sprite(int atlas, const char *name, float x, float y, float scale, unsigned int abgr);
 
 void hud_draw(void);
+/* aviso que baja desde arriba (UISlideInUnlock de la 1.4): dos lineas */
+void hud_slide(const char *line1, const char *line2);
+/* las pantallas de la 1.4 tapan el escenario con el fondo desenfocado: entonces no se dibuja el 3D */
+int hud_background(void);
 void hud_loading(float progress);   /* pantalla de carga (un fotograma) */
 /* page: 1 resumen, 2 memoria y VRAM, 3 grafica de tiempos */
 void perf_draw(int page, float cpu_ms, float gpu_ms, float fps);

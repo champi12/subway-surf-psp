@@ -357,322 +357,574 @@ static void draw_ingame(void)
             text_shadow(f_small, hx + 30 * UIS, hy + 76 * UIS, 0.6f, 0xffffffff, 1, buf);
         }
     }
-    if (ginfo.paused) {
-        r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
-        if (ginfo.countdown > 0) {
-            /* "Starting in" 3, 2, 1 con el numero latiendo como en el original */
-            text_shadow(f_big, SCR_W / 2, SCR_H / 2 - 50, 0.8f, 0xffffffff, 1, "Starting in");
-            snprintf(buf, sizeof(buf), "%d", (int)ceilf(ginfo.countdown));
-            float frac = ginfo.countdown - floorf(ginfo.countdown);
-            float sc = 0.8f * ((1.0f - frac) * 0.5f + 1.0f);
-            text_shadow(f_titan, SCR_W / 2, SCR_H / 2 - 20, sc, 0xffffffff, 1, buf);
-        } else {
-            text_shadow(f_big, SCR_W / 2, SCR_H / 2 - 40, 1.0f, 0xffffffff, 1, TR("PAUSA", "PAUSED"));
-            text_shadow(f_small, SCR_W / 2, SCR_H / 2 + 10, 0.8f, 0xffc0c0c0, 1, TR("START o X para seguir", "START or X to resume"));
-        }
+    if (ginfo.paused && ginfo.countdown > 0) {
+        /* "Starting in" 3, 2, 1 con el numero latiendo como en el original (la pausa en si es draw_pause) */
+        text_shadow(f_titan, SCR_W / 2, SCR_H / 2 - 50, 30.0f / fnt[f_titan].size, 0xffffffff, 1, TR("Empieza en", "Starting in"));
+        snprintf(buf, sizeof(buf), "%d", (int)ceilf(ginfo.countdown));
+        float frac = ginfo.countdown - floorf(ginfo.countdown);
+        float sc = 0.8f * ((1.0f - frac) * 0.5f + 1.0f);
+        text_shadow(f_titan, SCR_W / 2, SCR_H / 2 - 20, sc, 0xffffffff, 1, buf);
     }
 }
 
-/* ------------------------------------------------------------ misiones (UIMissionsHelper) */
-/* boton del menu: icono, multiplicador actual y misiones hechas */
-static void draw_missions_button(float x, float y)
+/* ------------------------------------------------------------ piezas de la interfaz de la 1.4
+ * Las pantallas siguen los prefabs de la 1.4 (FrontUI, ShopFooter, UpgradeButton*, CharacterScreen, GameoverUI,
+ * PauseUI, HalloweenThemePopup) pasados de 320x480 en vertical a 480x272 en horizontal: mismas piezas, tamanos y
+ * colores, recolocadas. U() pasa unidades del movil a pixeles de la PSP. */
+#define U(v) ((v) * UIS)
+#define C_WHITE 0xffffffffu
+#define C_NAVY 0xff542b0au        /* (0.04, 0.17, 0.33): textos sobre fondo claro */
+#define C_SCORE 0xff804a00u       /* (0.00, 0.29, 0.50): "Score", "Missions", "Daily Challenge" */
+#define C_NAME 0xff4f360du        /* (0.05, 0.21, 0.31): nombre del personaje */
+#define C_LIMITED 0xffa67303u     /* (0.01, 0.45, 0.65): "Halloween Special" */
+#define C_UPTITLE 0xff30ccedu     /* (0.93, 0.80, 0.19): titulo de las tarjetas de la tienda */
+#define C_ORANGE 0xff0096f7u      /* (0.97, 0.59, 0.00): pegatinas */
+#define C_OUTLINE 0xffd6d6d6u     /* contorno de los botones (0.84) */
+#define C_EXPIRE 0xffbdedd6u      /* (0.84, 0.93, 0.74): tiempo que queda del evento */
+#define C_LETTER_ON 0xff00dbffu   /* letra cogida */
+#define C_LETTER_OFF 0xff3b3b3bu  /* letra que falta ([3B3B3B]) */
+#define FOOT_Y 228.0f             /* centro de los botones del pie */
+
+/* texto a un tamano en pixeles; titan = fuente Titan (titulos y numeros), si no Lilita. y = arriba del texto */
+static float lab(int titan, float x, float y, float px, unsigned int col, int align, int shadow, const char *s)
 {
-    char buf[32];
+    int f = titan ? f_titan : f_big;
+    if (f < 0) return 0;
+    float sc = px / fnt[f].size;
+    if (shadow) ui_text(f, x + 1, y + 1, sc, (col >> 25) << 24, align, s);
+    return ui_text(f, x, y, sc, col, align, s);
+}
+/* igual con y = centro vertical (pivote "Center" de NGUI) */
+static float labc(int titan, float x, float cy, float px, unsigned int col, int align, int shadow, const char *s)
+{
+    return lab(titan, x, cy - px * 0.55f, px, col, align, shadow, s);
+}
+static float labw(int titan, float px, const char *s)
+{
+    int f = titan ? f_titan : f_big;
+    return f < 0 ? 0 : ui_text_width(f, px / fnt[f].size, s);
+}
+/* texto que no puede pasar de un ancho: se reduce */
+static void labfit(int titan, float x, float cy, float px, float maxw, unsigned int col, int align, int shadow, const char *s)
+{
+    float w = labw(titan, px, s);
+    if (w > maxw && w > 0) px *= maxw / w;
+    labc(titan, x, cy, px, col, align, shadow, s);
+}
+
+/* sprite centrado en (cx, cy) */
+static void spr_c(const char *name, float cx, float cy, float w, float h, unsigned int col)
+{
+    ui_sprite_wh(a_ui, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
+}
+
+/* boton cuadrado del pie (ShopFooter / GameoverUI / PauseUI): relleno 60x46, contorno 72x56, icono y titulo */
+static void foot_btn(float nx, const char *fill, const char *icon, float iw, float ih, const char *title, const char *key)
+{
+    float cx = SCR_W * 0.5f + U(nx), cy = FOOT_Y;
+    ui_sliced(a_ui, fill, cx - U(31), cy - U(22), U(60), U(46), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - U(34), cy - U(25), U(72), U(56), UIS, C_OUTLINE);
+    spr_c(icon, cx, cy, U(iw), U(ih), C_WHITE);
+    char t[48];
+    if (key) snprintf(t, sizeof(t), "%s (%s)", title, key); else snprintf(t, sizeof(t), "%s", title);
+    lab(0, cx, cy + U(30), 14, C_WHITE, 1, 1, t);
+}
+
+/* boton verde ancho del pie ("PLAY", "RESUME") con las dos estrellas */
+static void foot_play(float nx, const char *text, float px, const char *key)
+{
+    float cx = SCR_W * 0.5f + U(nx), cy = FOOT_Y;
+    ui_sliced(a_ui, "button_fill_friendslogin", cx - U(70), cy - U(22), U(138), U(46), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - U(73), cy - U(25), U(150), U(56), UIS, C_OUTLINE);
+    for (int k = 0; k < 2; k++) {
+        float sx = cx + U(k ? 50 : -49);
+        spr_c("icon_star", sx + U(1), cy + U(1.5f), U(20), U(19), 0xff17380au);   /* sombra (0.03, 0.22, 0.09) */
+        spr_c("icon_star", sx, cy + U(0.5f), U(20), U(19), C_WHITE);
+    }
+    labfit(0, cx, cy, px, U(72), C_WHITE, 1, 1, text);
+    if (key) lab(0, cx, cy + U(30), 14, C_WHITE, 1, 1, key);
+}
+
+/* CoinBoxQuick: monedas arriba a la derecha (sin el "+" de comprar monedas) */
+static void coin_box(float xr, float cy)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
+    float tw = labw(0, 15, buf), w = tw + U(30);
+    ui_sliced(a_ui, "button_gray_gradient", xr - w, cy - U(10), w, U(20), UIS, C_WHITE);
+    spr_c("coin_with_background", xr - w, cy, U(26), U(25), C_WHITE);
+    labc(0, xr - U(6), cy, 15, 0xfff7f7f7u, 2, 1, buf);
+}
+
+/* panel claro de las ventanas (HalloweenThemePopup: whitebox 0.93 + contorno) */
+static void panel(float x, float y, float w, float h)
+{
+    ui_sliced(a_ui, "whitebox", x, y, w, h, UIS, 0xffededed);
+    ui_sliced(a_ui, "button_generic_2_outline", x - U(3), y - U(3), w + U(8), h + U(9), UIS, C_OUTLINE);
+}
+
+/* ------------------------------------------------------------ fondo desenfocado (BackgroundHelper de la 1.4) */
+static int bg_tex = -2, bg_loaded;
+static int bg_screen(void)
+{
+    if (ginfo.paused) return ginfo.countdown <= 0;
+    return ginfo.state == GS_SHOP || ginfo.state == GS_CHARS || ginfo.state == GS_GAMEOVER || ginfo.state == GS_TROPHIES;
+}
+int hud_background(void)
+{
+    if (bg_tex == -2) bg_tex = data_tex_find("ui_bg");
+    if (bg_tex < 0 || !bg_screen()) return 0;
+    r_background(bg_tex);   /* tambien la deja cargada (una sola: la normal o la de Halloween, 64 KB) */
+    bg_loaded = 1;
+    return 1;
+}
+/* fuera de esas pantallas el fondo no ocupa memoria */
+static void bg_release(void)
+{
+    if (bg_loaded && !bg_screen()) { r_tex_unload(bg_tex); bg_loaded = 0; }
+}
+static void bg_fallback(void)
+{
+    if (bg_tex < 0) r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);   /* sin el APK de la 1.4: oscurecer el escenario */
+}
+
+/* ------------------------------------------------------------ avisos que bajan (UISlideInUnlock / SlideinMission) */
+static char slide1[64], slide2[64];
+static float slide_t = -100;
+void hud_slide(const char *line1, const char *line2)
+{
+    snprintf(slide1, sizeof(slide1), "%s", line1 ? line1 : "");
+    snprintf(slide2, sizeof(slide2), "%s", line2 ? line2 : "");
+    slide_t = ginfo.time;
+}
+
+static void slide_box(float t, const char *l1, const char *l2, int tick)
+{
+    if (t < 0 || t > 3.0f) return;
+    float k = t < 0.25f ? t / 0.25f : t > 2.7f ? (3.0f - t) / 0.3f : 1.0f;
+    float w1 = labw(0, 18, l1), w2 = labw(0, tick ? 15 : 26, l2) + (tick ? U(30) : 0);
+    float w = fmaxf(U(200), fmaxf(w1, w2) + U(24)), h = U(64);
+    float x = (SCR_W - w) * 0.5f, y = -h + (h + 4) * k;
+    ui_sliced(a_ui, "background_ingame_popup", x, y, w, h, UIS, C_WHITE);
+    labc(0, SCR_W * 0.5f, y + U(19), 18, C_WHITE, 1, 1, l1);
+    if (tick) {
+        float lx = SCR_W * 0.5f - w2 * 0.5f;
+        spr_c("icon_tick", lx + U(12), y + U(45), U(22), U(16), 0xff4a4a4au);
+        spr_c("icon_tick", lx + U(11), y + U(44), U(22), U(16), 0xff4acc8cu);   /* (0.55, 0.80, 0.29) */
+        labc(0, lx + U(30), y + U(44), 15, C_WHITE, 0, 1, l2);
+    } else labc(0, SCR_W * 0.5f, y + U(40), 26, C_WHITE, 1, 1, l2);
+}
+
+static void draw_slides(void)
+{
+    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Mision completada", "Mission Complete"), 1);
+    slide_box(ginfo.time - slide_t, slide1, slide2, 0);
+}
+
+/* ------------------------------------------------------------ misiones (UIMissionHelper) */
+static void draw_missions_panel(float x, float y, float w)
+{
+    char buf[64];
+    labfit(1, x, y + 12, 24, w - U(124), C_SCORE, 0, 0, TR("Misiones", "Missions"));
+    /* MissionProgress: barra de las misiones hechas y el multiplicador que se gana */
     int n = 0;
     for (int i = 0; i < 3; i++) n += missions_done(i);
-    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 44, UIS, 0x99000000);
-    ui_sprite_wh(a_ui, "button_mission_firstscreen", x + 4, y + 4, 36, 36, 0xffffffff);
-    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, TR("Misiones", "Missions"));
-    snprintf(buf, sizeof(buf), "x%d", missions_multiplier());
-    text_shadow(f_big, x + 144, y + 2, 0.6f, 0xff00dbff, 2, buf);
-    snprintf(buf, sizeof(buf), TR("%d/3   triangulo", "%d/3   triangle"), n);
-    text_shadow(f_small, x + 46, y + 24, 0.55f, 0xffe0e0e0, 0, buf);
-}
-
-/* ventana con las 3 misiones del grupo actual */
-static void draw_missions_popup(void)
-{
-    char buf[64];
-    r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
-    float x = 50, y = 36, w = SCR_W - 100;
-    ui_sliced(a_ui, "background_ingame_popup", x, y, w, 200, UIS, 0xffffffff);
-    text_shadow(f_big, SCR_W / 2, y + 10, 0.85f, 0xffffffff, 1, TR("Misiones", "Missions"));
-    snprintf(buf, sizeof(buf), TR("Multiplicador x%d", "Multiplier x%d"), missions_multiplier());
-    text_shadow(f_mid, SCR_W / 2, y + 42, 0.7f, 0xff00dbff, 1, buf);
+    float px = x + w - U(118), py = y + U(14);
+    ui_sliced(a_ui, "button_fill_friends_inactive_gray", px, py - U(13), U(114), U(26), UIS, 0xffbb8724u);
+    ui_sliced(a_ui, "whitebox", px + U(4), py - U(8), U(64), U(16), UIS, 0xffcff0fau);
+    if (n) ui_sliced(a_ui, "whitebox", px + U(4), py - U(8), U(64) * n / 3, U(16), UIS, 0xfff5cf8au);
+    snprintf(buf, sizeof(buf), TR("%d%% HECHO", "%d %% DONE"), n * 100 / 3);
+    labc(0, px + U(36), py, 14, C_NAVY, 1, 0, buf);
+    spr_c("icon_small_superMysteryBox", px + U(96), py - U(2), U(28), U(26), C_WHITE);
+    snprintf(buf, sizeof(buf), "x%d", missions_multiplier() + 1);
+    labc(0, px + U(96), py + U(1), 15, 0xff00dbffu, 1, 1, buf);
     for (int i = 0; i < 3; i++) {
-        float ry = y + 72 + i * 34;
+        float ry = y + U(54) + i * U(42);
         int done = missions_done(i);
-        ui_sprite_wh(a_ui, done ? "checkbox_checked_mission" : "checkbox_mission", x + 16, ry, 26, 26, 0xffffffff);
+        spr_c("checkbox_mission", x + U(17), ry, U(34), U(34), C_WHITE);
+        if (done) spr_c("checkbox_checked_mission", x + U(21.5f), ry - U(2), U(41), U(34), C_WHITE);
+        else {
+            snprintf(buf, sizeof(buf), "%d", i + 1);
+            labc(1, x + U(17), ry, 20, 0xff543a08u, 1, 0, buf);
+        }
         missions_text(i, buf, sizeof(buf));
-        text_shadow(f_mid, x + 50, ry + 4, 0.62f, done ? 0xff80ff80 : 0xffffffff, 0, buf);
+        labfit(0, x + U(40), ry - (done ? 0 : U(7)), 16, w - U(44), C_NAVY, 0, 0, buf);
         if (!done) {
             snprintf(buf, sizeof(buf), "%d/%d", missions_progress(i), missions_goal(i));
-            text_shadow(f_mid, x + w - 16, ry + 4, 0.62f, 0xff00dbff, 2, buf);
+            labc(0, x + U(40), ry + U(10), 14, C_LIMITED, 0, 0, buf);
         }
     }
-    text_shadow(f_small, SCR_W / 2, y + 178, 0.6f, 0xffe0e0e0, 1, TR("Completa las 3 para subir el multiplicador", "Complete all 3 to raise your multiplier"));
 }
 
-/* aviso de mision completada (UINotification) */
-static void draw_mission_msg(void)
+/* ventana de misiones del menu (triangulo) */
+static void draw_missions_popup(void)
 {
-    if (!mission_msg[0]) return;
-    float t = ginfo.time - mission_msg_t;
-    if (t < 0 || t > 3.0f) return;
-    float a = t < 0.2f ? t / 0.2f : t > 2.6f ? (3.0f - t) / 0.4f : 1.0f;
-    float w = ui_text_width(f_mid, 0.65f, mission_msg) + 50;
-    float x = (SCR_W - w) * 0.5f, y = 52;
-    ui_sliced(a_ui, "background_ingame_beatThis", x, y, w, 26, UIS, ((unsigned)(a * 0xc0) << 24));
-    ui_sprite_wh(a_ui, "icon_tick_small", x + 6, y + 4, 18, 18, ((unsigned)(a * 255) << 24) | 0xffffff);
-    ui_text(f_mid, x + 30, y + 4, 0.65f, ((unsigned)(a * 255) << 24) | 0x00dbff, 0, mission_msg);
-}
-
-/* ------------------------------------------------------------ trofeos (TrophyHelper) */
-static void draw_trophies_button(float x, float y)
-{
-    char buf[32];
-    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 44, UIS, 0x99000000);
-    ui_sprite_wh(a_ui, "trophy_gold", x + 4, y + 4, 36, 36, 0xffffffff);
-    text_shadow(f_mid, x + 46, y + 4, 0.65f, 0xffffffff, 0, TR("Trofeos", "Trophies"));
-    snprintf(buf, sizeof(buf), TR("%d/%d   cuadrado", "%d/%d   square"), trophies_collected(), NTROPHIES);
-    text_shadow(f_small, x + 46, y + 24, 0.55f, 0xffe0e0e0, 0, buf);
-}
-
-static void draw_trophies(void)
-{
-    char buf[64];
-    r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
-    text_shadow(f_big, SCR_W / 2, 6, 0.8f, 0xffffffff, 1, TR("Trofeos", "Trophies"));
-    snprintf(buf, sizeof(buf), "%d/%d", trophies_collected(), NTROPHIES);
-    text_shadow(f_mid, SCR_W - 12, 10, 0.7f, 0xff00dbff, 2, buf);
-    /* rejilla de 4 x 2: los que no se tienen salen con el candado (trophy_locked) */
-    const float cw = 100, chh = 74, x0 = (SCR_W - 4 * cw) * 0.5f, y0 = 40;
-    for (int i = 0; i < NTROPHIES; i++) {
-        float x = x0 + (i % 4) * cw, y = y0 + (i / 4) * chh;
-        int sel = i == ginfo.trophy_sel;
-        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", x + 4, y, cw - 8, chh - 6, 0.5f,
-                  sel ? 0xffffffff : 0xc0ffffff);
-        ui_sprite_wh(a_ui, trophy_sprite(i), x + cw * 0.5f - 28, y + 6, 56, 56, trophy_unlocked(i) ? 0xffffffff : 0xa0ffffff);
-    }
-    int i = ginfo.trophy_sel;
-    float ty = y0 + 2 * chh + 6;
-    if (trophy_unlocked(i)) {
-        text_shadow(f_big, SCR_W / 2, ty, 0.7f, 0xff00dbff, 1, trophy_name(i));
-        text_shadow(f_mid, SCR_W / 2, ty + 30, 0.65f, 0xffffffff, 1, trophy_desc(i));
-    } else {
-        text_shadow(f_big, SCR_W / 2, ty, 0.7f, 0xffb0b0b0, 1, "???");
-        text_shadow(f_mid, SCR_W / 2, ty + 30, 0.65f, 0xffe0e0e0, 1,
-                    TR("Sale en las cajas misteriosas", "Find it in Mystery Boxes"));
-    }
-    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("O volver", "O back"));
-}
-
-/* ------------------------------------------------------------ palabra del dia (DailyChallengeColorChanger) */
-/* las letras cogidas en amarillo y las que faltan en gris, como en el original */
-static void draw_daily_word(float x, float y)
-{
-    const char *w = daily_word();
-    unsigned m = daily_word_mask();
-    ui_sliced(a_ui, "background_ingame_beatThis", x, y, 150, 40, UIS, 0x99000000);
-    text_shadow(f_small, x + 8, y + 3, 0.55f, 0xffe0e0e0, 0,
-                daily_word_complete() ? TR("Palabra del dia: hecha!", "Daily word: done!") : TR("Palabra del dia", "Daily word"));
-    char ch[2] = {0, 0};
-    float cx = x + 8;
-    for (int i = 0; w[i]; i++) {
-        ch[0] = w[i];
-        text_shadow(f_mid, cx, y + 16, 0.8f, (m >> i & 1) ? 0xff00dbff : 0xffb0b0b0, 0, ch);
-        cx += ui_text_width(f_mid, 0.8f, ch) + 5;
-    }
+    r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
+    float w = 300, h = 186, x = (SCR_W - w) * 0.5f, y = 26;
+    panel(x, y, w, h);
+    draw_missions_panel(x + 12, y + 8, w - 24);
+    lab(0, SCR_W * 0.5f, y + h + 10, 14, C_WHITE, 1, 1, TR("X / O cerrar", "X / O close"));
 }
 
 /* ------------------------------------------------------------ menu principal (FrontUI) */
-static void draw_menu(void)
+static void top_button(float cx, float cy, float w, const char *label, const char *key)
 {
-    char buf[64];
-    /* hoverboards (arriba a la derecha) */
-    float bx = SCR_W - 4 - 44 * UIS, by = 4;
-    ui_sliced(a_ui, "background_ingame_button", bx, by, 44 * UIS, 44 * UIS, UIS, 0xffffffff);
-    ui_sprite_wh(a_ui, "icon_hoverboard", bx + 6 * UIS, by + 6 * UIS, 32 * UIS, 19 * UIS, 0xffffffff);
-    snprintf(buf, sizeof(buf), "%d", ginfo.hoverboards);
-    text_shadow(f_small, bx + 30 * UIS, by + 24 * UIS, 0.6f, 0xffffffff, 1, buf);
-    /* monedas y record (arriba a la izquierda) */
-    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
-    float tw = ui_text_width(f_big, LBL, buf);
-    ui_sliced(a_ui, "background_ingame_beatThis", 4, 4, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
-    ui_sprite_wh(a_ui, "coin2d", 4 + 5 * UIS, 4 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
-    ui_text(f_big, 4 + 26 * UIS, 4 + 3 * UIS, LBL, 0xffffffff, 0, buf);
-    snprintf(buf, sizeof(buf), TR("Record %d", "Best %d"), ginfo.highscore);
-    tw = ui_text_width(f_mid, 0.6f, buf);
-    ui_sliced(a_ui, "background_ingame_beatThis", 4, 4 + 34 * UIS, tw + 16, 24 * UIS, UIS, BOX_COL);
-    ui_text(f_mid, 12, 4 + 36 * UIS, 0.6f, 0xff00dbff, 0, buf);
-    draw_missions_button(4, 4 + 64 * UIS);
-    /* "Tap to play" */
-    float a = 0.6f + 0.4f * sinf(ginfo.time * 4.0f);
-    unsigned int col = ((unsigned)(a * 255) << 24) | 0xffffff;
-    text_shadow(f_big, SCR_W / 2, SCR_H - 70, 0.85f, col, 1, TR("Pulsa X para jugar", "Press X to play"));
-    /* boton de la tienda (abajo a la derecha) */
-    float sx = SCR_W - 4 - 130 * UIS, sy = SCR_H - 4 - 44 * UIS;
-    ui_sliced(a_ui, "button_fill_menuShop", sx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
-    ui_sliced(a_ui, "button_generic_2_outline", sx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
-    text_shadow(f_mid, sx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Tienda", "Shop"));
-    text_shadow(f_mid, sx + 65 * UIS, sy - 22, 0.75f, 0xffffffff, 1, "R");
-    /* boton de personajes (abajo a la izquierda) */
-    float cx = 4 + 4;
-    ui_sliced(a_ui, "button_fill_menuShop", cx, sy, 130 * UIS, 44 * UIS, UIS, 0xffffffff);
-    ui_sliced(a_ui, "button_generic_2_outline", cx - 4, sy - 4, 130 * UIS + 8, 44 * UIS + 8, UIS, 0xffffffff);
-    text_shadow(f_mid, cx + 65 * UIS, sy + 8 * UIS, 0.75f, 0xffffffff, 1, TR("Personajes", "Characters"));
-    text_shadow(f_mid, cx + 65 * UIS, sy - 22, 0.75f, 0xffffffff, 1, "L");
-    draw_trophies_button(4, 4 + 112 * UIS);
-    draw_daily_word(4, 4 + 160 * UIS);
-    if (ginfo.missions_open) draw_missions_popup();
+    ui_sliced(a_ui, "background_ingame_button", cx - w * 0.5f, cy - U(22), w, U(44), UIS, C_WHITE);
+    if (label) labfit(0, cx, cy - U(1.5f), 15, w - 8, C_WHITE, 1, 1, label);
+    if (key) labc(0, cx, cy + U(30), 14, C_WHITE, 1, 1, key);
 }
 
-/* ------------------------------------------------------------ tienda */
-/* ------------------------------------------------------------ personajes (UICharacterSelectButton / BuyButton) */
-static void draw_chars(void)
+/* botones grandes de abajo (ShopButton / FriendsButton): relleno 138x46, contorno 150x56 */
+static void big_button(float cx, float by, const char *fill)
 {
-    char buf[64];
-    /* lista a la izquierda; a la derecha se ve el modelo 3D del personaje marcado */
-    r_rect(0, 0, 238, SCR_H, 0xa0000000);
-    text_shadow(f_big, 119, 4, 0.7f, 0xffffffff, 1, TR("Personajes", "Characters"));
-    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
-    float tw = ui_text_width(f_big, LBL, buf);
-    ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - tw - 34 * UIS, 6, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
-    ui_sprite_wh(a_ui, "coin2d", SCR_W - 8 - tw - 30 * UIS, 6 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
-    ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
-    float y = 32;
-    int nc = char_count();
-    /* 10 filas a la vista (con los de la 1.4 son 15 o 16): la lista se desplaza con la seleccion */
-    const int rows = 10;
-    static int top;
-    if (ginfo.char_sel < top) top = ginfo.char_sel;
-    if (ginfo.char_sel >= top + rows) top = ginfo.char_sel - rows + 1;
-    if (top > nc - rows) top = nc - rows;
-    if (top < 0) top = 0;
-    float step = 20, rh = 18;
-    if (top > 0) text_shadow(f_small, 226, 20, 0.55f, 0xffe0e0e0, 2, "...");
-    if (top + rows < nc) text_shadow(f_small, 226, 32 + rows * step - 6, 0.55f, 0xffe0e0e0, 2, "...");
-    for (int i = top; i < nc && i < top + rows; i++) {
-        int sel = i == ginfo.char_sel, un = char_unlocked(i);
-        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 6, y, 226, rh, 0.5f,
-                  sel ? 0xffffffff : 0xc0ffffff);
-        ui_text(f_mid, 14, y + 2, 0.62f, un ? 0xffffffff : 0xffb0b0b0, 0, char_name(i));
-        if (char_is_selected(i)) {
-            ui_text(f_mid, 226, y + 2, 0.62f, 0xff80ff80, 2, TR("Elegido", "Selected"));
-        } else if (un) {
-            ui_text(f_mid, 226, y + 2, 0.62f, 0xffffffff, 2, TR("Disponible", "Unlocked"));
-        } else if (char_unlock_type(i) == UL_TOKENS) {
-            snprintf(buf, sizeof(buf), "%d/%d", char_have(i), char_price(i));
-            float w = ui_text_width(f_mid, 0.62f, buf);
-            if (char_token_sprite(i)) ui_sprite_wh(a_ui, char_token_sprite(i), 226 - w - 20, y + 1, 18, 18, 0xffffffff);
-            ui_text(f_mid, 226, y + 2, 0.62f, 0xffffffff, 2, buf);
-        } else {
-            snprintf(buf, sizeof(buf), "%d", char_price(i));
-            float w = ui_text_width(f_mid, 0.62f, buf);
-            ui_sprite_wh(a_ui, "coin2d", 226 - w - 18, y + 3, 15, 15, 0xffffffff);
-            ui_text(f_mid, 226, y + 2, 0.62f, ginfo.total_coins >= char_price(i) ? 0xffffffff : 0xff8080ff, 2, buf);
+    ui_sliced(a_ui, fill, cx - U(69), by - U(39) - U(23), U(138), U(46), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - U(73), by - U(37) - U(28), U(150), U(56), UIS, C_OUTLINE);
+}
+
+static void draw_halloween_popup(void);
+
+static void draw_menu(void)
+{
+    char buf[48];
+    /* arriba a la izquierda: Misiones (triangulo) y la palabra del dia */
+    top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triangulo", "triangle"));
+    top_button(U(144), U(26), U(110), daily_word_complete() ? TR("Palabra: hecha!", "Word: done!") : TR("Palabra del dia", "Daily Challenge"), NULL);
+    {
+        const char *w = daily_word();
+        unsigned m = daily_word_mask();
+        char ch[2] = {0, 0};
+        float tw = 0;
+        for (int i = 0; w[i]; i++) { ch[0] = w[i]; tw += labw(1, 20, ch) + 4; }
+        float cx = U(144) - tw * 0.5f;
+        for (int i = 0; w[i]; i++) {
+            ch[0] = w[i];
+            lab(1, cx, U(50), 20, (m >> i & 1) ? C_LETTER_ON : 0xffd0d0d0u, 0, 1, ch);
+            cx += labw(1, 20, ch) + 4;
         }
-        y += step;
     }
-    int i = ginfo.char_sel;
-    const char *hint;
-    if (char_unlocked(i)) hint = TR("X elegir   O volver   R tienda", "X select   O back   R shop");
-    else if (char_unlock_type(i) == UL_COINS) hint = TR("X comprar   O volver   R tienda", "X buy   O back   R shop");
-    else hint = TR("Fichas en las cajas misteriosas", "Tokens come from Mystery Boxes");
-    text_shadow(f_small, 119, SCR_H - 22, 0.6f, 0xffe0e0e0, 1, hint);
-    if (char_is_event(i) && !char_unlocked(i))
-        text_shadow(f_mid, 360, SCR_H - 30, 0.65f, 0xff1a8cff, 1, TR("Especial de Halloween", "Halloween Special"));
-    if (!char_unlocked(i) && char_unlock_type(i) == UL_TOKENS) {
-        snprintf(buf, sizeof(buf), "%s: %d/%d", char_token_name(i), char_have(i), char_price(i));
-        text_shadow(f_mid, 360, SCR_H - 30, 0.65f, 0xff00dbff, 1, buf);
+    /* arriba a la derecha: hoverboards y trofeos (cuadrado) */
+    float hx = SCR_W - U(79), hy = U(26);
+    top_button(hx, hy, U(44), NULL, NULL);
+    ui_sprite_wh(a_ui, "icon_hoverboard", hx - U(16), hy - U(13), U(32), U(20), C_WHITE);
+    snprintf(buf, sizeof(buf), "%d", ginfo.hoverboards);
+    labc(0, hx + U(16), hy + U(8), 14, C_WHITE, 2, 1, buf);
+    float tx = SCR_W - U(28);
+    top_button(tx, hy, U(44), NULL, TR("cuadrado", "square"));
+    spr_c("icon_trophies", tx, hy, U(29), U(29), C_WHITE);
+    /* "Tap to play" que late */
+    float a = 0.55f + 0.45f * sinf(ginfo.time * 4.0f);
+    lab(1, SCR_W * 0.5f, SCR_H - U(132), 20, ((unsigned)(a * 255) << 24) | 0xffffff, 1, 1,
+        TR("Pulsa X para jugar", "Press X to play"));
+    /* abajo a la derecha: SHOP (R), como en la 1.4 */
+    float sx = SCR_W - U(83), by = SCR_H - U(5);
+    big_button(sx, by, "button_fill_menuShop");
+    ui_sprite_wh(a_ui, "icon_shop", sx - U(60), by - U(77), U(120), U(77), C_WHITE);
+    lab(1, sx - U(66), by - U(86), 20, C_WHITE, 0, 1, "R");
+    /* abajo a la izquierda (donde la 1.4 tiene FRIENDS): personajes (L) */
+    float cx = U(83);
+    big_button(cx, by, "button_fill_menuCrew");
+    spr_c("icon_characters", cx - U(42), by - U(39), U(50), U(36), C_WHITE);
+    labfit(1, cx + U(18), by - U(40), 20, U(84), C_WHITE, 1, 1, TR("Personajes", "Characters"));
+    lab(1, cx - U(66), by - U(86), 20, C_WHITE, 0, 1, "L");
+    if (ginfo.missions_open) draw_missions_popup();
+    if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
+}
+
+/* HalloweenThemePopup: "Happy Halloween Everyone!" la primera vez de cada temporada */
+static void draw_halloween_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 400, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    /* bocadillo naranja con el titulo y los murcielagos */
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_ORANGE);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_ORANGE);
+    spr_c("popup_cloud_bats", bx + U(56), by - U(70), U(91), U(80), C_WHITE);
+    labc(1, bx, by - U(32), 24, 0xff69f0ffu, 1, 1, TR("Feliz", "Happy"));
+    labfit(1, bx, by, 30, U(150), 0xff69f0ffu, 1, 1, "Halloween");
+    labc(1, bx, by + U(32), 24, 0xff69f0ffu, 1, 1, TR("a todos!", "Everyone!"));
+    static const char *const lines[3][4] = {
+        {"Consigue a Zombie Jake ESPECIAL!", "Get SPECIAL Zombie Jake!", "Solo en la tienda por tiempo LIMITADO", "Only in the Shop for a LIMITED time"},
+        {"Un aspecto ESPANTOSO!", "SPOOKTACULAR new look!", "Ponte a tono para la fiesta!", "Get in the MOOD for the holiday!"},
+        {"Hasta el 4 de noviembre!", "Until November 4!", "Despues vuelve el aspecto CLASICO", "Then the CLASSIC look comes back"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* ------------------------------------------------------------ tienda (UpgradesUI_shop + UpgradeButton*) */
+#define CARD_W 226.0f
+#define CARD_H 50.0f
+static void shop_card(int i, float x, float y, int sel)
+{
+    char buf[48];
+    const float K = CARD_W / 290.0f;              /* la tarjeta del original mide 290 de ancho */
+    float cx = x + CARD_W * 0.5f, cy = y + CARD_H * 0.5f;
+    ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", cx - 141 * K, y + 2, 278 * K, CARD_H - 4, K, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - 145 * K, y - 1, 290 * K, CARD_H + 3, K, 0xffbfbfbfu);
+    spr_c(shop_items[i].icon, cx - 115 * K, cy - 2, 35 * K * 1.15f, 35 * K * 1.15f, C_WHITE);
+    labfit(0, cx - 93 * K, cy - 11, 18, 120, C_UPTITLE, 0, 1, TR(shop_items[i].name, shop_items[i].name_en));
+    int am = shop_amount(i), pr = shop_price(i);
+    /* precio arriba a la derecha */
+    if (pr >= 0) snprintf(buf, sizeof(buf), "%d", pr); else snprintf(buf, sizeof(buf), "MAX");
+    labc(0, cx + 108 * K, cy - 13, 14, pr >= 0 && ginfo.total_coins < pr ? 0xff8080ffu : C_WHITE, 2, 1, buf);
+    spr_c("coin2d", cx + 122 * K, cy - 13, 15, 15, C_WHITE);
+    /* lo que se tiene: niveles (UITierHelper), cantidad ("You have: 0") o la mision que se salta */
+    float ly = cy + 9;
+    if (shop_items[i].kind == 1) {
+        for (int k = 0; k < 5; k++)
+            ui_sprite_wh(a_ui, k < am ? "progressbar_bar_on" : "progressbar_bar_off", cx - 93 * K + k * 17, ly - 4, 15, 9, C_WHITE);
+    } else if (shop_items[i].kind == 0 || shop_items[i].kind == 2) {
+        snprintf(buf, sizeof(buf), TR("Tienes: %d", "You have: %d"), am);
+        labc(0, cx - 93 * K, ly, 14, C_WHITE, 0, 1, buf);
+    } else {
+        if (am) snprintf(buf, sizeof(buf), "%s", TR("Hecha", "Done"));
+        else snprintf(buf, sizeof(buf), "%d/%d", missions_progress(shop_items[i].idx), missions_goal(shop_items[i].idx));
+        labc(0, cx - 93 * K, ly, 14, am ? 0xff80ff80u : C_WHITE, 0, 1, buf);
+    }
+    /* boton "Buy" en la marcada */
+    if (sel && pr >= 0) {
+        const char *b = TR("Comprar", "Buy");
+        float bw = fmaxf(52 * K, labw(1, 15, b) + 12), bx = cx + 112 * K - bw, by = cy + 1;
+        ui_sliced(a_ui, "button_green_buy", bx, by, bw, 21, K, C_WHITE);
+        labc(1, bx + bw * 0.5f, by + 10.5f, 15, C_WHITE, 1, 1, b);
     }
 }
 
 static void draw_shop(void)
 {
+    bg_fallback();
+    coin_box(SCR_W - 8, 15);
+    /* descripcion de la tarjeta marcada (Upgrades.cs) */
     char buf[64];
-    r_rect(0, 0, SCR_W, SCR_H, 0x90000000);
-    text_shadow(f_big, SCR_W / 2, 6, 0.8f, 0xffffffff, 1, TR("Tienda", "Shop"));
-    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
-    float tw = ui_text_width(f_big, LBL, buf);
-    ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - tw - 34 * UIS, 6, tw + 34 * UIS, 30 * UIS, UIS, BOX_COL);
-    ui_sprite_wh(a_ui, "coin2d", SCR_W - 8 - tw - 30 * UIS, 6 + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
-    ui_text(f_big, SCR_W - 12, 6 + 3 * UIS, LBL, 0xffffffff, 2, buf);
-    /* 7 filas visibles; la lista se desplaza con la seleccion */
-    static int top;
-    const int rows = 7;
-    if (ginfo.shop_sel < top) top = ginfo.shop_sel;
-    if (ginfo.shop_sel >= top + rows) top = ginfo.shop_sel - rows + 1;
-    if (top > shop_count - rows) top = shop_count - rows;
-    if (top < 0) top = 0;
-    float y = 40;
-    if (top > 0) ui_text(f_small, SCR_W / 2, 30, 0.5f, 0xffc0c0c0, 1, "...");
-    if (top + rows < shop_count) ui_text(f_small, SCR_W / 2, 40 + rows * 28 - 4, 0.5f, 0xffc0c0c0, 1, "...");
-    for (int i = top; i < shop_count && i < top + rows; i++) {
-        int sel = i == ginfo.shop_sel;
-        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", 20, y, SCR_W - 40, 26, 0.5f,
-                  sel ? 0xffffffff : 0xc0ffffff);
-        ui_sprite_wh(a_ui, shop_items[i].icon, 24, y + 1, 24, 24, 0xffffffff);
-        ui_text(f_mid, 54, y + 4, 0.62f, 0xffffffff, 0, TR(shop_items[i].name, shop_items[i].name_en));
-        int am = shop_amount(i), pr = shop_price(i);
-        if (shop_items[i].kind == 1) {
-            /* barra de nivel (5 niveles) */
-            for (int k = 0; k < 5; k++)
-                ui_sprite_wh(a_ui, k < am ? "progressbar_bar_on" : "progressbar_bar_off", 230 + k * 22, y + 8, 18, 10, 0xffffffff);
-        } else if (shop_items[i].kind == 0) {
-            snprintf(buf, sizeof(buf), "x%d", am);
-            ui_text(f_mid, 300, y + 4, 0.62f, 0xffffffff, 1, buf);
-        } else if (shop_items[i].kind == 3) {
-            /* saltar mision: progreso de la mision que se salta */
-            if (am) snprintf(buf, sizeof(buf), "%s", TR("Hecha", "Done"));
-            else snprintf(buf, sizeof(buf), "%d/%d", missions_progress(shop_items[i].idx), missions_goal(shop_items[i].idx));
-            ui_text(f_mid, 300, y + 4, 0.62f, am ? 0xff80ff80 : 0xffffffff, 1, buf);
-        }
-        if (pr >= 0) snprintf(buf, sizeof(buf), "%d", pr); else snprintf(buf, sizeof(buf), "MAX");
-        ui_sprite_wh(a_ui, "coin2d", SCR_W - 90, y + 5, 16, 16, 0xffffffff);
-        ui_text(f_mid, SCR_W - 28, y + 4, 0.62f, pr >= 0 && ginfo.total_coins >= pr ? 0xffffffff : 0xff8080ff, 2, buf);
-        y += 28;
-    }
     if (shop_items[ginfo.shop_sel].kind == 3) {
-        /* texto de la mision seleccionada */
         missions_text(shop_items[ginfo.shop_sel].idx, buf, sizeof(buf));
-        ui_text(f_small, SCR_W / 2, SCR_H - 32, 0.55f, 0xffffffff, 1, buf);
-    }
-    text_shadow(f_small, SCR_W / 2, SCR_H - 18, 0.6f, 0xffe0e0e0, 1, TR("X comprar    O volver    L personajes", "X buy    O back    L characters"));
-    if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
-        r_rect(90, 110, 300, 50, 0xd0000000);
-        text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
-    }
+        labfit(0, 10, 15, 15, SCR_W - 120, C_WHITE, 0, 1, buf);
+    } else labfit(0, 10, 15, 15, SCR_W - 120, C_WHITE, 0, 1, shop_desc(ginfo.shop_sel));
+    /* tarjetas en dos columnas, tres filas a la vista */
+    static int top;
+    int row = ginfo.shop_sel / 2, rows = (shop_count + 1) / 2;
+    if (row < top) top = row;
+    if (row > top + 2) top = row - 2;
+    if (top > rows - 3) top = rows - 3;
+    if (top < 0) top = 0;
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 2; c++) {
+            int i = (top + r) * 2 + c;
+            if (i >= shop_count) continue;
+            shop_card(i, c ? SCR_W * 0.5f + 4 : SCR_W * 0.5f - 4 - CARD_W, 34 + r * 56, i == ginfo.shop_sel);
+        }
+    if (top > 0) lab(0, SCR_W * 0.5f, 22, 14, C_WHITE, 1, 1, "...");
+    if (top + 3 < rows) lab(0, SCR_W * 0.5f, 34 + 3 * 56 - 8, 14, C_WHITE, 1, 1, "...");
+    /* pie: Menu, Mejoras (esta), Personajes */
+    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
+    foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), NULL);
+    foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L/R");
+    if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) hud_slide(TR("Has conseguido", "You got"), ginfo.reward), ginfo.reward[0] = 0;
 }
 
-/* ------------------------------------------------------------ fin de la carrera */
+/* ------------------------------------------------------------ personajes (CharacterScreen de la 1.4) */
+static void fmt_time(char *buf, int n, int secs, int with_days)
+{
+    int d = secs / 86400, h = secs / 3600 % 24, m = secs / 60 % 60, s = secs % 60;
+    if (with_days) snprintf(buf, n, TR("%d dia%s %02d:%02d:%02d", "%d day%s %02d:%02d:%02d"), d, d == 1 ? "" : "s", h, m, s);
+    else snprintf(buf, n, "%02d:%02d:%02d", h + d * 24, m, s);
+}
+
+static void draw_chars(void)
+{
+    char buf[48];
+    bg_fallback();
+    coin_box(SCR_W - 8, 15);
+    int i = ginfo.char_sel, nc = char_count(), un = char_unlocked(i);
+    int limited = char_is_event(i), secs = season_seconds_left();
+    /* nombre y "Halloween Special" arriba a la izquierda */
+    float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, TR("Especial de Halloween", "Halloween Special"));
+    if (limited && !un && secs > 0) {
+        /* pegatina naranja "10 DAYS LEFT" / "LAST DAY" */
+        float sx = 14 + nw + U(36), sy = 26;
+        spr_c("background_sticker_medium", sx, sy, U(57), U(57), C_ORANGE);
+        int d = secs / 86400;
+        if (d < 1) { labc(0, sx, sy - 6, 14, C_WHITE, 1, 0, TR("ULTIMO", "LAST")); labc(0, sx, sy + 7, 14, C_WHITE, 1, 0, TR("DIA", "DAY")); }
+        else {
+            snprintf(buf, sizeof(buf), TR("%d DIA%s", "%d DAY%s"), d, d == 1 ? "" : "S");
+            labfit(0, sx, sy - 6, 14, U(48), C_WHITE, 1, 0, buf);
+            labc(0, sx, sy + 7, 14, C_WHITE, 1, 0, TR("QUEDAN", "LEFT"));
+        }
+    }
+    /* boton de comprar / elegir (UICharacterBuyButton / UICharacterSelectButton) */
+    float bx = U(100), by = 112;
+    ui_sliced(a_ui, "background_character_buy", bx - U(77), by - U(26), U(154), U(52), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", bx - U(81), by - U(30), U(166), U(64), UIS, C_OUTLINE);
+    if (un) {
+        labc(0, bx, by, 20, C_WHITE, 1, 1, char_is_selected(i) ? TR("ELEGIDO", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
+    } else if (char_unlock_type(i) == UL_COINS) {
+        snprintf(buf, sizeof(buf), "%d", char_price(i));
+        float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
+        spr_c("icon_coin_large", px - U(16), by - (limited ? U(4) : 0), U(29), U(28), C_WHITE);
+        labc(0, px, by - (limited ? U(4) : 0), 20, ginfo.total_coins >= char_price(i) ? C_WHITE : 0xff8080ffu, 0, 1, buf);
+        if (limited) { fmt_time(buf, sizeof(buf), secs, 1); labc(0, bx, by + U(14), 14, C_EXPIRE, 1, 1, buf); }
+    } else {
+        /* "GET [ficha] FROM [caja]" y cuantas se tienen */
+        float lx = bx - U(64);
+        lx += lab(0, lx, by - U(16), 14, C_WHITE, 0, 1, TR("CONSIGUE", "GET")) + 4;
+        if (char_token_sprite(i)) { spr_c(char_token_sprite(i), lx + U(17), by - U(9), U(35), U(26), C_WHITE); lx += U(36); }
+        lx += lab(0, lx, by - U(16), 14, C_WHITE, 0, 1, TR("EN", "FROM")) + 4;
+        spr_c("icon_mysteryBox_small", lx + U(14), by - U(9), U(28), U(27), C_WHITE);
+        snprintf(buf, sizeof(buf), "%d/%d", char_have(i), char_price(i));
+        labc(0, bx, by + U(11), 15, C_WHITE, 1, 1, buf);
+    }
+    /* carrusel: el marcado en medio y dos a cada lado */
+    for (int k = -2; k <= 2; k++) {
+        int j = ((i + k) % nc + nc) % nc;
+        float w = k ? 84 : 100, h = k ? 22 : 26, x = SCR_W * 0.5f + k * 92 - w * 0.5f, y = 186 - h * 0.5f;
+        ui_sliced(a_ui, k ? "button_fill_shopItem_gray" : "button_fill_shopItem_green", x, y, w, h, 0.5f, k ? 0xd0ffffffu : C_WHITE);
+        float tx = x + w * 0.5f;
+        if (char_is_selected(j)) { spr_c("icon_character_selected", x + 9, y + h * 0.5f, 15, 15, C_WHITE); tx += 6; }
+        else if (char_unlocked(j)) { spr_c("icon_character_owned", x + 9, y + h * 0.5f, 15, 15, C_WHITE); tx += 6; }
+        labfit(0, tx, y + h * 0.5f, k ? 14 : 16, w - 24, char_unlocked(j) ? C_WHITE : 0xffd0d0d0u, 1, 1, char_name(j));
+        if (char_is_event(j) && !char_unlocked(j)) spr_c("icon_bubble_ltd", x + w - 8, y - 6, U(36), U(22), C_WHITE);
+    }
+    lab(0, 8, 178, 14, C_WHITE, 0, 1, "<");
+    lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
+    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
+    foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
+    foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
+}
+
+/* ------------------------------------------------------------ fin de la carrera (GameoverUI de la 1.4) */
 static void draw_gameover(void)
 {
     char buf[64];
-    ui_sliced(a_ui, "background_ingame_popup", 80, 30, 320, 210, UIS, 0xffffffff);
-    text_shadow(f_big, SCR_W / 2, 42, 0.85f, 0xffffffff, 1, TR("Fin de la carrera", "Game Over"));
+    bg_fallback();
+    coin_box(SCR_W - 8, 15);
+    /* marcador: "* Score *", la pizarra con los puntos y las monedas, y el record */
+    float cx = 128, cy = 112;
+    float stw = labw(1, 30, TR("Puntos", "Score")) * 0.5f + U(14);
+    spr_c("icon_star", cx - stw, cy - U(72), U(20), U(19), C_SCORE);
+    spr_c("icon_star", cx + stw, cy - U(72), U(20), U(19), C_SCORE);
+    labc(1, cx, cy - U(72), 30, C_SCORE, 1, 0, TR("Puntos", "Score"));
+    spr_c("scoreboard", cx, cy, U(160) * 1.15f, U(121) * 1.15f, C_WHITE);
     snprintf(buf, sizeof(buf), "%d", ginfo.final_score);
-    text_shadow(f_titan, SCR_W / 2, 80, 0.75f, 0xff00dbff, 1, buf);
+    labfit(1, cx, cy - U(34), 30, U(150), C_WHITE, 1, 1, buf);
     snprintf(buf, sizeof(buf), "%d", ginfo.gameover_coins);
-    float tw = ui_text_width(f_big, 0.7f, buf);
-    ui_sprite_wh(a_ui, "coin2d", SCR_W / 2 - tw / 2 - 26, 138, 20, 20, 0xffffffff);
-    text_shadow(f_big, SCR_W / 2, 134, 0.7f, 0xffffffff, 1, buf);
-    snprintf(buf, sizeof(buf), TR("Record %d", "Best %d"), ginfo.highscore);
-    text_shadow(f_mid, SCR_W / 2, 170, 0.7f, 0xffffffff, 1, buf);
-    if (ginfo.boxes_pending > 0) {
-        snprintf(buf, sizeof(buf), TR("X: abrir caja misteriosa (%d)", "X: open Mystery Box (%d)"), ginfo.boxes_pending);
-        text_shadow(f_small, SCR_W / 2, 205, 0.7f, 0xff40e0ff, 1, buf);
-    } else text_shadow(f_small, SCR_W / 2, 205, 0.7f, 0xffc0c0c0, 1, TR("Pulsa X para continuar", "Press X to continue"));
-    if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) {
-        r_rect(90, 110, 300, 50, 0xd0000000);
-        text_shadow(f_big, SCR_W / 2, 122, 0.7f, 0xff00dbff, 1, ginfo.reward);
+    float tw = labw(0, 20, buf);
+    spr_c("coin2d", cx - tw * 0.5f - U(12), cy + U(4), U(18), U(18), C_WHITE);
+    labc(0, cx + U(6), cy + U(4), 20, C_WHITE, 1, 1, buf);
+    snprintf(buf, sizeof(buf), TR("Record: %d", "Best: %d"), ginfo.highscore);
+    labfit(0, cx, cy + U(40), 15, U(150), C_WHITE, 1, 1, buf);
+    /* a la derecha (donde la 1.4 tiene la clasificacion de amigos): las misiones */
+    float px = 248, py = 30;
+    panel(px, py, 222, 160);
+    draw_missions_panel(px + 6, py + 4, 210);
+    foot_btn(-117, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
+    foot_btn(-39, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
+    foot_play(78, TR("JUGAR", "PLAY"), 28, "X");
+    /* cajas misteriosas de la carrera (MysteryBoxPopup): se abren una a una con X */
+    if (ginfo.boxes_pending > 0 || ginfo.reward[0]) {
+        r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
+        float bx = SCR_W * 0.5f, byy = 104;
+        spr_c("background_superglow", bx, byy, 150, 150, 0x60ffffffu);
+        spr_c("icon_upgrades_mysteryBox", bx, byy, 96, 96, C_WHITE);
+        if (ginfo.reward[0]) {
+            labc(0, bx, 178, 18, C_WHITE, 1, 1, TR("Has conseguido", "You got"));
+            labfit(1, bx, 204, 30, SCR_W - 40, 0xff00dbffu, 1, 1, ginfo.reward);
+            labc(0, bx, 240, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
+        } else {
+            labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
+            snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending);
+            labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
+        }
     }
+}
+
+/* ------------------------------------------------------------ pausa (PauseUI de la 1.4) */
+static void draw_pause(void)
+{
+    char buf[48];
+    bg_fallback();
+    /* izquierda: desafio diario (la palabra del dia) */
+    float x = 14, y = 12;
+    lab(1, x, y, 30, C_SCORE, 0, 0, TR("Palabra del dia", "Daily Challenge"));
+    const char *w = daily_word();
+    unsigned m = daily_word_mask();
+    float lbx = x + U(85), lby = y + 62;
+    ui_sliced(a_ui, "whitebox", lbx - U(82), lby - U(22), U(160), U(48), UIS, 0xff5e5f61u);
+    ui_sliced(a_ui, "button_generic_2_outline", lbx - U(85), lby - U(30), U(170), U(60), UIS, C_OUTLINE);
+    {
+        char ch[2] = {0, 0};
+        float tw = 0;
+        for (int i = 0; w[i]; i++) { ch[0] = w[i]; tw += labw(1, 26, ch) + 5; }
+        float cx = lbx - tw * 0.5f;
+        for (int i = 0; w[i]; i++) {
+            ch[0] = w[i];
+            lab(1, cx + 1, lby - 13, 26, 0xff727575u, 0, 0, ch);
+            lab(1, cx, lby - 15, 26, (m >> i & 1) ? C_LETTER_ON : C_LETTER_OFF, 0, 0, ch);
+            cx += labw(1, 26, ch) + 5;
+        }
+    }
+    if (daily_word_complete()) {
+        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Siguiente desafio en", "Next challenge in"));
+        fmt_time(buf, sizeof(buf), day_seconds_left(), 0);
+        lab(1, x, lby + 54, 26, C_WHITE, 0, 1, buf);
+    } else {
+        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Recoge las letras", "Collect Letters"));
+        char t[24];
+        fmt_time(t, sizeof(t), day_seconds_left(), 0);
+        snprintf(buf, sizeof(buf), TR("Tiempo: %s", "Time: %s"), t);
+        lab(0, x, lby + 56, 17, C_WHITE, 0, 1, buf);
+    }
+    /* derecha: misiones */
+    float px = 248, py = 12;
+    panel(px, py, 222, 160);
+    draw_missions_panel(px + 6, py + 4, 210);
+    foot_btn(-60, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
+    foot_play(50, TR("SEGUIR", "RESUME"), 22, "X / START");
+}
+
+/* ------------------------------------------------------------ trofeos (TrophyHelper) */
+static void draw_trophies(void)
+{
+    char buf[64];
+    bg_fallback();
+    lab(1, 14, 8, 30, C_SCORE, 0, 0, TR("Trofeos", "Trophies"));
+    snprintf(buf, sizeof(buf), "%d/%d", trophies_collected(), NTROPHIES);
+    lab(1, SCR_W - 14, 10, 26, C_WHITE, 2, 1, buf);
+    /* rejilla de 4 x 2: los que no se tienen salen con el candado (trophy_locked) */
+    const float cw = 100, chh = 60, x0 = (SCR_W - 4 * cw) * 0.5f, y0 = 38;
+    for (int i = 0; i < NTROPHIES; i++) {
+        float x = x0 + (i % 4) * cw, y = y0 + (i / 4) * chh;
+        int sel = i == ginfo.trophy_sel;
+        ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", x + 4, y, cw - 8, chh - 6, 0.5f,
+                  sel ? C_WHITE : 0xd0ffffffu);
+        spr_c("icon_trophyBackground", x + cw * 0.5f, y + (chh - 6) * 0.5f, 50, 50, 0x80ffffffu);
+        ui_sprite_wh(a_ui, trophy_sprite(i), x + cw * 0.5f - 23, y + 4, 46, 46, trophy_unlocked(i) ? C_WHITE : 0xa0ffffffu);
+    }
+    int i = ginfo.trophy_sel;
+    float ty = y0 + 2 * chh;
+    panel(40, ty, SCR_W - 80, 44);
+    if (trophy_unlocked(i)) {
+        labfit(0, SCR_W * 0.5f, ty + 12, 18, SCR_W - 100, C_NAVY, 1, 0, trophy_name(i));
+        labfit(0, SCR_W * 0.5f, ty + 32, 15, SCR_W - 100, C_LIMITED, 1, 0, trophy_desc(i));
+    } else {
+        labc(0, SCR_W * 0.5f, ty + 12, 18, C_NAVY, 1, 0, "???");
+        labc(0, SCR_W * 0.5f, ty + 32, 15, C_LIMITED, 1, 0, TR("Sale en las cajas misteriosas", "Find it in Mystery Boxes"));
+    }
+    foot_btn(0, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menu", "Menu"), "O");
 }
 
 /* pantalla de carga: al arrancar y si cambia el tema (Halloween) con el juego abierto. Es un fotograma entero */
 void hud_loading(float p)
 {
-    extern int halloween_season(void);
     int hw = halloween_season();
     r_begin_frame(hw ? 0xff301028 : 0xff6a3a10);   /* morado de Halloween o azul */
     hud_fonts();
@@ -694,15 +946,19 @@ void hud_draw(void)
 {
     hud_fonts();
     r_begin_2d();
+    bg_release();
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
     case GS_CHARS: draw_chars(); break;
     case GS_TROPHIES: draw_trophies(); break;
     case GS_GAMEOVER: draw_gameover(); break;
-    default: draw_ingame(); break;
+    default:
+        if (ginfo.paused && ginfo.countdown <= 0) draw_pause();
+        else draw_ingame();
+        break;
     }
-    if (ginfo.state != GS_MENU) draw_mission_msg();
+    if (ginfo.state != GS_MENU || !ginfo.popup) draw_slides();
 }
 
 /* ------------------------------------------------------------ medidor de rendimiento (SELECT) */

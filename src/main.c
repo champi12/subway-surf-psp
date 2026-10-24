@@ -220,7 +220,30 @@ int main(int argc, char **argv)
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
-#ifdef AT_CHARS
+#ifdef AT_UI
+        /* recorrido por las pantallas de la 1.4: personajes, tienda, misiones, trofeos, carrera con pausa y fin */
+        if (frame_no == 30) ginfo.total_coins = 25000;
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;                       /* personajes */
+#ifdef AT_HALLOWEEN
+        if (frame_no == 36) pr |= PSP_CTRL_CIRCLE;                         /* cerrar el aviso de Halloween */
+        if (frame_no == 70) pr |= PSP_CTRL_LEFT;                           /* el ultimo: Zombie Jake */
+#else
+        if (frame_no == 70 || frame_no == 90) pr |= PSP_CTRL_RIGHT;
+#endif
+        if (frame_no == 130) pr |= PSP_CTRL_RTRIGGER;                      /* tienda */
+        if (frame_no == 160) pr |= PSP_CTRL_RIGHT;
+        if (frame_no == 175) pr |= PSP_CTRL_DOWN;
+        if (frame_no == 190) pr |= PSP_CTRL_CROSS;                         /* comprar */
+        if (frame_no == 230) pr |= PSP_CTRL_CIRCLE;                        /* menu */
+        if (frame_no == 260) pr |= PSP_CTRL_TRIANGLE;                      /* misiones */
+        if (frame_no == 290) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 310) pr |= PSP_CTRL_SQUARE;                        /* trofeos */
+        if (frame_no == 340) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 360) pr |= PSP_CTRL_CROSS;                         /* jugar */
+        if (frame_no == 560) pr |= PSP_CTRL_START;                         /* pausa */
+        if (frame_no == 620) pr |= PSP_CTRL_CROSS;                         /* seguir */
+        { static int go; go = ginfo.state == GS_GAMEOVER ? go + 1 : 0; if (go == 60 || go == 120 || go == 180) pr |= PSP_CTRL_CROSS; }
+#elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
@@ -306,7 +329,9 @@ int main(int argc, char **argv)
         /* y salta cada 40 fotogramas */
         { static int k; if (ginfo.state == GS_RUNNING && ++k % 40 == 0) pr |= PSP_CTRL_UP; }
 #endif
+#ifndef AT_UI
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
+#endif
         {
             extern void game_debug_powerup(int k);
             static const int at_frames[] = {500, 1100, 1600, 2100, 3000};

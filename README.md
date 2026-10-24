@@ -104,9 +104,23 @@ modificados** y copia la carpeta `PSP` al destino que le indiques (opcional). La
 
 ## Instalar
 
-En la Memory Stick: `ms0:/PSP/GAME/SUBWAY/EBOOT.PBP`, `ms0:/PSP/GAME/SUBWAY/exhandler.prx` y `exloader.prx` (capturador de cuelgues, ver
-[docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)) y `ms0:/PSP/GAME/SUBWAY/data/` (sin `wav/`, que solo sirve
-para convertir). Funciona en firmware personalizado (CFW/ARK/PRO) y en PPSSPP.
+En la Memory Stick: `ms0:/PSP/GAME/SUBWAY/EBOOT.PBP` y `ms0:/PSP/GAME/SUBWAY/data/` (sin `wav/`, que solo sirve
+para convertir). La versión de pruebas lleva además `exhandler.prx` y `exloader.prx` (capturador de cuelgues, ver
+[docs/RENDIMIENTO.md](docs/RENDIMIENTO.md)). Funciona en firmware personalizado (CFW/ARK/PRO) y en PPSSPP.
+
+## Interfaz
+
+Con el APK de la 1.4, los menús son los de la **1.4**: el menú principal con los botones de la tienda y los
+personajes, la barra de abajo de la tienda y los personajes (Menú / Mejoras / Personajes), las tarjetas de compra de
+la tienda, la pantalla de personajes con el modelo grande, el botón de compra y el carrusel, el fin de carrera con la
+pizarra de puntos y el botón verde de jugar, y la pausa con la palabra del día y las misiones; todo con el fondo
+desenfocado del original y adaptado a la pantalla apaisada de la PSP. Sin el APK de la 1.4 se usan los sprites de la
+1.0 con el escenario oscurecido detrás.
+
+No gasta más memoria: el atlas de la 1.4 (1024×512, más de lo que admite la PSP) se reempaqueta en una hoja de
+512×512 solo con los sprites que se usan, igual que la de la 1.0; las fuentes pasan a 8 bits (la mitad de memoria);
+y el fondo (64 KB) solo se carga mientras se ve una de esas pantallas. En esas pantallas tampoco se dibuja el
+escenario 3D. Con todo desbloqueado el pico medido baja de 15,8 a 15,4 MB.
 
 ## Controles
 
@@ -118,10 +132,11 @@ El original se jugaba deslizando el dedo; en la PSP:
 | ↑ o ✕ | Saltar |
 | ↓ o ○ | Rodar |
 | □ o △ | Activar la tabla (hoverboard), equivale al doble toque |
-| START | Pausa (al reanudar hay cuenta atrás "Starting in 3, 2, 1" como en el original) |
+| START | Pausa: ✕ o START seguir (con la cuenta atrás "Starting in 3, 2, 1" del original), ○ volver al menú |
 | L / R (primeros 5 s) | Usar *Headstart* 250 / 1000 |
 | △ (en el menú) | Ver las misiones |
-| L / R (en el menú) | Personajes / tienda (dentro de una, L y R pasan a la otra) |
+| L / R (en el menú) | Personajes / tienda (dentro de una, L y R pasan a la otra; ○ vuelve al menú) |
+| ✕ / ○ / R (fin de carrera) | Jugar otra vez / menú / tienda |
 | □ (en el menú) | Trofeos |
 | SELECT | Medidor: resumen → memoria y VRAM → gráfica de tiempos → oculto |
 
@@ -135,7 +150,7 @@ compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `Characte
 se añaden los otros 5 personajes base: Tagbot (12.000), Tasha (30.000), Zoe (120.000), Brody (350.000) y Prince K
 (980.000), ordenados por precio en la lista. Para no gastar memoria, la malla (~140 KB) y la textura (~260 KB) de
 cada uno solo se cargan mientras se ve en la pantalla de personajes o si es el elegido; con todo desbloqueado el
-pico medido es de 15,8 MB de los 18,7 MB de una PSP-1000.
+pico medido es de 15,4 MB de los 18,7 MB de una PSP-1000.
 
 La primera partida es el **tutorial** del original (saltar, rodar, cambiar de vía y la tabla), con los mensajes
 adaptados a los botones de la PSP; al chocar se vuelve al último punto de control en lugar de morir. Las partidas
