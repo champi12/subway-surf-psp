@@ -28,6 +28,7 @@ los modelos, texturas, animaciones, sonidos y la estructura de los tramos de ví
 | `Jetpack`, `Hoverboard`, `SuperSneakers`, `CoinMagnet`, `DoubleScoreMultiplier` | `src/game.c` | Duraciones de `Upgrades.cs` |
 | `MovingTrain`, `MovingCoin`, `CoinLine`, `CoinJumpCurve`, `InAirCoinsManager` | `src/scene.c`, `src/game.c` | Trenes en marcha con el mismo truco de collider del original |
 | `CharacterModels`, `CharacterScreenModelHandling` | `src/game.c`, `src/hud.c` | Los 15 personajes base: Jake gratis, 4 por fichas de las cajas misteriosas y 10 por monedas (5 de ellos de la 1.4) |
+| `ThemeAssets`, `HouseKeeper` (1.4) | `src/data.c`, `src/game.c` | Tema de Halloween de la 1.4 clásica y Zombie Jake (ver abajo) |
 | `Trophies`, `MysteryBox` | `src/game.c`, `src/hud.c` | Los 8 trofeos de las cajas misteriosas y su pantalla |
 | `DailyWord`, `DailyLetterPickup` | `src/game.c`, `src/scene.c` | Palabra del día: letras en la vía, siempre la siguiente que falta; completarla da una caja misteriosa |
 | `RenderSettings` (niebla) | `src/render.c` | Niebla lineal de 200 a 700 del original, por hardware; lo que queda detrás no se dibuja |
@@ -46,7 +47,8 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 ### Pendiente
 
 * Las misiones de ganar a amigos necesitan conexión: se dan por completadas.
-* Partículas (chispas de la tabla, polvo del jetpack): no se portan para no perder fotogramas.
+* Partículas (chispas de la tabla, polvo del jetpack) y brillos de las calabazas de Halloween: no se portan para
+  no perder fotogramas.
 
 ## Cómo generar los datos
 
@@ -67,14 +69,33 @@ Genera:
 | `ui.bin` | Atlas y fuentes de NGUI, más las fuentes pre-escaladas a los tamaños exactos de la interfaz (texto nítido en la PSP) |
 | `music/` | La música original (`Hr_music_newFunky.mp3`) |
 | `wav/` | Todos los sonidos en WAV, por si se quieren convertir a AT3 |
-| `hw_tex.bin`, `hw_mesh.bin`, `chars14.bin` | Solo con `--apk14`: el contenido de la 1.4 (las mallas de los personajes nuevos se leen al verlos) |
+| `hw_tex.bin`, `hw_mesh.bin` | Solo con `--apk14`: el tema de Halloween (texturas, fondo de los menús y mallas) y las texturas de los personajes nuevos |
+| `chars14.bin` | Solo con `--apk14`: las mallas de Tagbot, Tasha, Zoe, Brody, Prince K y Zombie Jake (se leen al verlos) |
 | `ICON0.PNG`, `PIC1.PNG` | Icono y fondo del menú de la PSP, recortados de la pantalla de carga del APK (van dentro del EBOOT) |
 
 ### Contenido de la 1.4
 
 Si se pasa también el APK de la **1.4**, el juego integra todo lo que trae hasta esa versión, como los personajes
-nuevos. `actualizar.sh` lo usa solo si hay en la carpeta un APK con "1.4" o "1-4" en el nombre. Sin él, el juego
-funciona igual con el contenido de la 1.0.
+nuevos, la interfaz y el tema de Halloween. `actualizar.sh` lo usa solo si hay en la carpeta un APK con "1.4" o "1-4"
+en el nombre. Sin él, el juego funciona igual con el contenido de la 1.0.
+
+### Halloween (1.4 clásica)
+
+La 1.4 era la actualización de Halloween de 2012, y el port usa su tema del **24 de octubre al 4 de noviembre**
+según el reloj de la consola, sin botón: el escenario, los trenes y el tren del logo pasan a la versión de
+Halloween, el inspector y el perro son zombis y la niebla se vuelve verde, como en la 1.4 (que lo quitaba el 5 de
+noviembre). En esas fechas se puede comprar **Zombie Jake** (95.000 monedas); quien lo compra lo conserva cuando
+acaba el evento, y si no se compra desaparece de la lista hasta el año siguiente.
+
+En temporada la interfaz también cambia como en la 1.4: la primera vez que se abre el menú sale el aviso "¡Feliz
+Halloween a todos!" (`HalloweenThemePopup`), las pantallas usan el fondo desenfocado de Halloween, y en personajes
+Zombie Jake lleva la burbuja "Limited", la pegatina naranja con los días que quedan y el contador hasta el final del
+evento en el botón de compra.
+
+Solo se carga una versión de cada textura (la normal o la de Halloween, que ocupan lo mismo), así que la memoria
+es la misma; fuera de las fechas ni siquiera se leen las mallas de Halloween. Si el evento empieza o acaba con el
+juego abierto, al volver al menú sale una pantalla de carga (morada en temporada) mientras se cambian las texturas.
+Los brillos de las calabazas no se han portado.
 
 ### Música en AT3 (opcional)
 
