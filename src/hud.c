@@ -529,14 +529,15 @@ void hud_slide(const char *line1, const char *line2)
     slide_t = ginfo.time;
 }
 
-static void slide_box(float t, const char *l1, const char *l2, int tick, const char *icon)
+/* devuelve la parte de abajo del cuadro (para poner otro debajo si coinciden dos avisos) */
+static float slide_box(float t, const char *l1, const char *l2, int tick, const char *icon, float top)
 {
-    if (t < 0 || t > 3.0f) return;
+    if (t < 0 || t > 3.0f) return top;
     float k = t < 0.25f ? t / 0.25f : t > 2.7f ? (3.0f - t) / 0.3f : 1.0f;
     float w1 = labw(0, 18, l1), w2 = labw(0, tick ? 15 : 26, l2) + (tick ? U(30) : 0);
     float iw = icon ? 48 : 0;                   /* hueco a la izquierda para el objeto */
     float w = fmaxf(U(200), fmaxf(w1, w2) + U(24)) + iw, h = U(64);
-    float x = (SCR_W - w) * 0.5f, y = -h + (h + 4) * k, tx = SCR_W * 0.5f + iw * 0.5f;
+    float x = (SCR_W - w) * 0.5f, y = top - h + (h + 4) * k, tx = SCR_W * 0.5f + iw * 0.5f;
     ui_sliced(a_ui, "background_ingame_popup", x, y, w, h, UIS, C_WHITE);
     labc(0, tx, y + U(19), 18, C_WHITE, 1, 1, l1);
     if (tick) {
@@ -546,12 +547,14 @@ static void slide_box(float t, const char *l1, const char *l2, int tick, const c
         labc(0, lx + U(30), y + U(44), 15, C_WHITE, 0, 1, l2);
     } else labc(0, tx, y + U(40), 26, C_WHITE, 1, 1, l2);
     if (icon) spr_c(icon, x + 8 + 20, y + h * 0.5f, 40, 40, C_WHITE);
+    return y + h;
 }
 
 static void draw_slides(void)
 {
-    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Misión completada", "Mission Complete"), 1, NULL);
-    slide_box(ginfo.time - slide_t, slide1, slide2, 0, slide_icon);
+    float top = 0;
+    if (mission_msg[0]) top = slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Misión completada", "Mission Complete"), 1, NULL, 0);
+    slide_box(ginfo.time - slide_t, slide1, slide2, 0, slide_icon, top > 0 ? top + 2 : 0);
 }
 
 /* ------------------------------------------------------------ misiones (UIMissionHelper) */
