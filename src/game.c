@@ -2839,6 +2839,11 @@ static void mystery_open_type(int super)
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 250", h5);
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
+    /* el objeto que sale de la caja (MysteryBoxRewardLabelTemplate): un sprite del atlas de la interfaz, que ya esta
+     * cargado; nada de memoria aparte */
+    ginfo.reward_icon = trophy >= 0 ? trophies[trophy].sprite : tok ? chars[tc].tok_sprite :
+                        coins ? (coins >= 1000 ? "Icon_coin_pouch_larger" : "icon_coin_large") :
+                        hb ? "icon_upgrades_hoverboard" : h5 ? "icon_upgrades_headstart500" : "icon_upgrades_headstart2000";
     ginfo.reward_super = super;
     ginfo.reward_t = game_time;
     snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);

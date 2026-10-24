@@ -512,35 +512,46 @@ static void bg_fallback(void)
 
 /* ------------------------------------------------------------ avisos que bajan (UISlideInUnlock / SlideinMission) */
 static char slide1[64], slide2[64];
+static const char *slide_icon;
 static float slide_t = -100;
+static void hud_slide_icon(const char *line1, const char *line2, const char *icon)
+{
+    snprintf(slide1, sizeof(slide1), "%s", line1 ? line1 : "");
+    snprintf(slide2, sizeof(slide2), "%s", line2 ? line2 : "");
+    slide_icon = icon;
+    slide_t = ginfo.time;
+}
 void hud_slide(const char *line1, const char *line2)
 {
+    slide_icon = NULL;
     snprintf(slide1, sizeof(slide1), "%s", line1 ? line1 : "");
     snprintf(slide2, sizeof(slide2), "%s", line2 ? line2 : "");
     slide_t = ginfo.time;
 }
 
-static void slide_box(float t, const char *l1, const char *l2, int tick)
+static void slide_box(float t, const char *l1, const char *l2, int tick, const char *icon)
 {
     if (t < 0 || t > 3.0f) return;
     float k = t < 0.25f ? t / 0.25f : t > 2.7f ? (3.0f - t) / 0.3f : 1.0f;
     float w1 = labw(0, 18, l1), w2 = labw(0, tick ? 15 : 26, l2) + (tick ? U(30) : 0);
-    float w = fmaxf(U(200), fmaxf(w1, w2) + U(24)), h = U(64);
-    float x = (SCR_W - w) * 0.5f, y = -h + (h + 4) * k;
+    float iw = icon ? 48 : 0;                   /* hueco a la izquierda para el objeto */
+    float w = fmaxf(U(200), fmaxf(w1, w2) + U(24)) + iw, h = U(64);
+    float x = (SCR_W - w) * 0.5f, y = -h + (h + 4) * k, tx = SCR_W * 0.5f + iw * 0.5f;
     ui_sliced(a_ui, "background_ingame_popup", x, y, w, h, UIS, C_WHITE);
-    labc(0, SCR_W * 0.5f, y + U(19), 18, C_WHITE, 1, 1, l1);
+    labc(0, tx, y + U(19), 18, C_WHITE, 1, 1, l1);
     if (tick) {
         float lx = SCR_W * 0.5f - w2 * 0.5f;
         spr_c("icon_tick", lx + U(12), y + U(45), U(22), U(16), 0xff4a4a4au);
         spr_c("icon_tick", lx + U(11), y + U(44), U(22), U(16), 0xff4acc8cu);   /* (0.55, 0.80, 0.29) */
         labc(0, lx + U(30), y + U(44), 15, C_WHITE, 0, 1, l2);
-    } else labc(0, SCR_W * 0.5f, y + U(40), 26, C_WHITE, 1, 1, l2);
+    } else labc(0, tx, y + U(40), 26, C_WHITE, 1, 1, l2);
+    if (icon) spr_c(icon, x + 8 + 20, y + h * 0.5f, 40, 40, C_WHITE);
 }
 
 static void draw_slides(void)
 {
-    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Misión completada", "Mission Complete"), 1);
-    slide_box(ginfo.time - slide_t, slide1, slide2, 0);
+    if (mission_msg[0]) slide_box(ginfo.time - mission_msg_t, mission_msg, TR("Misión completada", "Mission Complete"), 1, NULL);
+    slide_box(ginfo.time - slide_t, slide1, slide2, 0, slide_icon);
 }
 
 /* ------------------------------------------------------------ misiones (UIMissionHelper) */
@@ -750,7 +761,7 @@ static void draw_shop(void)
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), NULL);
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L/R");
-    if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) hud_slide(TR("Has conseguido", "You got"), ginfo.reward), ginfo.reward[0] = 0;
+    if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) hud_slide_icon(TR("Has conseguido", "You got"), ginfo.reward, ginfo.reward_icon), ginfo.reward[0] = 0;
 }
 
 /* ------------------------------------------------------------ personajes (CharacterScreen de la 1.4) */
@@ -858,7 +869,12 @@ static void draw_gameover(void)
         /* super caja (SuperMysteryBoxEffect): la grande dorada con mas brillo */
         int sup = ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0;
         spr_c("background_superglow", bx, byy, sup ? 190 : 150, sup ? 190 : 150, sup ? 0x90ffffffu : 0x60ffffffu);
-        spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx, byy, sup ? 110 : 96, sup ? 102 : 96, C_WHITE);
+        if (ginfo.reward[0] && ginfo.reward_icon) {
+            /* la caja abierta y el objeto encima (MysteryBoxHandler): la gorra, la radio, el trofeo... estatico */
+            spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx - 70, byy + 34, 52, 50, 0xb0ffffffu);
+            spr_c(ginfo.reward_icon, bx, byy - 4, 100, 100, C_WHITE);
+        } else
+            spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx, byy, sup ? 110 : 96, sup ? 102 : 96, C_WHITE);
         if (sup) labc(1, bx, 32, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
         if (ginfo.reward[0]) {
             labc(0, bx, 178, 18, C_WHITE, 1, 1, TR("Has conseguido", "You got"));

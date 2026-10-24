@@ -32,6 +32,7 @@ typedef struct {
     int popup;                    /* ventana encima del menu (POPUP_...) */
     int sboxes_pending, sboxes_opened;   /* super cajas misteriosas (1.4) */
     int reward_super;             /* el ultimo premio era de una super caja */
+    const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 } GameInfo;
 enum { POPUP_NONE, POPUP_HALLOWEEN };
 
