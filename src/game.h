@@ -47,6 +47,7 @@ int shop_amount(int i);
 enum { UL_FREE, UL_TOKENS, UL_COINS };
 int char_count(void);
 const char *char_name(int i);
+const char *char_thumb(int row);   /* nombre de su miniatura (thumb_<nombre> en CharThumbs) */
 int char_unlock_type(int i);
 int char_price(int i);            /* fichas o monedas necesarias */
 int char_have(int i);             /* fichas que se tienen (o el precio si ya esta comprado) */

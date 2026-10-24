@@ -36,6 +36,7 @@ typedef struct Animator {
 
 void anim_init(Animator *a, int root);
 int anim_find(Animator *a, const char *name);      /* indice de estado o -1 */
+int anim_set_clip(Animator *a, int s, int clip);    /* cambia el clip de un estado (mismos huesos) */
 AnimState *anim_get(Animator *a, const char *name);
 void anim_play(Animator *a, const char *name);
 void anim_crossfade(Animator *a, const char *name, float fade);

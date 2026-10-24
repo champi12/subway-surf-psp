@@ -176,6 +176,7 @@ static void jet_clouds_update(void)
 
 /* ------------------------------------------------------------ estado */
 static Animator anim_char, anim_guard, anim_dog, anim_cam;
+static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static CharCtrl cc;
 static V3 cc_center0; static float cc_height0;
 static V3 col_center0; static float col_height0, col_height, col_radius = 3.0f; static V3 col_center;
@@ -1665,6 +1666,7 @@ static void stage_menu_sequence(void)
         nrt[n_mainCam].lrot = qeuler(21.50143f, 0, 0);
     }
     anim_play(&anim_char, "idlePaint");
+    char_posing = 0;
 }
 
 /* ------------------------------------------------------------ tema de Halloween (1.4 clasica)
@@ -2581,6 +2583,46 @@ static void char_show_model(int i)
     }
 }
 
+/* nombre del personaje en CharacterModelPreviewFactory de la 1.4 (su pose y su miniatura del carrusel) */
+static const char *char_key(int i) { return !is14(i) ? chars[i].model : i == CH_ZOMBIE ? "zombiejake" : chars[i].mesh14; }
+const char *char_thumb(int row) { return char_key(char_id(row)); }
+
+/* pantalla de personajes de la 1.4: cada uno de pie en el primer fotograma de su animacion de reposo (anim.bin
+ * lleva 1 fotograma por personaje, ~1 KB) en vez de pintar el tren; i < 0 vuelve a la del menu. Sin el APK de la
+ * 1.4 no hay poses y se queda la de pintar */
+#ifndef CHARS_TURN
+#define CHARS_TURN 200.0f     /* de cara a la camara y un poco girado hacia el centro, como en la 1.4 */
+#endif
+static void char_pose(int i)
+{
+    char nm[32];
+    if (i >= 0) {
+        /* anim.bin trae una pose por personaje, pero el Animator solo tiene un estado para todas */
+        static int pose_state = -2;
+        if (pose_state == -2) {
+            pose_state = -1;
+            for (int s = 0; s < anim_char.nstates; s++)
+                if (!strncmp(gd.clips[anim_char.st[s].clip].name, "pose_", 5)) pose_state = s;
+        }
+        snprintf(nm, sizeof(nm), "pose_%s", char_key(i));
+        int ci = -1;
+        for (int c = 0; c < gd.nclips && pose_state >= 0; c++) if (!strcmp(gd.clips[c].name, nm)) { ci = c; break; }
+        if (ci >= 0 && anim_set_clip(&anim_char, pose_state, ci) == 0) {
+            anim_play(&anim_char, nm);
+            nrt[n_sprayCan].rend = 0;
+            nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);   /* en el menu mira al tren: aqui, a la camara */
+            char_posing = 1;
+            return;
+        }
+    }
+    if (char_posing) {
+        anim_play(&anim_char, "idlePaint");
+        nrt[n_sprayCan].rend = 1;
+        nrt[n_avatar].lrot = qident();
+        char_posing = 0;
+    }
+}
+
 /* textura del personaje i (la de su material de piel; los de la 1.4, la de su material propio) */
 static int char_tex(int i)
 {
@@ -2639,6 +2681,7 @@ static void open_chars(void)
 {
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
     char_show_model(ginfo.character);
+    char_pose(ginfo.character);
     change_state(GS_CHARS); ginfo.state = GS_CHARS;
 }
 
@@ -2649,8 +2692,8 @@ static void chars_input(unsigned in, int confirm)
      * rodar): aqui no deben mover la seleccion */
     if (in & IN_LEFT) in |= IN_UP;
     if (in & IN_RIGHT) in |= IN_DOWN;
-    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; char_show_model(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
-    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; char_show_model(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; char_show_model(char_id(ginfo.char_sel)); char_pose(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; char_show_model(char_id(ginfo.char_sel)); char_pose(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
     int i = char_id(ginfo.char_sel);
     if (confirm) {
         if (ch_unlocked(i)) {
@@ -2677,11 +2720,13 @@ static void chars_input(unsigned in, int confirm)
         /* L y R pasan de una pestana del pie a la otra (Mejoras / Personajes) */
         snd_play(sfx_tap, 1, 1, 0);
         char_show_model(ginfo.character);
+        char_pose(-1);
         open_shop();
     } else if (in & (IN_CIRCLE | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         change_state(GS_MENU); ginfo.state = GS_MENU;
         char_show_model(ginfo.character);
+        char_pose(-1);
     }
 }
 
@@ -3097,6 +3142,11 @@ void game_update(float dt)
     anim_update(&anim_cam, dt);
     DBG_PHASE(main, "game_update: anim_apply Jake");
     anim_apply(&anim_char);
+    if (char_posing && n_spine >= 0) {
+        /* respiracion: la columna sube y baja 1 grado cada 2,4 s (la pose es un solo fotograma) */
+        float b = sinf(game_time * (2.0f * 3.14159265f / 2.4f));
+        nrt[n_spine].lrot = qmul(nrt[n_spine].lrot, qeuler(b, 0, 0));
+    }
     DBG_PHASE(main, "game_update: anim_apply guardia/perro");
     anim_apply(&anim_guard);
     anim_apply(&anim_dog);
@@ -3125,9 +3175,9 @@ void game_update(float dt)
 }
 
 #ifndef CHARS_CAM_Y
-#define CHARS_CAM_Y 0.8f      /* sobre la cadera */
+#define CHARS_CAM_Y -1.2f     /* por debajo de la cadera: de pie queda entre el saldo y el pie de pantalla */
 #define CHARS_CAM_X 7.5f      /* el personaje queda a la derecha del centro */
-#define CHARS_CAM_D 20.0f     /* distancia */
+#define CHARS_CAM_D 24.0f     /* distancia */
 #endif
 void game_draw(void)
 {

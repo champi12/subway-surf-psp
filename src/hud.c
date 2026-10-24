@@ -775,6 +775,34 @@ static void fmt_time(char *buf, int n, int secs, int with_days)
     else snprintf(buf, n, "%02d:%02d:%02d", h + d * 24, m, s);
 }
 
+/* carrusel de la 1.4 (UICharacterScreen): los personajes en pequeno, de pie y estaticos (miniaturas que el
+ * conversor dibuja a partir de los modelos: 256x256 en T8, 64 KB, cargadas solo en esta pantalla). El elegido
+ * en el centro a tamano completo; la marca de "tuyo"/"elegido" y la burbuja de edicion limitada como alli */
+static int a_thumbs = -2, thumbs_loaded;
+static void chars_carousel(int i, int nc)
+{
+    const float cx = 150, foot = 204, step = 56;
+    char nm[40];
+    spr_c("background_superglow", cx, foot - 30, 92, 92, 0x60ffffffu);
+    for (int k = -2; k <= 2; k++) {
+        if (nc < 5 && (k < -(nc - 1) / 2 || k > nc / 2)) continue;
+        int j = ((i + k) % nc + nc) % nc;
+        float sc = k ? 0.78f : 1.0f, w = 42 * sc, h = 64 * sc, x = cx + k * step;
+        snprintf(nm, sizeof(nm), "thumb_%s", char_thumb(j));
+        ui_sprite_wh(a_thumbs, nm, x - w * 0.5f, foot - h, w, h, k ? 0xffd8d8d8u : C_WHITE);
+        thumbs_loaded = 1;
+        if (char_is_selected(j)) spr_c("icon_character_selected", x + w * 0.5f - 4, foot - 6, 15, 15, C_WHITE);
+        else if (char_unlocked(j)) spr_c("icon_character_owned", x + w * 0.5f - 4, foot - 6, 15, 15, C_WHITE);
+        if (char_is_event(j) && !char_unlocked(j)) spr_c("icon_bubble_ltd", x, foot - h - 6, U(36), U(22), C_WHITE);
+    }
+    spr_c("button_arrow_left", cx - 2.5f * step - 4, foot - 26, 14, 20, C_WHITE);
+    spr_c("button_arrow_right", cx + 2.5f * step + 4, foot - 26, 14, 20, C_WHITE);
+}
+static void thumbs_release(void)
+{
+    if (thumbs_loaded && ginfo.state != GS_CHARS) { r_tex_unload(atl[a_thumbs].tex); thumbs_loaded = 0; }
+}
+
 static void draw_chars(void)
 {
     char buf[48];
@@ -819,8 +847,8 @@ static void draw_chars(void)
         snprintf(buf, sizeof(buf), "%d/%d", char_have(i), char_price(i));
         labc(0, bx, by + U(11), 15, C_WHITE, 1, 1, buf);
     }
-    /* carrusel: el marcado en medio y dos a cada lado */
-    for (int k = -2; k <= 2; k++) {
+    if (a_thumbs >= 0) chars_carousel(i, nc);
+    else for (int k = -2; k <= 2; k++) {   /* sin el APK de la 1.4: etiquetas con el nombre */
         int j = ((i + k) % nc + nc) % nc;
         float w = k ? 84 : 100, h = k ? 22 : 26, x = SCR_W * 0.5f + k * 92 - w * 0.5f, y = 186 - h * 0.5f;
         ui_sliced(a_ui, k ? "button_fill_shopItem_gray" : "button_fill_shopItem_green", x, y, w, h, 0.5f, k ? 0xd0ffffffu : C_WHITE);
@@ -830,8 +858,10 @@ static void draw_chars(void)
         labfit(0, tx, y + h * 0.5f, k ? 14 : 16, w - 24, char_unlocked(j) ? C_WHITE : 0xffd0d0d0u, 1, 1, char_name(j));
         if (char_is_event(j) && !char_unlocked(j)) spr_c("icon_bubble_ltd", x + w - 8, y - 6, U(36), U(22), C_WHITE);
     }
-    lab(0, 8, 178, 14, C_WHITE, 0, 1, "<");
-    lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
+    if (a_thumbs < 0) {
+        lab(0, 8, 178, 14, C_WHITE, 0, 1, "<");
+        lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
+    }
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
@@ -1005,6 +1035,8 @@ void hud_draw(void)
     hud_fonts();
     r_begin_2d();
     bg_release();
+    if (a_thumbs == -2) a_thumbs = ui_atlas("CharThumbs");
+    thumbs_release();
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;

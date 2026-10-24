@@ -133,7 +133,8 @@ para convertir). La versión de pruebas lleva además `exhandler.prx` y `exloade
 
 Con el APK de la 1.4, los menús son los de la **1.4**: el menú principal con los botones de la tienda y los
 personajes, la barra de abajo de la tienda y los personajes (Menú / Mejoras / Personajes), las tarjetas de compra de
-la tienda, la pantalla de personajes con el modelo grande, el botón de compra y el carrusel, el fin de carrera con la
+la tienda, la pantalla de personajes con el modelo grande de pie en su pose de reposo de la 1.4 (ya no pintando el
+tren), el botón de compra y el carrusel con los personajes en pequeño, el fin de carrera con la
 pizarra de puntos y el botón verde de jugar, y la pausa con la palabra del día y las misiones; todo con el fondo
 desenfocado del original y adaptado a la pantalla apaisada de la PSP. Sin el APK de la 1.4 se usan los sprites de la
 1.0 con el escenario oscurecido detrás.
@@ -171,7 +172,9 @@ compran con monedas (7.000, 20.000, 40.000, 80.000 y 150.000), como en `Characte
 se añaden los otros 5 personajes base: Tagbot (12.000), Tasha (30.000), Zoe (120.000), Brody (350.000) y Prince K
 (980.000), ordenados por precio en la lista. Para no gastar memoria, la malla (~140 KB) y la textura (~260 KB) de
 cada uno solo se cargan mientras se ve en la pantalla de personajes o si es el elegido; con todo desbloqueado el
-pico medido es de 15,4 MB de los 18,7 MB de una PSP-1000.
+pico medido es de 15,4 MB de los 18,7 MB de una PSP-1000. Las figuras del carrusel no son modelos: el conversor
+las dibuja una vez a partir de los modelos de la 1.4 (`CharacterModelPreviewFactory`) en una hoja de 64 KB que solo
+se carga en esa pantalla.
 
 La primera partida es el **tutorial** del original (saltar, rodar, cambiar de vía y la tabla), con los mensajes
 adaptados a los botones de la PSP; al chocar se vuelve al último punto de control en lugar de morir. Las partidas

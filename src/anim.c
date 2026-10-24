@@ -90,6 +90,30 @@ int anim_find(Animator *a, const char *name)
     return -1;
 }
 
+/* el estado s pasa a reproducir otro clip que mueve los mismos huesos (las poses de los personajes de la pantalla
+ * de personajes comparten un solo estado: cada estado cuesta memoria en todos los Animator) */
+int anim_set_clip(Animator *a, int s, int ci)
+{
+    if (s < 0 || s >= a->nstates || ci < 0 || ci >= gd.nclips) return -1;
+    AnimState *st = &a->st[s];
+    if (st->clip == ci) return 0;
+    Clip *cl = &gd.clips[ci];
+    int *tn = realloc(st->track_node, sizeof(int) * (cl->ntracks + 1));
+    if (!tn) return -1;
+    st->track_node = tn;
+    unsigned char *tm = realloc(st->track_mask, cl->ntracks + 1);
+    if (!tm) return -1;
+    st->track_mask = tm;
+    for (int t = 0; t < cl->ntracks; t++) {
+        const char *path = gd.strings[cl->tracks[t].path];
+        tn[t] = path[0] ? node_find_path(a->root, path) : a->root;
+        tm[t] = 1;
+    }
+    st->clip = ci;
+    st->wrap = cl->wrap ? cl->wrap : a->default_wrap;
+    return 0;
+}
+
 AnimState *anim_get(Animator *a, const char *name)
 {
     int s = anim_find(a, name);

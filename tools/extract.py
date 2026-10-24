@@ -20,10 +20,12 @@ Genera en data/:
 
 Nada de esto se guarda en el repositorio: cada uno lo genera con su propia copia del juego.
 """
+import atexit
 import io
 import math
 import re
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -105,6 +107,7 @@ class Exporter:
         self.clip_idx = {}
         self.audio = []
         self.audio_idx = {}
+        self.extra_anim = {}     # nombre del GameObject -> clips que se le anaden (poses de la 1.4)
         self.pending = []        # (nodo, comp, campo) a resolver despues
 
     # -- recursos --
@@ -270,6 +273,7 @@ class Exporter:
                                        f2u(bg['r']), f2u(bg['g']), f2u(bg['b'])]))
             elif t == 'Animation' and d:
                 clips = [self.clip_id(self.sc.resolve(o.assets_file, p[1], p[2])) for p in d['m_Animations']]
+                clips += self.extra_anim.get(go['name'], [])
                 defc = self.clip_id(self.sc.resolve(o.assets_file, d['m_Animation'][1], d['m_Animation'][2]))
                 out.append((C_ANIMATION, [defc & 0xffffffff, int(bool(d['m_PlayAutomatically'])), d['m_WrapMode'],
                                           len(clips)] + [c & 0xffffffff for c in clips]))
@@ -752,7 +756,8 @@ def export_anims(ex):
     body = bytearray()
     offs = []
     for co in ex.clips:
-        d = co.read_typetree()
+        pose = isinstance(co, tuple)     # ('pose', clip, nombre): solo el primer fotograma, quieto (ClampForever)
+        d = (co[1] if pose else co).read_typetree()
         tracks = {}
         length = 0.0
         for kind, lst in (('rot', d['m_RotationCurves']), ('pos', d['m_PositionCurves']), ('scl', d['m_ScaleCurves'])):
@@ -762,12 +767,16 @@ def export_anims(ex):
                     continue
                 length = max(length, keys[-1]['time'])
                 tracks.setdefault(c['path'], {})[kind] = keys
+        if pose:
+            length = 0.0
+            tracks = {k: v for k, v in tracks.items() if k.startswith('gSkeleton_game')}   # sin la tabla
         nfr = max(1, int(math.ceil(length * ANIM_FPS - 1e-4)) + 1)
         offs.append(len(body))
-        name = d['m_Name']
-        evs = d.get('m_Events') or []
+        name = co[2] if pose else d['m_Name']
+        evs = [] if pose else d.get('m_Events') or []
         body += struct.pack('<B', min(len(name.encode()), 47)) + name.encode()[:47].ljust(47, b'\0')
-        body += struct.pack('<fIIIIf', length, d['m_WrapMode'], nfr, len(tracks), len(evs), d.get('m_SampleRate', 30.0))
+        body += struct.pack('<fIIIIf', length, 8 if pose else d['m_WrapMode'], nfr, len(tracks), len(evs),
+                            d.get('m_SampleRate', 30.0))
         for e in evs:
             fn = e['functionName'].encode()[:31]
             body += struct.pack('<f', e['time']) + struct.pack('<B', len(fn)) + fn.ljust(31, b'\0')
@@ -982,6 +991,170 @@ def ui_backgrounds(sc14):
     return None
 
 
+def char_previews(sc14):
+    """CharacterModelPreviewFactory de la 1.4: por personaje la malla, la textura y su clip de reposo (respirando)."""
+    for f in sc14.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            cl, fl = sc14.read_mono(o)
+            if cl != 'CharacterModelPreviewFactory' or not fl:
+                continue
+            pre = sc14.resolve_ptr(o, fl['characterModelPreviewPrefab'])
+            out = []
+            for c in fl['characters']:
+                mat, mesh = sc14.resolve_ptr(o, c['material']), sc14.resolve_ptr(o, c['mesh'])
+                clip = sc14.resolve_ptr(o, c['animationClip'])
+                if mat is None or mesh is None or clip is None:
+                    continue
+                tex = None
+                for nm, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+                    tex = sc14.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if tex is not None:
+                        break
+                if tex is not None:
+                    out.append({'name': c['name'], 'mesh': mesh, 'tex': tex, 'clip': clip})
+            return sc14, pre, out
+    return None
+
+
+def quat_mat(q):
+    x, y, z, w = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def clip_pose(clip, t=0.0):
+    """Ruta -> (pos, rot, scl) del clip en el instante t (lo que falte queda en None)."""
+    d = clip.read_typetree()
+    pose = {}
+    for kind, lst in (('pos', d['m_PositionCurves']), ('rot', d['m_RotationCurves']), ('scl', d['m_ScaleCurves'])):
+        for c in lst:
+            keys = c['curve']['m_Curve']
+            if keys:
+                comps = 'xyzw' if kind == 'rot' else 'xyz'
+                pose.setdefault(c['path'], {})[kind] = [eval_curve(keys, t, c_) for c_ in comps]
+    return pose
+
+
+# miniaturas del carrusel de personajes: celdas de THUMB_W x THUMB_H en una textura de 256x256 (64 KB en T8) que el
+# juego solo carga en la pantalla de personajes
+THUMB_W, THUMB_H, THUMB_SS = 42, 64, 4
+
+
+def render_char_thumbs(prev):
+    """Dibuja cada personaje de frente, quieto en el primer fotograma de su clip de reposo, con skinning y
+    rasterizado por software (z-buffer, textura sin luz como el shader del juego) a 4x y reducido."""
+    sc14, pre, chars = prev
+    nodes = []          # (padre, ruta, pos, rot, scl)
+    tmap = {}
+    smr = None
+
+    def walk(g, parent, path):
+        td = g['tr']['data']
+        p, r, s_ = td['m_LocalPosition'], td['m_LocalRotation'], td['m_LocalScale']
+        idx = len(nodes)
+        nodes.append((parent, path, [p['x'], p['y'], p['z']], [r['x'], r['y'], r['z'], r['w']], [s_['x'], s_['y'], s_['z']]))
+        tmap[key(g['tr']['obj'])] = idx
+        for ch in g['children']:
+            walk(ch, idx, (path + '/' if path else '') + ch['name'])
+        return g
+    root = walk(sc14.go_tree(pre), -1, '')
+    stack = [root]
+    while stack:
+        g = stack.pop()
+        stack += g['children']
+        for c in g['comps']:
+            if c['type'] == 'SkinnedMeshRenderer' and c.get('data'):
+                smr = c
+    if smr is None:
+        return None
+    bones = [tmap.get(key(sc14.resolve_ptr(smr['obj'], b)), 0) for b in smr['data']['m_Bones']]
+    shots = []
+    for ch in chars:
+        pose = clip_pose(ch['clip'])
+        world = []
+        for parent, path, p, r, s_ in nodes:
+            o = pose.get(path, {})
+            p, r, s_ = o.get('pos', p), o.get('rot', r), o.get('scl', s_)
+            m = np.eye(4)
+            m[:3, :3] = quat_mat(np.array(r) / (np.linalg.norm(r) or 1.0)) * np.array(s_)
+            m[:3, 3] = p
+            world.append(world[parent] @ m if parent >= 0 else m)
+        md = ch['mesh'].read()
+        h = MeshHandler(md)
+        h.process()
+        V = np.array(h.m_Vertices, np.float64).reshape(-1, 3)
+        UV = np.array(h.m_UV0, np.float64).reshape(-1, 2)
+        BW = np.array(h.m_BoneWeights, np.float64).reshape(-1, 4)
+        BI = np.array(h.m_BoneIndices, np.int64).reshape(-1, 4)
+        BP = [np.array([[getattr(m_, 'e%d%d' % (r_, c_)) for c_ in range(4)] for r_ in range(4)]) for m_ in md.m_BindPose]
+        skin = np.array([world[bones[i]] @ BP[i] for i in range(len(BP))])
+        Vh = np.c_[V, np.ones(len(V))]
+        S = np.zeros((len(V), 3))
+        for k in range(4):
+            S += BW[:, k:k + 1] * np.einsum('nij,nj->ni', skin[BI[:, k]], Vh)[:, :3]
+        tris = np.array([t for sm in mesh_triangles(ch['mesh'], h) for t in sm], np.int64)
+        tex = np.asarray(tex_rgba(ch['tex'].read()).convert('RGBA'))
+        shots.append((ch['name'], S, UV, tris, tex))
+    # misma escala para todos (Frank sigue siendo mas alto que Tricky): la del mas alto llena la celda
+    hmax = max(s[1][:, 1].max() - s[1][:, 1].min() for s in shots)
+    W, H = THUMB_W * THUMB_SS, THUMB_H * THUMB_SS
+    scale0 = (H - 2 * THUMB_SS) / hmax
+    cols = 256 // THUMB_W
+    sheet = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+    sprites = []
+    for n, (name, S, UV, tris, tex) in enumerate(shots):
+        th, tw = tex.shape[:2]
+        # de frente: el personaje mira hacia +z; la camara esta delante mirando hacia -z (x al reves)
+        cx = (S[:, 0].max() + S[:, 0].min()) * 0.5
+        scale = min(scale0, (W - 2 * THUMB_SS) / (S[:, 0].max() - S[:, 0].min()))   # el disfraz de Yutani
+        X = W * 0.5 - (S[:, 0] - cx) * scale
+        Y = H - THUMB_SS - (S[:, 1] - S[:, 1].min()) * scale
+        Z = -S[:, 2]
+        col = np.zeros((H, W, 4), np.uint8)
+        zb = np.full((H, W), np.inf)
+        for a, b, c in tris:
+            x0, x1 = int(max(0, np.floor(min(X[a], X[b], X[c])))), int(min(W - 1, np.ceil(max(X[a], X[b], X[c]))))
+            y0, y1 = int(max(0, np.floor(min(Y[a], Y[b], Y[c])))), int(min(H - 1, np.ceil(max(Y[a], Y[b], Y[c]))))
+            if x1 < x0 or y1 < y0:
+                continue
+            den = (Y[b] - Y[c]) * (X[a] - X[c]) + (X[c] - X[b]) * (Y[a] - Y[c])
+            if abs(den) < 1e-9:
+                continue
+            px, py = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+            l0 = ((Y[b] - Y[c]) * (px - X[c]) + (X[c] - X[b]) * (py - Y[c])) / den
+            l1 = ((Y[c] - Y[a]) * (px - X[c]) + (X[a] - X[c]) * (py - Y[c])) / den
+            l2 = 1 - l0 - l1
+            inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
+            if not inside.any():
+                continue
+            z = l0 * Z[a] + l1 * Z[b] + l2 * Z[c]
+            sub = zb[y0:y1 + 1, x0:x1 + 1]
+            m = inside & (z < sub)
+            if not m.any():
+                continue
+            u = l0 * UV[a, 0] + l1 * UV[b, 0] + l2 * UV[c, 0]
+            v = l0 * UV[a, 1] + l1 * UV[b, 1] + l2 * UV[c, 1]
+            tx = np.clip((u % 1.0) * tw, 0, tw - 1).astype(np.int64)
+            ty = np.clip((1.0 - v % 1.0) * th, 0, th - 1).astype(np.int64)
+            sub[m] = z[m]
+            col[y0:y1 + 1, x0:x1 + 1][m] = np.c_[tex[ty[m], tx[m], :3], np.full(m.sum(), 255)]
+        # reducir con alfa premultiplicado (sin halo oscuro en el borde)
+        f = col.astype(np.float64)
+        f[:, :, :3] *= f[:, :, 3:4] / 255.0
+        f = f.reshape(THUMB_H, THUMB_SS, THUMB_W, THUMB_SS, 4).mean(axis=(1, 3))
+        a_ = f[:, :, 3:4]
+        f[:, :, :3] = np.where(a_ > 0, f[:, :, :3] * 255.0 / np.maximum(a_, 1e-6), 0)
+        im = Image.fromarray(np.clip(np.rint(f), 0, 255).astype(np.uint8), 'RGBA')
+        x, y = (n % cols) * THUMB_W, (n // cols) * THUMB_H
+        sheet.paste(im, (x, y))
+        r_ = {'x': x, 'y': y, 'width': THUMB_W, 'height': THUMB_H}
+        sprites.append({'name': 'thumb_' + name, 'outer': r_, 'inner': dict(r_)})
+    return sheet, sprites
+
+
 def export_ui(sc, ex, sc14=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
@@ -1025,6 +1198,20 @@ def export_ui(sc, ex, sc14=None):
                     a['tex'] = len(ex.textures)
                     a['w'], a['h'], a['sprites'] = 512, 512, pa[1]
                     ex.textures.append(('generada', 'LowResAtlas14', pa[0], True))
+        # pantalla de personajes como la de la 1.4 (CharacterModelPreviewFactory): miniaturas del carrusel y, para
+        # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
+        prev = char_previews(sc14)
+        th = render_char_thumbs(prev) if prev else None
+        if th:
+            atlases.append({'name': 'CharThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 256, 'pixel': 1.0,
+                            'sprites': th[1], 'key': ('gen', 'CharThumbs')})
+            ex.textures.append(('generada', 'ui_chars', th[0], True))
+            print('  miniaturas de %d personajes' % len(th[1]))
+        if prev:
+            # el Animation del personaje recibe solo la primera: el juego cambia el clip de ese estado
+            ex.extra_anim['avatar_prefab'] = [len(ex.clips)]
+            for c in prev[2]:
+                ex.clips.append(('pose', c['clip'], 'pose_' + c['name']))
         bg = ui_backgrounds(sc14)
         if bg:
             ex.textures.append(('generada', 'ui_bg', bg[0]))
@@ -1236,6 +1423,7 @@ HW_TEXTURES = ('main', 'trains', 'train_start', 'enemies')
 
 def unpack_apk(apk):
     tmp = tempfile.mkdtemp(prefix='sspsp_')
+    atexit.register(shutil.rmtree, tmp, True)     # cada APK descomprimido ocupa 50-70 MB
     with zipfile.ZipFile(apk) as z:
         for n in z.namelist():
             if n.startswith('assets/bin/Data/'):
