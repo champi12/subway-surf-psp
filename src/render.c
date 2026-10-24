@@ -472,7 +472,7 @@ void r_begin_frame(unsigned int clear)
     vring = vrings[frame_par];
     iring = irings[frame_par];
     dlist = dlists[frame_par];
-    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = r_stat_skin_cpu = 0;
+    r_stat_verts = r_stat_tris = r_stat_draws = r_stat_clipped = r_stat_hw = r_stat_seam = r_stat_skin_cpu = 0;
     r_mem.dropped = r_mem.frame_texloads = 0;
     model_set = 0;
     bones_zero = 0;
@@ -851,7 +851,7 @@ static void model_identity(void)
     model_set = 0;
 }
 
-int r_stat_hw;
+int r_stat_hw, r_stat_seam;
 
 static void transform_fast(OV *o, const MVert *src, int nv, const M34 *mv, float kx, float ky)
 {
@@ -991,6 +991,18 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             r_stat_hw += pt->nv;
             r_stat_tris += pt->ni / 3;
             continue;
+        }
+        if (vis == 2 && !sky && HW_OK && me->nparts > 1) {
+            /* trozo que hay que recortar por CPU: se dibuja tambien en el GE, como sus vecinos. Si no, la junta con
+             * ellos sale de dos cuentas distintas (CPU y GE) que no caen en el mismo pixel y queda una rendija por
+             * la que se ve el fondo (lineas en los tuneles y en el suelo). El GE recorta solo contra el plano
+             * cercano y descarta lo que se sale de la banda de guarda; eso lo tapa la version recortada de abajo */
+            model_identity();
+            if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
+            bind_material(mat, amul);
+            sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
+            r_stat_draws++;
+            r_stat_seam++;
         }
         model_identity();
         if (vis == 1 && FAST_OK) {

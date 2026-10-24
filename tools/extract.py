@@ -1155,6 +1155,50 @@ def render_char_thumbs(prev):
     return sheet, sprites
 
 
+def fix_coin_glow(ex):
+    """El brillo de las monedas (material "glow gold", Additive falloff) es un trocito de 26x26 pixeles de la hoja
+    'main' de 1024x1024, pegado a otros dibujos. En la PSP la hoja va a 512 y el filtrado mezcla esos vecinos en el
+    borde del plano: se veia un cuadro semitransparente con el borde de colores. Se saca a su propia textura de 32x32
+    (2 KB) con el borde a negro (en Additive el negro no suma nada) y el material apunta a ella."""
+    mi = next((i for i, m in enumerate(ex.materials) if m['name'] == 'glow gold'), None)
+    if mi is None or ex.materials[mi]['tex'] < 0:
+        return
+    box = None
+    for n in ex.nodes:
+        comps = n['go']['comps']
+        rend = next((c for c in comps if c['type'] == 'MeshRenderer' and c.get('data')), None)
+        filt = next((c for c in comps if c['type'] == 'MeshFilter' and c.get('data')), None)
+        if rend is None or filt is None:
+            continue
+        mats = [ex.sc.resolve(rend['obj'].assets_file, p_[1], p_[2]) for p_ in rend['data']['m_Materials']]
+        if not any(m is not None and ex.mat_idx.get(key(m)) == mi for m in mats):
+            continue
+        mo = ex.sc.resolve(filt['obj'].assets_file, filt['data']['m_Mesh'][1], filt['data']['m_Mesh'][2])
+        h = MeshHandler(mo.read())
+        h.process()
+        uv = np.array(h.m_UV0, np.float64).reshape(-1, 2)
+        b = (uv[:, 0].min(), uv[:, 0].max(), uv[:, 1].min(), uv[:, 1].max())
+        box = b if box is None else (min(box[0], b[0]), max(box[1], b[1]), min(box[2], b[2]), max(box[3], b[3]))
+    m = ex.materials[mi]
+    if box is None or m['st'] != (1.0, 1.0, 0.0, 0.0):
+        return
+    u0, u1, v0, v1 = box
+    src = ex.textures[m['tex']]
+    img = tex_rgba(src.read()).convert('RGB')
+    W, H = img.size
+    crop = img.crop((u0 * W, (1 - v1) * H, u1 * W, (1 - v0) * H)).resize((32, 32), Image.BICUBIC)
+    a = np.asarray(crop).astype(np.float64)
+    yy, xx = np.mgrid[0:32, 0:32]
+    r = np.maximum(np.abs(xx - 15.5), np.abs(yy - 15.5)) / 16.0
+    a *= np.clip((0.97 - r) / 0.15, 0.0, 1.0)[:, :, None]
+    m['tex'] = len(ex.textures)
+    ex.textures.append(('generada', 'coin_glow', Image.fromarray(np.clip(np.rint(a), 0, 255).astype(np.uint8), 'RGB')))
+    sx, sy = 1.0 / (u1 - u0), 1.0 / (v1 - v0)
+    m['st'] = (sx, sy, -u0 * sx, -v0 * sy)
+    print('  brillo de las monedas: textura propia de 32x32 (antes %dx%d pixeles de %s)' %
+          (round((u1 - u0) * W), round((v1 - v0) * H), src.read().m_Name))
+
+
 def export_ui(sc, ex, sc14=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
@@ -1662,6 +1706,7 @@ def main():
     tv = sum(s[1] for s in stats)
     tt = sum(s[2] for s in stats)
     print('  %d mallas, %d vertices, %d triangulos' % (len(stats), tv, tt))
+    fix_coin_glow(ex)
     print('Exportando texturas...')
     hq = ('main', 'trains', 'FontAtlas')
     tex = export_textures(ex, hq=hq)

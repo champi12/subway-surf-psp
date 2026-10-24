@@ -281,6 +281,15 @@ fila a lo largo de la vía. Ahora la curvatura es exacta en el GE (ver la tabla)
 mismo sitio. Para comprobarlo: `XFLAGS="-DAT_GOD -DAT_CRACKS" tools/autotest.sh ...` dibuja sin cielo y con el fondo
 magenta, de modo que cualquier grieta se ve magenta en las capturas.
 
+Quedaba otra junta: cada malla grande del escenario va en trozos, y en un mismo fotograma los que se ven enteros los
+transforma el GE mientras que los que pasan pegados a la cámara (hay que recortarlos) los transforma la CPU. Son dos
+cuentas distintas del mismo vértice y en la junta entre un trozo y otro podía quedar una fila de píxeles sin pintar:
+líneas en el suelo y, sobre todo, en las paredes de los túneles (en la consola real más que en el emulador). Ahora el
+trozo que se recorta por CPU se dibuja también en el GE, igual que sus vecinos: el GE recorta él solo contra el plano
+cercano y descarta lo que se sale de la banda de guarda, y eso lo tapa la versión recortada. Son unos 20 dibujos más
+por fotograma (`DIBUJO ... trozos repetidos en el GE`) sin gasto de CPU ni de memoria; en la prueba de 120 s los
+píxeles magenta sueltos bajan de 650 a 137 (lo que queda es cielo de verdad entre objetos).
+
 ## 8. Si en la consola real fuera lento
 
 Por orden de impacto (nada de esto cambia la jugabilidad):
