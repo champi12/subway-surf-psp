@@ -223,6 +223,10 @@ int main(int argc, char **argv)
 #ifdef AT_MISS14
         /* prueba de la 1.4: misiones repetibles (grupo 30) y super cajas */
         if (frame_no == 20) { extern int mission_set; extern int mission_progress[3]; mission_set = 29; memset(mission_progress, 0, 12); ginfo.sboxes_pending = 2; ginfo.boxes_pending = 3; }
+#ifdef AT_UI
+        /* con AT_UI: en el fin de carrera, X cada 3 s para ver abrir las cajas una a una */
+        { static int gb; gb = ginfo.state == GS_GAMEOVER ? gb + 1 : 0; if (gb % 90 == 45) pr |= PSP_CTRL_CROSS; }
+#endif
 #endif
 #ifdef AT_UI
         /* recorrido por las pantallas de la 1.4: personajes, tienda, misiones, trofeos, carrera con pausa y fin */

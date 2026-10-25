@@ -3004,7 +3004,9 @@ void game_input(unsigned in)
         /* GameoverUI de la 1.4: X "PLAY" (otra carrera), O "Home" (menu), R "Boosts" (tienda). Las cajas misteriosas
          * de la carrera se abren antes, una a una */
         if (confirm || (in & IN_START)) {
-            if (ginfo.reward[0]) ginfo.reward[0] = 0;
+            /* X durante la animacion de abrir la salta; despues, sigue con la siguiente caja */
+            if (ginfo.reward[0] && game_time - ginfo.reward_t < REWARD_REVEAL) ginfo.reward_t = game_time - REWARD_REVEAL;
+            else if (ginfo.reward[0]) ginfo.reward[0] = 0;
             else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) mystery_open();
             else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); game_start_run(); }
         } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {

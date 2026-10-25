@@ -867,26 +867,85 @@ static void draw_chars(void)
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
 }
 
-/* el objeto que sale de la caja: los modelos 3D de la 1.4 (MysteryBoxHandler) que el conversor dibuja una vez en
- * celdas de 80x80 (hoja de 512x256, 128 KB, cargada solo mientras se ve el premio). Se dibujan 1:1, sin estirar.
- * Sin el APK de la 1.4, el sprite pequeno de la interfaz con su forma, como mucho a 1,5x */
+/* las cajas y lo que sale de ellas: los modelos 3D de la 1.4 (MysteryBoxHandler) que el conversor dibuja una vez,
+ * los premios en celdas de 72x72 y las cajas (cerrada y con la tapa levantada) de 88x88. Hoja de 512x256 (128 KB)
+ * cargada solo mientras se abren cajas. Se dibujan 1:1 o mas pequenos, nunca estirados. Sin el APK de la 1.4, el
+ * sprite pequeno de la interfaz con su forma, como mucho a 1,5x */
 static int a_rewards = -2, rewards_loaded;
-static void reward_draw(const char *name, const char *fallback, float cx, float cy, float size, unsigned int col)
+/* w < 0: dado la vuelta (el reves del premio mientras gira) */
+static void reward_spr(const char *name, const char *fallback, float cx, float cy, float k, float wk, unsigned int col)
 {
     USprite *s = find_sprite(a_rewards, name);
     if (s) {
-        ui_sprite_wh(a_rewards, name, (int)(cx - size * 0.5f), (int)(cy - size * 0.5f), size, size, col);
+        UAtlas *a = &atl[a_rewards];
+        float w = s->ow * k * wk, h = s->oh * k;
+        float u0 = s->ox / a->w, u1 = (s->ox + s->ow) / a->w;
+        if (w < 0) { float t = u0; u0 = u1; u1 = t; w = -w; }
+        r_sprite(a->tex, (int)(cx - w * 0.5f), (int)(cy - h * 0.5f), w, h, u0, s->oy / a->h, u1, (s->oy + s->oh) / a->h, col);
         rewards_loaded = 1;
         return;
     }
     s = find_sprite(a_ui, fallback);
     if (!s) return;
-    float k = 1.5f;
-    if (s->ow * k > size) k = size / s->ow;
-    if (s->oh * k > size) k = size / s->oh;
-    spr_c(fallback, cx, cy, s->ow * k, s->oh * k, col);
+    float f = 1.5f;
+    if (s->ow * f > 80) f = 80 / s->ow;
+    if (s->oh * f > 80) f = 80 / s->oh;
+    float w = s->ow * f * k * wk;
+    spr_c(fallback, cx, cy, w < 0 ? -w : w, s->oh * f * k, col);
 }
-static void reward_item(const char *name, float cx, float cy) { reward_draw(name, name, cx, cy, 80, C_WHITE); }
+
+static float ease_cos(float f) { f = f < 0 ? 0 : f > 1 ? 1 : f; return 0.5f - 0.5f * cosf(f * 3.14159265f); }
+
+/* MysteryBoxHandler._ShowReward: la tapa se levanta (clip "up"), la caja se va hacia abajo (0,7 s), el premio
+ * crece desde la caja (2 s) dando vueltas que se frenan (4 s), el brillo aparece a los 0,5 s y el texto a 1,8 s */
+static void draw_box_popup(int sup)
+{
+    char buf[48];
+    float bx = SCR_W * 0.5f, cy = 112;
+    const char *box = sup ? "box_super" : "box_mystery", *box_open = sup ? "box_super_open" : "box_mystery_open";
+    const char *old = sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox";
+    float gl = sup ? 1.0f : 0.7f;
+    if (sup) labc(1, bx, 26, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
+    if (!ginfo.reward[0]) {
+        /* esperando: la caja flota arriba y abajo (BoxIdleAnimCoroutine) */
+        spr_c("background_superglow", bx, cy, 150 * gl + 40, 150 * gl + 40, sup ? 0x70ffffffu : 0x40ffffffu);
+        reward_spr(box, old, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f, 1, 1, C_WHITE);
+        labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
+        snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
+        labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
+        return;
+    }
+    float t = ginfo.time - ginfo.reward_t;
+    /* el brillo de detras del premio: de negro a blanco en 1,5 s desde los 0,5 s */
+    float g = (t - 0.5f) / 1.5f;
+    if (g > 0) {
+        if (g > 1) g = 1;
+        unsigned a = (unsigned)((sup ? 0x90 : 0x60) * g);
+        spr_c("background_superglow", bx, cy - 4, 190 * gl, 190 * gl, (a << 24) | 0xffffffu);
+    }
+    /* la caja: cerrada un instante, abierta despues, y se va hacia abajo */
+    if (t < 1.2f) {
+        float y = cy + (t > 0.46f ? ease_cos((t - 0.46f) / 0.7f) * 200 : 0);
+        reward_spr(t < 0.12f ? box : box_open, old, bx, y, 1, 1, C_WHITE);
+    }
+    /* el premio: aparece cuando la tapa esta arriba, crece de 1/4 a su tamano y gira frenando */
+    if (t >= 0.3f && ginfo.reward_icon) {
+        float f = (t - 0.3f) / 2.0f, k = 0.25f + 0.75f * ease_cos(f);
+        float y = cy - 4 + (1 - ease_cos((t - 0.3f) / 0.6f)) * 24;
+        float r = (t - 0.3f) / 4.0f;
+        if (r > 1) r = 1;
+        float ang = (1 - (1 - r) * (1 - r)) * 4.0f * 3.14159265f;      /* 2 vueltas que se van frenando */
+        float wk = cosf(ang);
+        if (wk > -0.1f && wk < 0.1f) wk = wk < 0 ? -0.1f : 0.1f;       /* de canto: una raya, no desaparece */
+        reward_spr(ginfo.reward_icon, ginfo.reward_icon, bx, y, k, wk, C_WHITE);
+    }
+    if (t >= REWARD_REVEAL) {
+        unsigned a = t < REWARD_REVEAL + 0.2f ? (unsigned)(255 * (t - REWARD_REVEAL) / 0.2f) : 255;
+        labc(0, bx, 178, 18, (a << 24) | 0xffffffu, 1, 1, TR("Has conseguido", "You got"));
+        labfit(1, bx, 204, 30, SCR_W - 40, (a << 24) | 0x00dbffu, 1, 1, ginfo.reward);
+        if (t >= REWARD_REVEAL + 0.5f) labc(0, bx, 240, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
+    }
+}
 static void rewards_release(void)
 {
     if (rewards_loaded && !(ginfo.state == GS_GAMEOVER && (ginfo.reward[0] || ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0))) {
@@ -926,28 +985,8 @@ static void draw_gameover(void)
     /* cajas misteriosas de la carrera (MysteryBoxPopup): se abren una a una con X */
     if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
         r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
-        float bx = SCR_W * 0.5f, byy = 104;
-        /* super caja (SuperMysteryBoxEffect): la grande dorada con mas brillo */
-        int sup = ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0;
-        spr_c("background_superglow", bx, byy, sup ? 190 : 150, sup ? 190 : 150, sup ? 0x90ffffffu : 0x60ffffffu);
-        if (ginfo.reward[0] && ginfo.reward_icon) {
-            /* la caja abierta y el objeto encima (MysteryBoxHandler): la gorra, la radio, el trofeo... estatico */
-            reward_draw(sup ? "box_super" : "box_mystery", sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox",
-                        bx - 70, byy + 34, 52, 0xb0ffffffu);
-            reward_item(ginfo.reward_icon, bx, byy - 4);
-        } else
-            reward_draw(sup ? "box_super" : "box_mystery", sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox",
-                        bx, byy, 80, C_WHITE);
-        if (sup) labc(1, bx, 32, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
-        if (ginfo.reward[0]) {
-            labc(0, bx, 178, 18, C_WHITE, 1, 1, TR("Has conseguido", "You got"));
-            labfit(1, bx, 204, 30, SCR_W - 40, 0xff00dbffu, 1, 1, ginfo.reward);
-            labc(0, bx, 240, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
-        } else {
-            labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
-            snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
-            labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
-        }
+        /* super caja (SuperMysteryBoxEffect): la plateada con mas brillo; se abren antes que las normales */
+        draw_box_popup(ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0);
     }
 }
 

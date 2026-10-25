@@ -1173,9 +1173,10 @@ REWARD_PREFABS = [('rewardCoins', ['Icon_coin_pouch_larger', 'icon_coin_large'])
                   ('trophyLPBlack', ['trophy_lpBlack']), ('trophyTapeBlack', ['trophy_tapeBlack']),
                   ('rewardPowerupHoverboard', ['icon_upgrades_hoverboard']),
                   ('rewardPowerupHeadstart500', ['icon_upgrades_headstart500']),
-                  ('rewardPowerupHeadstart2000', ['icon_upgrades_headstart2000']),
-                  ('mysteryBoxPrefab', ['box_mystery']), ('superMysteryBoxPrefab', ['box_super'])]
-REWARD_PX = 80
+                  ('rewardPowerupHeadstart2000', ['icon_upgrades_headstart2000'])]
+# las cajas: cerrada y con la tapa levantada (clip "up" a la mitad, cuando sale el premio)
+REWARD_BOXES = [('mysteryBoxPrefab', 'box_mystery'), ('superMysteryBoxPrefab', 'box_super')]
+REWARD_PX, REWARD_BOX_PX = 72, 88
 # giro con el que aparecen (MysteryBoxHandler._rewardStartRotation y _boxRotation). En la 1.4 los premios dan vueltas:
 # la gorra de Tricky se ve mejor de frente que por dentro
 REWARD_ROT = {'rewardTokenTricky': (15.0, 169.5, 0.0), 'mysteryBoxPrefab': (0.0, 250.0, 20.0),
@@ -1198,10 +1199,76 @@ def euler_quat(ex_, ey, ez):
     return mul(q(1, ey), mul(q(0, ex_), q(2, ez)))
 
 
+def reward_parts(sc14, go, root_rot, texcache, up_time=None):
+    """Piezas (vertices en el mundo, uv, triangulos, textura) de un prefab de premio. up_time: pose del clip "up"
+    de su Animation (la tapa de la caja)."""
+    parts = []
+
+    def walk(g, M, top, pose, rel):
+        td = g['tr']['data']
+        p, r, s_ = td['m_LocalPosition'], td['m_LocalRotation'], td['m_LocalScale']
+        pos, rot, scl = [p['x'], p['y'], p['z']], [r['x'], r['y'], r['z'], r['w']], [s_['x'], s_['y'], s_['z']]
+        anim = next((c for c in g['comps'] if c['type'] == 'Animation' and c.get('data')), None)
+        if anim is not None and up_time is not None:
+            for p_ in anim['data']['m_Animations']:
+                cl = sc14.resolve_ptr(anim['obj'], p_)
+                if cl is not None and cl.read_typetree()['m_Name'] == 'up':
+                    pose, rel = clip_pose(cl, up_time), ''
+        if pose is not None and rel is not None and rel in pose:
+            o = pose[rel]
+            pos, rot, scl = o.get('pos', pos), o.get('rot', rot), o.get('scl', scl)
+        if top:
+            rot, pos = root_rot, [0.0, 0.0, 0.0]
+        m = np.eye(4)
+        m[:3, :3] = quat_mat(np.array(rot) / (np.linalg.norm(rot) or 1.0)) * np.array(scl)
+        m[:3, 3] = pos
+        M = M @ m
+        filt = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
+        rend = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
+        if filt and rend and rend['data']['m_Materials']:
+            mo = sc14.resolve_ptr(filt['obj'], filt['data']['m_Mesh'])
+            mat = sc14.resolve_ptr(rend['obj'], rend['data']['m_Materials'][0])
+            to = None
+            if mat is not None:
+                for nm_, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+                    to = sc14.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if to is not None:
+                        break
+            if mo is not None and to is not None:
+                h = MeshHandler(mo.read())
+                h.process()
+                V = np.array(h.m_Vertices, np.float64).reshape(-1, 3)
+                Wv = (M @ np.c_[V, np.ones(len(V))].T).T[:, :3]
+                if to.path_id not in texcache:
+                    texcache[to.path_id] = np.asarray(tex_rgba(to.read()).convert('RGBA'))
+                tris = np.array([t for sm in mesh_triangles(mo, h) for t in sm], np.int64)
+                parts.append((Wv, np.array(h.m_UV0, np.float64).reshape(-1, 2), tris, texcache[to.path_id]))
+        for ch in g['children']:
+            walk(ch, M, False, pose, (rel + '/' if rel else '') + ch['name'] if rel is not None else None)
+    walk(sc14.go_tree(go), np.eye(4), True, None, None)
+    return parts
+
+
+def draw_parts(parts, px, box):
+    """Dibuja las piezas en una celda de px x px; box = (min, max) de los vertices que tiene que llenar."""
+    ss = 4
+    W = px * ss
+    mn, mx = box
+    # la camara de la interfaz mira hacia +z: x a la derecha, y arriba, mas cerca = z menor
+    scale = (W - 4 * ss) / max(mx[0] - mn[0], mx[1] - mn[1])
+    cx, cy = (mx[0] + mn[0]) * 0.5, (mx[1] + mn[1]) * 0.5
+    buf = (np.zeros((W, W, 4), np.uint8), np.full((W, W), np.inf))
+    for Wv, UV, tris, tex in parts:
+        soft_raster(W * 0.5 + (Wv[:, 0] - cx) * scale, W * 0.5 - (Wv[:, 1] - cy) * scale, Wv[:, 2], UV, tris, tex,
+                    W, W, buf)
+    return ss_down(buf[0], px, px, ss)
+
+
 def render_rewards(sc14):
     """Los modelos 3D que salen de las cajas en la 1.4 (la bolsa de monedas, las fichas, los trofeos, la tabla y
-    los headstart), dibujados una vez como al aparecer (girados 15 y -10,5 grados) en celdas de 80x80 que se ven
-    1:1, sin estirar: una hoja de 512x256 (128 KB en T8) que el juego solo carga mientras se ve el premio."""
+    los headstart) y las dos cajas, cerradas y abiertas, dibujados una vez como aparecen alli. Los premios en celdas
+    de 72x72 y las cajas de 88x88, que el juego dibuja 1:1 o mas pequenas (nunca estiradas): una hoja de 512x256
+    (128 KB en T8) que solo se carga mientras se abren cajas."""
     fl = obj = None
     for f in sc14.files.values():
         for o in f.objects.values():
@@ -1214,68 +1281,40 @@ def render_rewards(sc14):
             break
     if fl is None:
         return None
-    ss = 4
-    W = H = REWARD_PX * ss
     sheet = Image.new('RGBA', (512, 256), (0, 0, 0, 0))
     sprites = []
     texcache = {}
+
+    def add(names, im, x, y, px):
+        sheet.paste(im, (x, y))
+        for nm in names:
+            r_ = {'x': x, 'y': y, 'width': px, 'height': px}
+            sprites.append({'name': nm, 'outer': r_, 'inner': dict(r_)})
     for n, (field, names) in enumerate(REWARD_PREFABS):
-        root_rot = euler_quat(*REWARD_ROT.get(field, (15.0, -10.5, 0.0)))
         go = sc14.resolve_ptr(obj, fl.get(field))
         if go is None:
             continue
-        parts = []
-
-        def walk(g, M, top):
-            td = g['tr']['data']
-            p, r, s_ = td['m_LocalPosition'], td['m_LocalRotation'], td['m_LocalScale']
-            q = root_rot if top else [r['x'], r['y'], r['z'], r['w']]
-            m = np.eye(4)
-            m[:3, :3] = quat_mat(np.array(q)) * np.array([s_['x'], s_['y'], s_['z']])
-            if not top:
-                m[:3, 3] = [p['x'], p['y'], p['z']]
-            M = M @ m
-            filt = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
-            rend = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
-            if filt and rend and rend['data']['m_Materials']:
-                mo = sc14.resolve_ptr(filt['obj'], filt['data']['m_Mesh'])
-                mat = sc14.resolve_ptr(rend['obj'], rend['data']['m_Materials'][0])
-                to = None
-                if mat is not None:
-                    for nm_, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
-                        to = sc14.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
-                        if to is not None:
-                            break
-                if mo is not None and to is not None:
-                    h = MeshHandler(mo.read())
-                    h.process()
-                    V = np.array(h.m_Vertices, np.float64).reshape(-1, 3)
-                    Wv = (M @ np.c_[V, np.ones(len(V))].T).T[:, :3]
-                    if to.path_id not in texcache:
-                        texcache[to.path_id] = np.asarray(tex_rgba(to.read()).convert('RGBA'))
-                    tris = np.array([t for sm in mesh_triangles(mo, h) for t in sm], np.int64)
-                    parts.append((Wv, np.array(h.m_UV0, np.float64).reshape(-1, 2), tris, texcache[to.path_id]))
-            for ch in g['children']:
-                walk(ch, M, False)
-        walk(sc14.go_tree(go), np.eye(4), True)
+        parts = reward_parts(sc14, go, euler_quat(*REWARD_ROT.get(field, (15.0, -10.5, 0.0))), texcache)
         if not parts:
             continue
         allv = np.vstack([p_[0] for p_ in parts])
-        mn, mx = allv.min(axis=0), allv.max(axis=0)
-        # la camara de la interfaz mira hacia +z: x a la derecha, y arriba, mas cerca = z menor
-        scale = (W - 4 * ss) / max(mx[0] - mn[0], mx[1] - mn[1])
-        cx, cy = (mx[0] + mn[0]) * 0.5, (mx[1] + mn[1]) * 0.5
-        buf = (np.zeros((H, W, 4), np.uint8), np.full((H, W), np.inf))
-        for Wv, UV, tris, tex in parts:
-            X = W * 0.5 + (Wv[:, 0] - cx) * scale
-            Y = H * 0.5 - (Wv[:, 1] - cy) * scale
-            col = soft_raster(X, Y, Wv[:, 2], UV, tris, tex, W, H, buf)
-        im = ss_down(col, REWARD_PX, REWARD_PX, ss)
-        x, y = (n % 6) * REWARD_PX, (n // 6) * REWARD_PX
-        sheet.paste(im, (x, y))
-        for nm in names:
-            r_ = {'x': x, 'y': y, 'width': REWARD_PX, 'height': REWARD_PX}
-            sprites.append({'name': nm, 'outer': r_, 'inner': dict(r_)})
+        add(names, draw_parts(parts, REWARD_PX, (allv.min(axis=0), allv.max(axis=0))),
+            (n % 7) * REWARD_PX, (n // 7) * REWARD_PX, REWARD_PX)
+    k = 0
+    for field, name in REWARD_BOXES:
+        go = sc14.resolve_ptr(obj, fl.get(field))
+        if go is None:
+            continue
+        rot = euler_quat(*REWARD_ROT[field])
+        shut, opened = reward_parts(sc14, go, rot, texcache, 0.0), reward_parts(sc14, go, rot, texcache, 0.46)
+        if not shut or not opened:
+            continue
+        allv = np.vstack([p_[0] for p_ in shut + opened])     # la misma escala para las dos: la caja no salta
+        box = (allv.min(axis=0), allv.max(axis=0))
+        for parts, suffix in ((shut, ''), (opened, '_open')):
+            add([name + suffix], draw_parts(parts, REWARD_BOX_PX, box), 2 * REWARD_PX + k * REWARD_BOX_PX,
+                2 * REWARD_PX, REWARD_BOX_PX)
+            k += 1
     return (sheet, sprites) if sprites else None
 
 
@@ -1380,7 +1419,7 @@ def export_ui(sc, ex, sc14=None):
             atlases.append({'name': 'RewardIcons', 'tex': len(ex.textures), 'w': 512, 'h': 256, 'pixel': 1.0,
                             'sprites': rw[1], 'key': ('gen', 'RewardIcons')})
             ex.textures.append(('generada', 'ui_rewards', rw[0], True))
-            print('  premios de las cajas: %d modelos' % len(set(s_['outer']['x'] * 1000 + s_['outer']['y'] for s_ in rw[1])))
+            print('  premios de las cajas: %d dibujos' % len(set(s_['outer']['x'] * 1000 + s_['outer']['y'] for s_ in rw[1])))
         if prev:
             # el Animation del personaje recibe solo la primera: el juego cambia el clip de ese estado
             ex.extra_anim['avatar_prefab'] = [len(ex.clips)]
