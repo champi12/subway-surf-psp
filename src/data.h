@@ -132,6 +132,7 @@ int data_load_step(const char *dir, int step);   /* 0..DATA_STEPS-1 archivos, DA
 int data_tex_read(int i, void *pal, void *data);
 /* tema de Halloween */
 int data_theme_init_tex(void);      /* tras leer tex.bin, antes de r_init: 1 si esta hw_tex.bin */
+extern int data_hw_ok;              /* hay datos de Halloween (hw_tex.bin, del APK de la 1.4) */
 int data_theme_init(int need_meshes);   /* con todo cargado: 1 si hay tema de Halloween */
 int data_mesh_find(const char *name);
 int data_mesh_acquire(int mesh);     /* personajes de la 1.4: lee la malla si no esta */

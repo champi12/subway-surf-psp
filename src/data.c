@@ -273,6 +273,7 @@ static void hw_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha,
 }
 
 /* 1: texturas de hw_tex.bin. Despues de leer tex.bin y antes de r_init (puede anadir texturas) */
+int data_hw_ok;
 int data_theme_init_tex(void)
 {
     char path[256];
@@ -287,6 +288,7 @@ int data_theme_init_tex(void)
     }
     int nt = read_tex_dir(hwtexfile, hw_dir_cb);
     tex_nbase = n0;
+    data_hw_ok = nt > 0;
     return nt > 0;
 }
 

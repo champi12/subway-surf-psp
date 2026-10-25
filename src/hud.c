@@ -1082,7 +1082,9 @@ static void draw_trophies(void)
 /* pantalla de carga: al arrancar y si cambia el tema (Halloween) con el juego abierto. Es un fotograma entero */
 void hud_loading(float p)
 {
-    int hw = halloween_season();
+    /* morada solo si el tema se va a poder poner: en temporada pero sin los datos de la 1.4 parecia que el
+     * Halloween cargaba y luego no salia */
+    int hw = halloween_season() && data_hw_ok;
     r_begin_frame(hw ? 0xff301028 : 0xff6a3a10);   /* morado de Halloween o azul */
     hud_fonts();
     r_begin_2d();
