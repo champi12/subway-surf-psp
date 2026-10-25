@@ -1038,6 +1038,50 @@ def clip_pose(clip, t=0.0):
     return pose
 
 
+def soft_raster(X, Y, Z, UV, tris, tex, W, H, buf=None):
+    """Rasterizado por software con z-buffer (mas cerca = Z menor) y textura sin luz, como los shaders del juego.
+    buf = (color, z) para dibujar varias piezas en la misma imagen."""
+    th, tw = tex.shape[:2]
+    col, zb = buf if buf is not None else (np.zeros((H, W, 4), np.uint8), np.full((H, W), np.inf))
+    for a, b, c in tris:
+        x0, x1 = int(max(0, np.floor(min(X[a], X[b], X[c])))), int(min(W - 1, np.ceil(max(X[a], X[b], X[c]))))
+        y0, y1 = int(max(0, np.floor(min(Y[a], Y[b], Y[c])))), int(min(H - 1, np.ceil(max(Y[a], Y[b], Y[c]))))
+        if x1 < x0 or y1 < y0:
+            continue
+        den = (Y[b] - Y[c]) * (X[a] - X[c]) + (X[c] - X[b]) * (Y[a] - Y[c])
+        if abs(den) < 1e-9:
+            continue
+        px, py = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        l0 = ((Y[b] - Y[c]) * (px - X[c]) + (X[c] - X[b]) * (py - Y[c])) / den
+        l1 = ((Y[c] - Y[a]) * (px - X[c]) + (X[a] - X[c]) * (py - Y[c])) / den
+        l2 = 1 - l0 - l1
+        inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
+        if not inside.any():
+            continue
+        z = l0 * Z[a] + l1 * Z[b] + l2 * Z[c]
+        sub = zb[y0:y1 + 1, x0:x1 + 1]
+        m = inside & (z < sub)
+        if not m.any():
+            continue
+        u = l0 * UV[a, 0] + l1 * UV[b, 0] + l2 * UV[c, 0]
+        v = l0 * UV[a, 1] + l1 * UV[b, 1] + l2 * UV[c, 1]
+        tx = np.clip((u % 1.0) * tw, 0, tw - 1).astype(np.int64)
+        ty = np.clip((1.0 - v % 1.0) * th, 0, th - 1).astype(np.int64)
+        sub[m] = z[m]
+        col[y0:y1 + 1, x0:x1 + 1][m] = np.c_[tex[ty[m], tx[m], :3], np.full(m.sum(), 255)]
+    return col
+
+
+def ss_down(col, w, h, ss):
+    """Reduce la imagen supermuestreada con alfa premultiplicado (sin halo oscuro en el borde)."""
+    f = col.astype(np.float64)
+    f[:, :, :3] *= f[:, :, 3:4] / 255.0
+    f = f.reshape(h, ss, w, ss, 4).mean(axis=(1, 3))
+    a_ = f[:, :, 3:4]
+    f[:, :, :3] = np.where(a_ > 0, f[:, :, :3] * 255.0 / np.maximum(a_, 1e-6), 0)
+    return Image.fromarray(np.clip(np.rint(f), 0, 255).astype(np.uint8), 'RGBA')
+
+
 # miniaturas del carrusel de personajes: celdas de THUMB_W x THUMB_H en una textura de 256x256 (64 KB en T8) que el
 # juego solo carga en la pantalla de personajes
 THUMB_W, THUMB_H, THUMB_SS = 42, 64, 4
@@ -1106,53 +1150,133 @@ def render_char_thumbs(prev):
     sheet = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
     sprites = []
     for n, (name, S, UV, tris, tex) in enumerate(shots):
-        th, tw = tex.shape[:2]
         # de frente: el personaje mira hacia +z; la camara esta delante mirando hacia -z (x al reves)
         cx = (S[:, 0].max() + S[:, 0].min()) * 0.5
         scale = min(scale0, (W - 2 * THUMB_SS) / (S[:, 0].max() - S[:, 0].min()))   # el disfraz de Yutani
         X = W * 0.5 - (S[:, 0] - cx) * scale
         Y = H - THUMB_SS - (S[:, 1] - S[:, 1].min()) * scale
-        Z = -S[:, 2]
-        col = np.zeros((H, W, 4), np.uint8)
-        zb = np.full((H, W), np.inf)
-        for a, b, c in tris:
-            x0, x1 = int(max(0, np.floor(min(X[a], X[b], X[c])))), int(min(W - 1, np.ceil(max(X[a], X[b], X[c]))))
-            y0, y1 = int(max(0, np.floor(min(Y[a], Y[b], Y[c])))), int(min(H - 1, np.ceil(max(Y[a], Y[b], Y[c]))))
-            if x1 < x0 or y1 < y0:
-                continue
-            den = (Y[b] - Y[c]) * (X[a] - X[c]) + (X[c] - X[b]) * (Y[a] - Y[c])
-            if abs(den) < 1e-9:
-                continue
-            px, py = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
-            l0 = ((Y[b] - Y[c]) * (px - X[c]) + (X[c] - X[b]) * (py - Y[c])) / den
-            l1 = ((Y[c] - Y[a]) * (px - X[c]) + (X[a] - X[c]) * (py - Y[c])) / den
-            l2 = 1 - l0 - l1
-            inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
-            if not inside.any():
-                continue
-            z = l0 * Z[a] + l1 * Z[b] + l2 * Z[c]
-            sub = zb[y0:y1 + 1, x0:x1 + 1]
-            m = inside & (z < sub)
-            if not m.any():
-                continue
-            u = l0 * UV[a, 0] + l1 * UV[b, 0] + l2 * UV[c, 0]
-            v = l0 * UV[a, 1] + l1 * UV[b, 1] + l2 * UV[c, 1]
-            tx = np.clip((u % 1.0) * tw, 0, tw - 1).astype(np.int64)
-            ty = np.clip((1.0 - v % 1.0) * th, 0, th - 1).astype(np.int64)
-            sub[m] = z[m]
-            col[y0:y1 + 1, x0:x1 + 1][m] = np.c_[tex[ty[m], tx[m], :3], np.full(m.sum(), 255)]
-        # reducir con alfa premultiplicado (sin halo oscuro en el borde)
-        f = col.astype(np.float64)
-        f[:, :, :3] *= f[:, :, 3:4] / 255.0
-        f = f.reshape(THUMB_H, THUMB_SS, THUMB_W, THUMB_SS, 4).mean(axis=(1, 3))
-        a_ = f[:, :, 3:4]
-        f[:, :, :3] = np.where(a_ > 0, f[:, :, :3] * 255.0 / np.maximum(a_, 1e-6), 0)
-        im = Image.fromarray(np.clip(np.rint(f), 0, 255).astype(np.uint8), 'RGBA')
+        im = ss_down(soft_raster(X, Y, -S[:, 2], UV, tris, tex, W, H), THUMB_W, THUMB_H, THUMB_SS)
         x, y = (n % cols) * THUMB_W, (n // cols) * THUMB_H
         sheet.paste(im, (x, y))
         r_ = {'x': x, 'y': y, 'width': THUMB_W, 'height': THUMB_H}
         sprites.append({'name': 'thumb_' + name, 'outer': r_, 'inner': dict(r_)})
     return sheet, sprites
+
+
+# premios de las cajas misteriosas (MysteryBoxHandler de la 1.4): campo del prefab -> nombre del sprite en el juego
+REWARD_PREFABS = [('rewardCoins', ['Icon_coin_pouch_larger', 'icon_coin_large']),
+                  ('rewardTokenTricky', ['trophy_tricky_token']), ('rewardTokenFresh', ['trophy_fresh_token']),
+                  ('rewardTokenSpike', ['trophy_spike_token']), ('rewardTokenYutani', ['trophy_yutani_token']),
+                  ('trophyDiamond', ['trophy_diamond']), ('trophyGoldBar', ['trophy_gold']),
+                  ('trophyChainClock', ['trophy_goldChainClock']), ('trophyChainDollar', ['trophy_goldChainDollar']),
+                  ('trophyGoldSkull', ['trophy_goldSkull']), ('trophyHeadphones', ['trophy_headphones']),
+                  ('trophyLPBlack', ['trophy_lpBlack']), ('trophyTapeBlack', ['trophy_tapeBlack']),
+                  ('rewardPowerupHoverboard', ['icon_upgrades_hoverboard']),
+                  ('rewardPowerupHeadstart500', ['icon_upgrades_headstart500']),
+                  ('rewardPowerupHeadstart2000', ['icon_upgrades_headstart2000']),
+                  ('mysteryBoxPrefab', ['box_mystery']), ('superMysteryBoxPrefab', ['box_super'])]
+REWARD_PX = 80
+# giro con el que aparecen (MysteryBoxHandler._rewardStartRotation y _boxRotation). En la 1.4 los premios dan vueltas:
+# la gorra de Tricky se ve mejor de frente que por dentro
+REWARD_ROT = {'rewardTokenTricky': (15.0, 169.5, 0.0), 'mysteryBoxPrefab': (0.0, 250.0, 20.0),
+              'superMysteryBoxPrefab': (0.0, 250.0, 20.0)}
+
+
+def euler_quat(ex_, ey, ez):
+    """Quaternion.Euler de Unity (Z, luego X, luego Y)."""
+    def q(ax, a):
+        h = math.radians(a) * 0.5
+        v = [0.0, 0.0, 0.0, math.cos(h)]
+        v[ax] = math.sin(h)
+        return v
+
+    def mul(a, b):
+        ax, ay, az, aw = a
+        bx, by, bz, bw = b
+        return [aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+                aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz]
+    return mul(q(1, ey), mul(q(0, ex_), q(2, ez)))
+
+
+def render_rewards(sc14):
+    """Los modelos 3D que salen de las cajas en la 1.4 (la bolsa de monedas, las fichas, los trofeos, la tabla y
+    los headstart), dibujados una vez como al aparecer (girados 15 y -10,5 grados) en celdas de 80x80 que se ven
+    1:1, sin estirar: una hoja de 512x256 (128 KB en T8) que el juego solo carga mientras se ve el premio."""
+    fl = obj = None
+    for f in sc14.files.values():
+        for o in f.objects.values():
+            if o.type.name == 'MonoBehaviour':
+                cl, fl_ = sc14.read_mono(o)
+                if cl == 'MysteryBoxHandler' and fl_:
+                    fl, obj = fl_, o
+                    break
+        if fl:
+            break
+    if fl is None:
+        return None
+    ss = 4
+    W = H = REWARD_PX * ss
+    sheet = Image.new('RGBA', (512, 256), (0, 0, 0, 0))
+    sprites = []
+    texcache = {}
+    for n, (field, names) in enumerate(REWARD_PREFABS):
+        root_rot = euler_quat(*REWARD_ROT.get(field, (15.0, -10.5, 0.0)))
+        go = sc14.resolve_ptr(obj, fl.get(field))
+        if go is None:
+            continue
+        parts = []
+
+        def walk(g, M, top):
+            td = g['tr']['data']
+            p, r, s_ = td['m_LocalPosition'], td['m_LocalRotation'], td['m_LocalScale']
+            q = root_rot if top else [r['x'], r['y'], r['z'], r['w']]
+            m = np.eye(4)
+            m[:3, :3] = quat_mat(np.array(q)) * np.array([s_['x'], s_['y'], s_['z']])
+            if not top:
+                m[:3, 3] = [p['x'], p['y'], p['z']]
+            M = M @ m
+            filt = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
+            rend = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
+            if filt and rend and rend['data']['m_Materials']:
+                mo = sc14.resolve_ptr(filt['obj'], filt['data']['m_Mesh'])
+                mat = sc14.resolve_ptr(rend['obj'], rend['data']['m_Materials'][0])
+                to = None
+                if mat is not None:
+                    for nm_, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+                        to = sc14.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                        if to is not None:
+                            break
+                if mo is not None and to is not None:
+                    h = MeshHandler(mo.read())
+                    h.process()
+                    V = np.array(h.m_Vertices, np.float64).reshape(-1, 3)
+                    Wv = (M @ np.c_[V, np.ones(len(V))].T).T[:, :3]
+                    if to.path_id not in texcache:
+                        texcache[to.path_id] = np.asarray(tex_rgba(to.read()).convert('RGBA'))
+                    tris = np.array([t for sm in mesh_triangles(mo, h) for t in sm], np.int64)
+                    parts.append((Wv, np.array(h.m_UV0, np.float64).reshape(-1, 2), tris, texcache[to.path_id]))
+            for ch in g['children']:
+                walk(ch, M, False)
+        walk(sc14.go_tree(go), np.eye(4), True)
+        if not parts:
+            continue
+        allv = np.vstack([p_[0] for p_ in parts])
+        mn, mx = allv.min(axis=0), allv.max(axis=0)
+        # la camara de la interfaz mira hacia +z: x a la derecha, y arriba, mas cerca = z menor
+        scale = (W - 4 * ss) / max(mx[0] - mn[0], mx[1] - mn[1])
+        cx, cy = (mx[0] + mn[0]) * 0.5, (mx[1] + mn[1]) * 0.5
+        buf = (np.zeros((H, W, 4), np.uint8), np.full((H, W), np.inf))
+        for Wv, UV, tris, tex in parts:
+            X = W * 0.5 + (Wv[:, 0] - cx) * scale
+            Y = H * 0.5 - (Wv[:, 1] - cy) * scale
+            col = soft_raster(X, Y, Wv[:, 2], UV, tris, tex, W, H, buf)
+        im = ss_down(col, REWARD_PX, REWARD_PX, ss)
+        x, y = (n % 6) * REWARD_PX, (n // 6) * REWARD_PX
+        sheet.paste(im, (x, y))
+        for nm in names:
+            r_ = {'x': x, 'y': y, 'width': REWARD_PX, 'height': REWARD_PX}
+            sprites.append({'name': nm, 'outer': r_, 'inner': dict(r_)})
+    return (sheet, sprites) if sprites else None
 
 
 def fix_coin_glow(ex):
@@ -1251,6 +1375,12 @@ def export_ui(sc, ex, sc14=None):
                             'sprites': th[1], 'key': ('gen', 'CharThumbs')})
             ex.textures.append(('generada', 'ui_chars', th[0], True))
             print('  miniaturas de %d personajes' % len(th[1]))
+        rw = render_rewards(sc14)
+        if rw:
+            atlases.append({'name': 'RewardIcons', 'tex': len(ex.textures), 'w': 512, 'h': 256, 'pixel': 1.0,
+                            'sprites': rw[1], 'key': ('gen', 'RewardIcons')})
+            ex.textures.append(('generada', 'ui_rewards', rw[0], True))
+            print('  premios de las cajas: %d modelos' % len(set(s_['outer']['x'] * 1000 + s_['outer']['y'] for s_ in rw[1])))
         if prev:
             # el Animation del personaje recibe solo la primera: el juego cambia el clip de ese estado
             ex.extra_anim['avatar_prefab'] = [len(ex.clips)]

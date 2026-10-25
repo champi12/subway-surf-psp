@@ -867,6 +867,34 @@ static void draw_chars(void)
     foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
 }
 
+/* el objeto que sale de la caja: los modelos 3D de la 1.4 (MysteryBoxHandler) que el conversor dibuja una vez en
+ * celdas de 80x80 (hoja de 512x256, 128 KB, cargada solo mientras se ve el premio). Se dibujan 1:1, sin estirar.
+ * Sin el APK de la 1.4, el sprite pequeno de la interfaz con su forma, como mucho a 1,5x */
+static int a_rewards = -2, rewards_loaded;
+static void reward_draw(const char *name, const char *fallback, float cx, float cy, float size, unsigned int col)
+{
+    USprite *s = find_sprite(a_rewards, name);
+    if (s) {
+        ui_sprite_wh(a_rewards, name, (int)(cx - size * 0.5f), (int)(cy - size * 0.5f), size, size, col);
+        rewards_loaded = 1;
+        return;
+    }
+    s = find_sprite(a_ui, fallback);
+    if (!s) return;
+    float k = 1.5f;
+    if (s->ow * k > size) k = size / s->ow;
+    if (s->oh * k > size) k = size / s->oh;
+    spr_c(fallback, cx, cy, s->ow * k, s->oh * k, col);
+}
+static void reward_item(const char *name, float cx, float cy) { reward_draw(name, name, cx, cy, 80, C_WHITE); }
+static void rewards_release(void)
+{
+    if (rewards_loaded && !(ginfo.state == GS_GAMEOVER && (ginfo.reward[0] || ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0))) {
+        r_tex_unload(atl[a_rewards].tex);
+        rewards_loaded = 0;
+    }
+}
+
 /* ------------------------------------------------------------ fin de la carrera (GameoverUI de la 1.4) */
 static void draw_gameover(void)
 {
@@ -904,10 +932,12 @@ static void draw_gameover(void)
         spr_c("background_superglow", bx, byy, sup ? 190 : 150, sup ? 190 : 150, sup ? 0x90ffffffu : 0x60ffffffu);
         if (ginfo.reward[0] && ginfo.reward_icon) {
             /* la caja abierta y el objeto encima (MysteryBoxHandler): la gorra, la radio, el trofeo... estatico */
-            spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx - 70, byy + 34, 52, 50, 0xb0ffffffu);
-            spr_c(ginfo.reward_icon, bx, byy - 4, 100, 100, C_WHITE);
+            reward_draw(sup ? "box_super" : "box_mystery", sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox",
+                        bx - 70, byy + 34, 52, 0xb0ffffffu);
+            reward_item(ginfo.reward_icon, bx, byy - 4);
         } else
-            spr_c(sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox", bx, byy, sup ? 110 : 96, sup ? 102 : 96, C_WHITE);
+            reward_draw(sup ? "box_super" : "box_mystery", sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox",
+                        bx, byy, 80, C_WHITE);
         if (sup) labc(1, bx, 32, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
         if (ginfo.reward[0]) {
             labc(0, bx, 178, 18, C_WHITE, 1, 1, TR("Has conseguido", "You got"));
@@ -1036,7 +1066,9 @@ void hud_draw(void)
     r_begin_2d();
     bg_release();
     if (a_thumbs == -2) a_thumbs = ui_atlas("CharThumbs");
+    if (a_rewards == -2) a_rewards = ui_atlas("RewardIcons");
     thumbs_release();
+    rewards_release();
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;

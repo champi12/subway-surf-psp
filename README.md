@@ -135,7 +135,7 @@ Con el APK de la 1.4, los menús son los de la **1.4**: el menú principal con l
 personajes, la barra de abajo de la tienda y los personajes (Menú / Mejoras / Personajes), las tarjetas de compra de
 la tienda, la pantalla de personajes con el modelo grande de pie en su pose de reposo de la 1.4 (ya no pintando el
 tren), el botón de compra y el carrusel con los personajes en pequeño, el fin de carrera con la
-pizarra de puntos y el botón verde de jugar, y la pausa con la palabra del día y las misiones; todo con el fondo
+pizarra de puntos, el botón verde de jugar y las cajas misteriosas con el objeto que sale (los modelos de la 1.4, dibujados de antemano), y la pausa con la palabra del día y las misiones; todo con el fondo
 desenfocado del original y adaptado a la pantalla apaisada de la PSP. Sin el APK de la 1.4 se usan los sprites de la
 1.0 con el escenario oscurecido detrás.
 

@@ -271,6 +271,7 @@ tramo que se alterna con el primero).
 | **30 FPS fijos**, como el original | Ritmo estable en vez de saltar entre 60, 30 y 20 |
 | Texto: una llamada de dibujo por frase (no por letra); centro de cada trozo calculado una vez | Llamadas de dibujo y cálculo por trozo |
 | Banda de guarda de 6 (el GE admite hasta 8,5 en horizontal) | Menos triángulos recortados por software |
+| Premios de las cajas misteriosas: los **modelos 3D de la 1.4** (bolsa de monedas, fichas, trofeos, tabla, headstart y las dos cajas) pre-dibujados por el conversor en celdas de 80x80 que se ven 1:1; hoja de 512x256 en T8 (128 KB) cargada solo mientras se abren cajas | Tener los 18 modelos y la textura del escenario cargados en esa pantalla, o estirar los iconos de 26-55 px de la interfaz (se pixelaban y se deformaban) |
 | Carrusel de personajes con **miniaturas pre-dibujadas** por el conversor (skinning y rasterizado por software en `extract.py`): una hoja de 256x256 en T8 (64 KB) que se carga al entrar en la pantalla y se libera al salir; el modelo grande usa una pose de 1 fotograma por personaje (~1 KB cada una en `anim.bin`) en un solo estado del Animator | Dibujar 5 personajes con piel a la vez (y tener cargadas sus mallas y texturas: ~400 KB cada uno). Medido: +65 KB solo en esa pantalla, +20 KB fijos, mismos 30 FPS |
 
 ### Los puntos blancos en el escenario
