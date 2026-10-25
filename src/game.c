@@ -1306,13 +1306,22 @@ static unsigned dw_mask;             /* letras cogidas (bit i = letra i) */
 static int dw_paid;                  /* caja ya dada */
 static float dw_next_t;              /* DailyLetterPickup: la siguiente letra sale 2 s despues */
 
+/* fecha de la consola (la hora local de los ajustes del sistema). Si la funcion de la hora local falla en algun
+ * firmware se usa la UTC: el evento de Halloween, la palabra del dia y su racha dependen de esto */
+static int console_date(ScePspDateTime *t)
+{
+    if (sceRtcGetCurrentClockLocalTime(t) >= 0 && t->year >= 2000) return 0;
+    if (sceRtcGetCurrentClock(t, 0) >= 0 && t->year >= 2000) return 0;
+    return -1;
+}
+
 static int today_id(void)
 {
 #ifdef AUTOTEST
     return 0;
 #else
     ScePspDateTime t;
-    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    if (console_date(&t) < 0) return 0;
     return t.year * 372 + (t.month - 1) * 31 + (t.day - 1);
 #endif
 }
@@ -1324,7 +1333,7 @@ static int day_number(void)
     return 20000;
 #else
     ScePspDateTime t;
-    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    if (console_date(&t) < 0) return 0;
     int y = t.year - (t.month <= 2), m = t.month, era = y / 400, yoe = y - era * 400;
     int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + t.day - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     return era * 146097 + doe - 719468;
@@ -1686,7 +1695,7 @@ int halloween_season(void)
     return 0;   /* las pruebas automaticas no deben depender del dia */
 #else
     ScePspDateTime t;
-    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    if (console_date(&t) < 0) return 0;
     return (t.month == 10 && t.day >= 24) || (t.month == 11 && t.day <= 4);
 #endif
 }
@@ -1699,7 +1708,7 @@ int season_seconds_left(void)
     return halloween_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
-    if (!halloween_season() || sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    if (!halloween_season() || console_date(&t) < 0) return 0;
     int days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;     /* dias enteros despues de hoy */
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -1711,7 +1720,7 @@ int day_seconds_left(void)
     return 5 * 3600 + 42 * 60 + 7;
 #else
     ScePspDateTime t;
-    if (sceRtcGetCurrentClockLocalTime(&t) < 0) return 0;
+    if (console_date(&t) < 0) return 0;
     return 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
 }
@@ -1720,11 +1729,18 @@ int day_seconds_left(void)
 static int hw_popup_year;            /* ano - 2000 en que ya se enseno */
 static void halloween_popup_check(void)
 {
+    /* en temporada pero sin los datos de la 1.4: se avisa una vez por partida (si no, parece que el evento falla) */
+    static int warned;
+    if (!theme_halloween && !warned && halloween_season() && theme_available == 0) {
+        warned = 1;
+        hud_slide(TR("Halloween: faltan los datos de la 1.4", "Halloween: 1.4 data missing"),
+                  TR("Genera data con el APK 1.4.0 (README)", "Rebuild data with the 1.4.0 APK"));
+    }
     if (!theme_halloween || ginfo.popup) return;
     int y = 26;
 #ifndef AUTOTEST
     ScePspDateTime t;
-    if (sceRtcGetCurrentClockLocalTime(&t) >= 0) y = t.year - 2000;
+    if (console_date(&t) >= 0) y = t.year - 2000;
 #endif
     if (hw_popup_year == y) return;
     hw_popup_year = y;
@@ -1743,7 +1759,13 @@ void game_theme_check(int boot)
     r_fog_color = on ? FOG_HALLOWEEN : FOG_NORMAL;
     r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
     if (boot) {
+#ifndef AUTOTEST
+        ScePspDateTime t;
+        if (console_date(&t) == 0) dlog("Fecha de la consola: %04d-%02d-%02d %02d:%02d", t.year, t.month, t.day, t.hour, t.minute);
+        else dlog("AVISO no se puede leer la fecha de la consola");
+#endif
         if (on) dlog("TEMA de Halloween activo (fecha de la consola)");
+        else if (halloween_season()) dlog("AVISO es temporada de Halloween pero faltan hw_tex.bin/hw_mesh.bin: data se genero sin el APK de la 1.4 clasica");
         return;
     }
     /* con el juego abierto (el evento empieza o acaba): se vuelven a leer las texturas que ya se usaban */

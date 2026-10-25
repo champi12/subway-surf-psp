@@ -76,8 +76,10 @@ Genera:
 ### Contenido de la 1.4
 
 Si se pasa también el APK de la **1.4**, el juego integra todo lo que trae hasta esa versión, como los personajes
-nuevos, la interfaz y el tema de Halloween. `actualizar.sh` lo usa solo si hay en la carpeta un APK con "1.4" o "1-4"
-en el nombre. Sin él, el juego funciona igual con el contenido de la 1.0.
+nuevos, la interfaz y el tema de Halloween. `actualizar.sh` lo encuentra solo si está en la carpeta, se llame como se
+llame: reconoce cada APK por dentro (`tools/apk_kind.py`). Tiene que ser la **1.4.0 clásica** (la de Halloween de
+2012); otras versiones no traen el tema. Al terminar, `actualizar.sh` dice si el contenido de la 1.4 quedó incluido.
+Sin él, el juego funciona igual con el contenido de la 1.0.
 
 ### Halloween (1.4 clásica)
 
@@ -96,6 +98,16 @@ Solo se carga una versión de cada textura (la normal o la de Halloween, que ocu
 es la misma; fuera de las fechas ni siquiera se leen las mallas de Halloween. Si el evento empieza o acaba con el
 juego abierto, al volver al menú sale una pantalla de carga (morada en temporada) mientras se cambian las texturas.
 Los brillos de las calabazas no se han portado.
+
+#### ¿No se activa Halloween?
+
+1. **Faltan los datos de la 1.4.** Si en temporada el juego muestra arriba "Halloween: faltan los datos de la 1.4",
+   la carpeta `data` se generó sin el APK 1.4.0 clásico. Copia ese APK junto al de la 1.0 y vuelve a ejecutar
+   `./actualizar.sh`; al final debe decir "Halloween y contenido de la 1.4: INCLUIDOS". Sin esos datos tampoco salen
+   los menús de la 1.4 ni los personajes nuevos.
+2. **La fecha de la consola.** El tema depende solo del reloj de la PSP: en Ajustes > Ajustes del sistema > Fecha y
+   hora tiene que estar entre el 24 de octubre y el 4 de noviembre. Muchas PSP pierden la fecha si la batería se
+   queda sin carga. En la versión de pruebas, `devlog.txt` apunta la fecha que lee el juego al arrancar.
 
 ### Música en AT3 (opcional)
 

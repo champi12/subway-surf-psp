@@ -6,9 +6,9 @@
 #   ./actualizar.sh subway.apk "/mnt/c/Users/Joan jimenez/Desktop"
 #                                           ademas copia la carpeta PSP ahi (p. ej. el escritorio de Windows)
 #
-# Contenido de la 1.4: si en esta carpeta hay un APK de la 1.4 (un nombre con "1.4" o "1-4", p. ej.
-# subway-surfers-1-4-0.apk), se saca tambien lo que trae hasta esa version. Tambien se puede indicar con
-# APK14=ruta.apk ./actualizar.sh ...
+# Contenido de la 1.4 (Halloween, personajes nuevos, menus): si en esta carpeta hay un APK de la 1.4 clasica, se
+# saca tambien lo que trae hasta esa version. Se reconoce por dentro (tools/apk_kind.py), se llame como se llame.
+# Tambien se puede indicar con APK14=ruta.apk ./actualizar.sh ...
 #
 # Sale la version publica (sin devlog). Para la de pruebas (devlog.txt y crash.txt): DEVLOG=1 ./actualizar.sh ...
 set -e
@@ -22,8 +22,22 @@ if [ -z "$SS_ACTUALIZADO" ]; then
 fi
 
 echo "== 2/3 Datos del juego =="
-APK14=${APK14:-$(ls *1.4*.apk *1-4*.apk 2>/dev/null | head -1)}
-APK=${1:-$(ls *.apk 2>/dev/null | grep -v -e '1\.4' -e '1-4' | head -1)}
+# que APK es cada uno: se mira dentro (el de la 1.4 clasica trae ThemeAssets), no el nombre
+APK10=""
+for f in *.apk; do
+    [ -f "$f" ] || continue
+    case "$(python3 tools/apk_kind.py "$f")" in
+        14) [ -z "$APK14" ] && APK14="$f" ;;
+        10) [ -z "$APK10" ] && APK10="$f" ;;
+    esac
+done
+APK=${1:-$APK10}
+if [ -n "$APK" ] && [ -f "$APK" ] && [ "$(python3 tools/apk_kind.py "$APK")" = 14 ]; then
+    echo "$APK es el APK de la 1.4: hace falta tambien el de la 1.0 (la base). Copia los dos a esta carpeta."
+    exit 1
+fi
+if [ -n "$APK14" ]; then echo "APK de la 1.4 clasica: $APK14"
+else echo "AVISO: no hay APK de la 1.4 clasica (1.4.0, la de Halloween de 2012): sin Halloween ni contenido de la 1.4"; fi
 VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
@@ -46,6 +60,14 @@ fi
 echo "== 3/3 Compilando =="
 [ -z "$PSPDEV" ] && export PSPDEV=$HOME/pspdev && export PATH=$PSPDEV/bin:$PATH
 ./build_dist.sh
+echo
+if [ -f data/hw_tex.bin ]; then
+    echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"
+    echo "segun la fecha de la consola: compruebala en Ajustes del sistema > Fecha y hora)"
+else
+    echo "Halloween y contenido de la 1.4: NO incluidos. Copia a esta carpeta el APK de Subway Surfers 1.4.0"
+    echo "(la version de Halloween de 2012) y vuelve a ejecutar ./actualizar.sh"
+fi
 
 if [ -n "$2" ]; then
     # no se crea la carpeta destino: si no existe es que la ruta esta mal escrita (y en /mnt/c/Users no hay permiso)
