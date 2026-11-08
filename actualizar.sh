@@ -41,7 +41,7 @@ fi
 if [ -n "$APK15" ]; then echo "APK de la 1.5.2: $APK15 (mundo nuevo, Navidad y tablas)"; fi
 if [ -n "$APK14" ]; then echo "APK de la 1.4 clasica: $APK14"
 else echo "AVISO: no hay APK de la 1.4 clasica (1.4.0, la de Halloween de 2012): sin Halloween ni contenido de la 1.4"; fi
-VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15") | sha1sum | cut -c1-16)
+VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15 w15:${WORLD15:-0}") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
 else
@@ -53,7 +53,10 @@ else
     echo "El extractor ha cambiado (o es la primera vez): regenerando data/ desde $APK ..."
     OPTS=()
     if [ -n "$APK14" ] && [ -f "$APK14" ]; then echo "Con el contenido de la 1.4 de $APK14"; OPTS+=(--apk14 "$APK14"); fi
-    if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el mundo de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
+    # el mundo de la 1.5.2 aun esta en pruebas (en la consola iba lento): solo con WORLD15=1
+    if [ "${WORLD15:-0}" != 0 ] && [ -n "$APK15" ] && [ -f "$APK15" ]; then
+        echo "Con el mundo de la 1.5.2 de $APK15 (EN PRUEBAS)"; OPTS+=(--apk15 "$APK15")
+    fi
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
     echo "$VER" > data/.version
 fi
@@ -62,11 +65,7 @@ echo "== 3/3 Compilando =="
 [ -z "$PSPDEV" ] && export PSPDEV=$HOME/pspdev && export PATH=$PSPDEV/bin:$PATH
 ./build_dist.sh
 echo
-if [ -f data/w15/world.bin ]; then
-    echo "Mundo de la 1.5.2: INCLUIDO (se usa siempre salvo en Halloween, que usa el clasico con su tema)"
-else
-    echo "Mundo de la 1.5.2: NO incluido (copia el APK de Subway Surfers 1.5.2 a esta carpeta para tenerlo)"
-fi
+if [ -f data/w15/world.bin ]; then echo "Mundo de la 1.5.2: incluido (EN PRUEBAS, solo con WORLD15=1)"; fi
 if [ -f data/hw_tex.bin ]; then
     echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"
     echo "segun la fecha de la consola: compruebala en Ajustes del sistema > Fecha y hora)"

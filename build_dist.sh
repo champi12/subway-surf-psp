@@ -12,7 +12,7 @@ NOANALOG=${NOANALOG:-0}
 make clean > /dev/null
 make -C exhandler clean > /dev/null 2>&1 || true
 make -C exhandler/loader clean > /dev/null 2>&1 || true
-make DEVLOG=$DEVLOG NOANALOG=$NOANALOG
+make DEVLOG=$DEVLOG NOANALOG=$NOANALOG WORLD15=${WORLD15:-0}
 rm -rf dist
 mkdir -p dist/PSP/GAME/SUBWAY
 cp EBOOT.PBP dist/PSP/GAME/SUBWAY/

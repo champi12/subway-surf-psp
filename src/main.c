@@ -126,6 +126,8 @@ int main(int argc, char **argv)
     /* el mundo (las vias y el escenario): el de la 1.5.2 (data/w15, normal y Navidad) si esta, salvo en Halloween,
      * que es el de la 1.4 sobre el clasico (data/). El nucleo del juego es el mismo en los dos; solo se carga uno */
     const char *wdir = "data";
+#if defined(WORLD15) && WORLD15
+    /* en pruebas: en la consola real iba a ~10 FPS y con el escenario mal; solo con make WORLD15=1 */
     {
         extern int halloween_season(void);
         SceUID f = sceIoOpen("data/w15/world.bin", PSP_O_RDONLY, 0);
@@ -135,6 +137,7 @@ int main(int argc, char **argv)
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
         dlog("Mundo: %s", has15 && !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
+#endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
     if (data_load_step(wdir, 0) != 0) fatal(data_err());
     data_theme_init_tex();   /* texturas de Halloween y las nuevas de la 1.4 (antes de r_init: puede anadir) */
