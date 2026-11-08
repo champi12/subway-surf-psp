@@ -335,19 +335,121 @@ static void set_node_active(int n, int on) { if (n >= 0) nrt[n].active = on; }
 
 static void play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); snd_clip(c); }
 
+/* ------------------------------------------------------------ tablas (Hoverboards / HoverboardManager de la 1.5.2)
+ * boards.bin trae la lista (nombre, precio, efecto y animaciones de cada accion); boardanim.bin, las animaciones,
+ * de las que solo se cargan las de la tabla elegida. La normal es la de la 1.0 (su malla y su textura main); las
+ * demas cambian la malla de la tabla del personaje (chars14.bin, se lee al usarla) y su material (board_props) */
+static int board_sel = -1, board_owned;       /* fila de boards.bin; bit i: comprada */
+static int board_applied = -2, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
+static uint32_t *hb_mesh_comp, hb_mesh0, hb_mat0;
+
+static int board_default(void)
+{
+    for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_ALWAYS) return i;
+    return 0;
+}
+static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_COINS || (board_owned >> i & 1)); }
+static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
+/* lista de animaciones de una accion: la de la tabla o, si no trae ninguna (Superhero, Starboard), la de la normal */
+static const BoardDef *board_anim_src(int i)
+{
+    if (i < 0 || i >= gd_nboards) return NULL;
+    const BoardDef *d = &gd_boards[i];
+    for (int a = 0; a < BOARD_NACT; a++) if (d->nact[a]) return d;
+    int k = board_default();
+    return k < gd_nboards ? &gd_boards[k] : NULL;
+}
+/* una animacion al azar de la accion a (solo de las que estan cargadas); def si no hay */
+static const char *bpick(int a, const char *def)
+{
+    const BoardDef *d = board_anim_src(board_applied);
+    if (!d || !d->nact[a]) return def;
+    const char *n = d->act[a][rnd_range(0, d->nact[a])];
+    return anim_find(&anim_char, n) >= 0 ? n : def;
+}
+static int board_fx(int fx) { const BoardDef *d = board_def(); return d && d->effect == fx && mods[MOD_HOVERBOARD].active; }
+
+static void board_find_mesh_comp(void)
+{
+    if (hb_mesh_comp || n_meshHoverboard < 0) return;
+    int stack[16], sp = 0;
+    stack[sp++] = n_meshHoverboard;
+    while (sp) {
+        int n = stack[--sp];
+        uint32_t *c = (uint32_t *)node_comp(n, C_MESH, NULL);
+        if (c && c[2] >= 1) { hb_mesh_comp = c; hb_mesh0 = c[0]; hb_mat0 = c[3]; return; }
+        for (int k = gd.nodes[n].first_child; k >= 0 && sp < 16; k = gd.nodes[k].next_sibling) stack[sp++] = k;
+    }
+}
+
+/* pone la tabla i en el personaje: malla, material y sus animaciones (las de la anterior se liberan) */
+static void board_apply(int i)
+{
+    if (gd_nboards <= 0 || i < 0 || i >= gd_nboards || i == board_applied) return;
+    board_applied = i;
+    const BoardDef *d = &gd_boards[i];
+    /* animaciones: fuera las de la tabla anterior, dentro las de esta */
+    if (board_base_states < 0) board_base_states = anim_char.nstates;
+    anim_stop_all(&anim_char);
+    anim_trim_states(&anim_char, board_base_states);
+    data_board_clips_free();
+    const BoardDef *src = board_anim_src(i);
+    const char *names[BOARD_MAX_CLIPS];
+    int n = 0;
+    for (int a = 0; src && a < BOARD_NACT; a++)
+        for (int k = 0; k < src->nact[a] && n < BOARD_MAX_CLIPS; k++) {
+            int dup = 0;
+            for (int j = 0; j < n && !dup; j++) dup = !strcmp(names[j], src->act[a][k]);
+            if (!dup) names[n++] = src->act[a][k];
+        }
+    int c0 = gd.nclips, added = data_board_clips_load(names, n);
+    for (int c = c0; c < gd.nclips; c++) anim_add_state(&anim_char, c);
+    /* malla y material */
+    board_find_mesh_comp();
+    if (hb_mesh_comp) {
+        if (board_mesh_cur >= 0) { r_wait_idle(); data_mesh_release(board_mesh_cur); board_mesh_cur = -1; }
+        hb_mesh_comp[0] = hb_mesh0; hb_mesh_comp[3] = hb_mat0;
+        int m = d->mesh[0] ? data_mesh_find(d->mesh) : -1;
+        if (m >= 0 && board_mat == -2) {
+            int t = data_tex_find("board_props");
+            board_mat = t >= 0 && hb_mat0 < (uint32_t)gd.nmats ? data_mat_clone(gd.mats[hb_mat0].name, t) : -1;
+            if (board_mat >= 0) r_init_materials();
+        }
+        if (m >= 0 && board_mat >= 0 && data_mesh_acquire(m) == 0) {
+            hb_mesh_comp[0] = (uint32_t)m; hb_mesh_comp[3] = (uint32_t)board_mat;
+            board_mesh_cur = m;
+        }
+    }
+    dlog("TABLA %s (%d animaciones propias cargadas)", d->name, added);
+    (void)added;
+}
+
 /* ------------------------------------------------------------ animaciones del personaje */
 static int rnd_i(int n) { return rnd_range(0, n); }
 static void SetRandomRun(void) { int i = rnd_i(4); an.run = an.runAnimations[i]; an.landing = an.landAnimations[i]; }
 static void SetRandomJump(void) { an.jump = an.jumpAnimations[rnd_i(5)]; an.hangtime = an.hangtimeAnimations[rnd_i(4)]; }
 static void SetRandomGrind(void) { int i = rnd_i(3); an.run = an.grindAnimations[i]; an.landing = an.grindLandAnimations[i]; }
-static void SetRandomHover(void) { an.run = "h_run"; an.landing = "h_landing"; }
-static void SetRandomHoverJump(void) { int i = rnd_i(11); an.jump = an.hoverJump[i]; an.hangtime = an.hoverHang[i]; }
+static void SetRandomHover(void) { an.run = bpick(BA_RUN, "h_run"); an.landing = bpick(BA_LAND, "h_landing"); }
+static void SetRandomHoverJump(void)
+{
+    /* las de la tabla: salto y vuelo van por parejas (misma posicion en las dos listas) */
+    const BoardDef *d = board_anim_src(board_applied);
+    if (d && d->nact[BA_JUMP] && d->nact[BA_JUMP] == d->nact[BA_HANG]) {
+        int i = rnd_i(d->nact[BA_JUMP]);
+        if (anim_find(&anim_char, d->act[BA_JUMP][i]) >= 0 && anim_find(&anim_char, d->act[BA_HANG][i]) >= 0) {
+            an.jump = d->act[BA_JUMP][i]; an.hangtime = d->act[BA_HANG][i];
+            return;
+        }
+    }
+    int i = rnd_i(11); an.jump = an.hoverJump[i]; an.hangtime = an.hoverHang[i];
+}
 
 static void ChangeAnimations(void)
 {
     if (isDead) return;
     if (mods[MOD_HOVERBOARD].active && mod_active(MOD_HOVERBOARD) && 1) {
-        an.run = "h_run"; an.roll = "h_roll"; an.dodgeLeft = "h_left"; an.dodgeRight = "h_right";
+        an.run = bpick(BA_RUN, "h_run"); an.roll = bpick(BA_ROLL, "h_roll");
+        an.dodgeLeft = bpick(BA_LEFT, "h_left"); an.dodgeRight = bpick(BA_RIGHT, "h_right");
     } else {
         if (mods[MOD_SNEAKERS].active) { an.run = "superRun"; an.landing = "landing"; }
         else SetRandomRun();
@@ -767,7 +869,7 @@ static void character_jump(void)
         ch.falling = 0;
         ch.shadow_on = 0;
         anim_crossfade(&anim_char, an.jump, 0.05f);
-        if (mods[MOD_SNEAKERS].active) {
+        if (mods[MOD_SNEAKERS].active || board_fx(BOARD_FX_SUPERJUMP)) {
             ch.ssj = 1;
             ch.ss_zstart = cc.pos.z;
             ch.ss_zlen = jump_length(currentSpeed, ch.jumpHeight) * SS_APEX_RATIO;
@@ -795,6 +897,16 @@ static void set_char_capsules(int rolling)
         cc.height = cc_height0; cc.center = cc_center0;
         col_height = col_height0; col_center = col_center0;
     }
+}
+
+/* Bouncer: saltos como con las Super Zapatillas (Character.IsJumpingHigher); Lowrider: siempre la capsula de rodar
+ * (Character.SqueezeCollider), pasa por debajo de las barreras sin rodar */
+static void board_fx_set(int on)
+{
+    if (on && board_fx(BOARD_FX_SUPERJUMP)) ch.jumpHeight = JUMP_HEIGHT_SUPER;
+    else if (!on) ch.jumpHeight = mods[MOD_SNEAKERS].active ? JUMP_HEIGHT_SUPER : JUMP_HEIGHT_NORMAL;
+    if (on && board_fx(BOARD_FX_LOW)) set_char_capsules(1);
+    else if (!on && !ch.rolling) set_char_capsules(0);
 }
 
 static void character_roll(void)
@@ -832,7 +944,7 @@ static void roll_tick(void)
     if (game_time < ch.roll_end && rs && rs->enabled) return;
     DBG_PHASE(main, "roll_tick: fin de la rodada, cc_move arriba");
     if (cc.enabled) cc_move(&cc, v3(0, 2, 0));
-    set_char_capsules(0);
+    set_char_capsules(board_fx(BOARD_FX_LOW));
     DBG_PHASE(main, "roll_tick: fin de la rodada, cc_move abajo");
     if (cc.enabled) cc_move(&cc, v3(0, -2, 0));
     ch.rolling = 0;
@@ -1510,8 +1622,9 @@ static void mod_begin(int m)
         stumble_set(0);
         mods[m].active = 1;
         ChangeAnimations();
-        anim_crossfade(&anim_char, "h_skate_on", 0.06f);
-        anim_crossfade_queued(&anim_char, "h_run", 0.2f);
+        anim_crossfade(&anim_char, bpick(BA_GETON, "h_skate_on"), 0.06f);
+        anim_crossfade_queued(&anim_char, an.run, 0.2f);
+        board_fx_set(1);
         play_ci(&snd_powerup);
         ch.immune = 1;
         trigger_powerup(PT_HOVERBOARD, 0);
@@ -1550,7 +1663,7 @@ static void mod_add(int m)
 {
     if (mods[m].active || mods[m].phase > 0) {
         /* Reset + Begin de nuevo */
-        if (m == MOD_HOVERBOARD) { ch.immune = 0; cc.enabled = 1; set_node_active(n_meshHoverboard, 0); mods[m].active = 0; }
+        if (m == MOD_HOVERBOARD) { ch.immune = 0; cc.enabled = 1; set_node_active(n_meshHoverboard, 0); mods[m].active = 0; board_fx_set(0); }
     }
     mod_begin(m);
 }
@@ -1568,6 +1681,7 @@ static void mods_update(float dt)
                 set_node_active(n_meshHoverboard, 0);
                 ch.immune = 0;
                 mods[m].active = 0;
+                board_fx_set(0);
                 ChangeAnimations();
                 hb_last_end = game_time;
                 if (mods[m].stop != STOP_STOP) { mods[m].phase = 99; continue; }
@@ -2452,6 +2566,11 @@ void game_init(void)
     anim_init(&anim_char, n_avatar);
     n_avatars = node_find_child(n_avatar, "avatars");
     zombie_init(n_avatars >= 0 ? node_find_child(n_avatars, "slick") : -1);
+    if (data_boards_load() > 0) {
+        if (!board_has(board_sel)) board_sel = board_default();
+        board_apply(board_sel);
+        dlog("Tablas de la 1.5.2: %d (elegida %s)", gd_nboards, gd_boards[board_sel].name);
+    }
     char_check_selected();
     char_show_model(ginfo.character);   /* game_load ya ha leido el personaje elegido */
     anim_init(&anim_guard, n_guard);
@@ -2699,6 +2818,78 @@ static int char_useful_token(void)
 }
 
 static void open_shop(void) { ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.state = GS_SHOP; }
+
+/* ------------------------------------------------------------ pantalla de tablas (BoardScreen de la 1.5.2) */
+static void open_chars(void);
+int board_count(void) { return gd_nboards; }
+const char *board_name(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].name : ""; }
+int board_price(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].price : 0; }
+int board_is_owned(int row) { return board_has(row); }
+int board_is_selected(int row) { return row == board_sel; }
+int board_effect(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].effect : 0; }
+
+/* el personaje de pie en la tabla marcada, de cara a la camara (como la pose de la pantalla de personajes) */
+static void board_preview(int row)
+{
+    board_apply(row);
+    set_node_active(n_meshHoverboard, 1);
+    nrt[n_sprayCan].rend = 0;
+    nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);
+    anim_play(&anim_char, bpick(BA_RUN, "h_run"));
+    char_posing = 0;
+}
+static void board_preview_end(void)
+{
+    set_node_active(n_meshHoverboard, 0);
+    board_apply(board_sel);
+    nrt[n_sprayCan].rend = 1;
+    nrt[n_avatar].lrot = qident();
+    anim_play(&anim_char, "idlePaint");
+}
+static void open_boards(void)
+{
+    if (gd_nboards <= 0) return;
+    ginfo.board_sel = board_sel;
+    char_show_model(ginfo.character);
+    board_preview(board_sel);
+    change_state(GS_BOARDS); ginfo.state = GS_BOARDS;
+}
+static void boards_input(unsigned in, int confirm)
+{
+    int nb = gd_nboards, r = ginfo.board_sel;
+    if (in & IN_LEFT) in |= IN_UP;
+    if (in & IN_RIGHT) in |= IN_DOWN;
+    if ((in & IN_UP) && !(in & IN_CROSS)) r = (r + nb - 1) % nb;
+    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) r = (r + 1) % nb;
+    if (r != ginfo.board_sel) { ginfo.board_sel = r; board_preview(r); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if (confirm) {
+        const BoardDef *d = &gd_boards[r];
+        if (board_has(r)) {
+            board_sel = r;
+            snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
+            game_save();
+        } else if (ginfo.total_coins >= d->price) {
+            /* HoverboardBuyButton: se paga y queda elegida */
+            ginfo.total_coins -= d->price;
+            missions_did(M_SPENDCOIN, d->price);
+            board_owned |= 1 << r;
+            board_sel = r;
+            snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+            hud_slide(TR("Has desbloqueado", "You unlocked"), d->name);
+            game_save();
+        } else {
+            snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+            hud_slide(TR("No tienes monedas suficientes", "Not enough coins"), d->name);
+        }
+    }
+    if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); board_preview_end(); open_chars(); }
+    else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); board_preview_end(); open_shop(); }
+    else if (in & (IN_CIRCLE | IN_START)) {
+        snd_play(sfx_tap, 1, 1, 0);
+        board_preview_end();
+        change_state(GS_MENU); ginfo.state = GS_MENU;
+    }
+}
 static void open_chars(void)
 {
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
@@ -2739,11 +2930,12 @@ static void chars_input(unsigned in, int confirm)
         }
     }
     if (in & (IN_L | IN_R)) {
-        /* L y R pasan de una pestana del pie a la otra (Mejoras / Personajes) */
+        /* L y R pasan de una pestana del pie a otra: Mejoras < Personajes > Tablas (sin tablas, las dos a Mejoras) */
         snd_play(sfx_tap, 1, 1, 0);
         char_show_model(ginfo.character);
         char_pose(-1);
-        open_shop();
+        if ((in & IN_R) && gd_nboards > 0) open_boards();
+        else open_shop();
     } else if (in & (IN_CIRCLE | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         change_state(GS_MENU); ginfo.state = GS_MENU;
@@ -3001,6 +3193,9 @@ void game_input(unsigned in)
     case GS_CHARS:
         chars_input(in, confirm);
         break;
+    case GS_BOARDS:
+        boards_input(in, confirm);
+        break;
     case GS_TROPHIES:
         /* rejilla de 4 x 2 */
         if (in & IN_LEFT) ginfo.trophy_sel = (ginfo.trophy_sel + NTROPHIES - 1) % NTROPHIES;
@@ -3233,7 +3428,7 @@ void game_draw(void)
     if (hud_background()) {
         /* tienda, personajes, fin de carrera y pausa de la 1.4: fondo desenfocado en lugar del escenario (no se dibuja
          * el 3D); en personajes, el personaje elegido delante */
-        if (state == GS_CHARS) {
+        if (state == GS_CHARS || state == GS_BOARDS) {
             /* camara del menu acercada al personaje (mirandolo desde donde esta la del menu), para que se vea grande a la
              * derecha, como el modelo de la pantalla de personajes de la 1.4 */
             V3 cp = m34_pos(&nrt[n_mainCam].world);
@@ -3302,7 +3497,7 @@ void game_save(void)
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     fwrite(d, sizeof(d), 1, f);
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
-    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened};
+    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned};
     fwrite(e, sizeof(e), 1, f);
     fclose(f);
 }
@@ -3319,6 +3514,7 @@ void game_load(void)
     int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
     fclose(f);
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
+    if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;
     if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;

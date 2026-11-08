@@ -138,6 +138,23 @@ int data_mesh_find(const char *name);
 int data_mesh_acquire(int mesh);     /* personajes de la 1.4: lee la malla si no esta */
 void data_mesh_release(int mesh);    /* y la libera */
 int data_tex_find(const char *name);
+
+/* tablas de la 1.5.2 (boards.bin): acciones en el orden de HoverboardRendering */
+enum { BA_RUN, BA_LAND, BA_JUMP, BA_HANG, BA_ROLL, BA_LEFT, BA_RIGHT, BA_GRIND, BA_GRINDLAND, BA_GETON, BOARD_NACT };
+enum { BOARD_ALWAYS, BOARD_FREE, BOARD_COINS };
+enum { BOARD_FX_NONE, BOARD_FX_SUPERJUMP, BOARD_FX_LOW };
+#define BOARD_MAX_CLIPS 32
+typedef struct {
+    char name[32], mesh[32];       /* mesh vacio: la tabla de la 1.0 */
+    int price, unlock, effect;
+    int nact[BOARD_NACT];
+    const char (*act[BOARD_NACT])[32];
+} BoardDef;
+extern BoardDef *gd_boards;
+extern int gd_nboards;
+int data_boards_load(void);                                   /* 0 si no hay boards.bin */
+int data_board_clips_load(const char *const *names, int n);   /* de boardanim.bin, las que falten */
+void data_board_clips_free(void);
 int data_mat_clone(const char *base, int tex);
 int data_theme_has_tex(int t);
 void data_theme_set(int on);

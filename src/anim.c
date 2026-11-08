@@ -114,6 +114,57 @@ int anim_set_clip(Animator *a, int s, int ci)
     return 0;
 }
 
+/* estado nuevo con el clip ci (animaciones de la tabla elegida, cargadas aparte). Los huesos que mueva y no
+ * estuvieran ya se anaden con su postura actual como base. Devuelve el indice o -1 */
+int anim_add_state(Animator *a, int ci)
+{
+    if (a->nstates >= ANIM_MAX_STATES || ci < 0 || ci >= gd.nclips) return -1;
+    int s = a->nstates;
+    AnimState *st = &a->st[s];
+    memset(st, 0, sizeof(*st));
+    st->clip = -1;
+    st->speed = 1.0f;
+    st->mix_root = -1;
+    a->nstates++;
+    if (anim_set_clip(a, s, ci) < 0) { a->nstates--; return -1; }
+    Clip *cl = &gd.clips[ci];
+    for (int t = 0; t < cl->ntracks; t++) {
+        int n = st->track_node[t], found = 0;
+        if (n < 0) continue;
+        for (int k = 0; k < a->nbones && !found; k++) found = a->bones[k] == n;
+        if (found) continue;
+        int nb = a->nbones + 1;
+        int *b = realloc(a->bones, sizeof(int) * nb);
+        V3 *bp = realloc(a->bind_pos, sizeof(V3) * nb), *bs = NULL;
+        Q4 *br = NULL;
+        if (b) a->bones = b;
+        if (bp) a->bind_pos = bp;
+        br = realloc(a->bind_rot, sizeof(Q4) * nb);
+        if (br) a->bind_rot = br;
+        bs = realloc(a->bind_scl, sizeof(V3) * nb);
+        if (bs) a->bind_scl = bs;
+        if (!b || !bp || !br || !bs) break;
+        a->bones[a->nbones] = n;
+        a->bind_pos[a->nbones] = nrt[n].lpos; a->bind_rot[a->nbones] = nrt[n].lrot; a->bind_scl[a->nbones] = nrt[n].lscl;
+        a->nbones = nb;
+    }
+    return s;
+}
+
+/* quita los estados desde n (los de la tabla anterior) */
+void anim_trim_states(Animator *a, int n)
+{
+    if (n < 0 || n >= a->nstates) return;
+    for (int q = 0; q < a->nqueue;) {
+        if (a->queue[q].state >= n) {
+            memmove(&a->queue[q], &a->queue[q + 1], (a->nqueue - q - 1) * sizeof(AnimQueued));
+            a->nqueue--;
+        } else q++;
+    }
+    for (int s = n; s < a->nstates; s++) { free(a->st[s].track_node); free(a->st[s].track_mask); }
+    a->nstates = n;
+}
+
 AnimState *anim_get(Animator *a, const char *name)
 {
     int s = anim_find(a, name);

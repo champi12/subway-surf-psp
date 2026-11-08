@@ -36,6 +36,20 @@ static void *load_file(const char *name, int *size)
 
 static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
 
+/* archivo opcional con su ruta (sin error si no esta); se queda en memoria */
+static void *load_file_opt(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    int n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    void *buf = memalign(64, n + 16);
+    if (buf && (int)fread(buf, 1, n, f) != n) { free(buf); buf = NULL; }
+    fclose(f);
+    return buf;
+}
+
 static int load_world(void)
 {
     int size;
@@ -450,15 +464,10 @@ void data_theme_set(int on)
     }
 }
 
-static int load_anims(void)
+/* un clip en formato SSA1 (los datos se usan desde el buffer: no se copian) */
+static void parse_clip(uint8_t *p, Clip *c)
 {
-    uint8_t *b = load_file("anim.bin", NULL);
-    if (!b) return -1;
-    gd.nclips = rd32(b + 4);
-    gd.clips = calloc(gd.nclips, sizeof(Clip));
-    for (int i = 0; i < gd.nclips; i++) {
-        uint8_t *p = b + rd32(b + 8 + 4 * i);
-        Clip *c = &gd.clips[i];
+    {
         int l = p[0]; if (l > 47) l = 47;
         memcpy(c->name, p + 1, l); c->name[l] = 0;
         p += 48;
@@ -483,7 +492,100 @@ static int load_anims(void)
             p += 4 * tr->stride * c->nframes;
         }
     }
+}
+
+static int load_anims(void)
+{
+    uint8_t *b = load_file("anim.bin", NULL);
+    if (!b) return -1;
+    gd.nclips = rd32(b + 4);
+    gd.clips = calloc(gd.nclips, sizeof(Clip));
+    for (int i = 0; i < gd.nclips; i++) parse_clip(b + rd32(b + 8 + 4 * i), &gd.clips[i]);
     return 0;
+}
+
+/* ---- tablas de la 1.5.2: boards.bin (la lista) y boardanim.bin (sus animaciones, solo las de la elegida) ---- */
+BoardDef *gd_boards;
+int gd_nboards;
+
+int data_boards_load(void)
+{
+    uint8_t *b = load_file_opt("data/boards.bin");
+    if (!b || memcmp(b, "SSB1", 4)) return 0;
+    int n = rd32(b + 4);
+    gd_boards = calloc(n ? n : 1, sizeof(BoardDef));
+    uint8_t *p = b + 8;
+    for (int i = 0; i < n; i++) {
+        BoardDef *d = &gd_boards[i];
+        memcpy(d->name, p, 32); d->name[31] = 0;
+        memcpy(d->mesh, p + 32, 32); d->mesh[31] = 0;
+        d->price = (int)rd32(p + 64); d->unlock = rd32(p + 68); d->effect = rd32(p + 72);
+        p += 76;
+        for (int a = 0; a < BOARD_NACT; a++) {
+            d->nact[a] = rd32(p); p += 4;
+            d->act[a] = (const char (*)[32])p;   /* nombres de 32 bytes, terminados en 0 */
+            p += 32 * d->nact[a];
+        }
+    }
+    gd_nboards = n;
+    return n;
+}
+
+static int clips_base = -1;        /* gd.nclips antes de las animaciones de la tabla */
+static uint8_t *board_clip_buf[BOARD_MAX_CLIPS];
+static int board_nbuf;
+
+void data_board_clips_free(void)
+{
+    if (clips_base < 0) return;
+    for (int i = 0; i < board_nbuf; i++) free(board_clip_buf[i]);
+    for (int c = clips_base; c < gd.nclips; c++) { free(gd.clips[c].tracks); free(gd.clips[c].events); }
+    board_nbuf = 0;
+    gd.nclips = clips_base;
+}
+
+/* lee de boardanim.bin los clips con esos nombres que no esten ya cargados; devuelve cuantos */
+int data_board_clips_load(const char *const *names, int n)
+{
+    if (clips_base < 0) clips_base = gd.nclips;
+    FILE *f = fopen("data/boardanim.bin", "rb");
+    if (!f) return 0;
+    uint8_t h[8];
+    int added = 0;
+    if (fread(h, 1, 8, f) == 8 && !memcmp(h, "SSA1", 4)) {
+        int nc = rd32(h + 4);
+        uint32_t *offs = malloc(4 * (nc + 1));
+        if (offs && (int)fread(offs, 4, nc, f) == nc) {
+            fseek(f, 0, SEEK_END);
+            offs[nc] = ftell(f);
+            for (int k = 0; k < nc && board_nbuf < BOARD_MAX_CLIPS; k++) {
+                char nm[49];
+                fseek(f, offs[k], SEEK_SET);
+                if (fread(nm, 1, 48, f) != 48) break;
+                int l = (unsigned char)nm[0]; if (l > 47) l = 47;
+                memmove(nm, nm + 1, l); nm[l] = 0;
+                int want = 0;
+                for (int i = 0; i < n && !want; i++) want = names[i] && !strcmp(names[i], nm);
+                for (int c = 0; c < gd.nclips && want; c++) if (!strcmp(gd.clips[c].name, nm)) want = 0;
+                if (!want) continue;
+                uint32_t len = offs[k + 1] - offs[k];
+                uint8_t *buf = memalign(16, len);
+                if (!buf) break;
+                fseek(f, offs[k], SEEK_SET);
+                if (fread(buf, 1, len, f) != len) { free(buf); break; }
+                Clip *nc2 = realloc(gd.clips, sizeof(Clip) * (gd.nclips + 1));
+                if (!nc2) { free(buf); break; }
+                gd.clips = nc2;
+                memset(&gd.clips[gd.nclips], 0, sizeof(Clip));
+                parse_clip(buf, &gd.clips[gd.nclips++]);
+                board_clip_buf[board_nbuf++] = buf;
+                added++;
+            }
+        }
+        free(offs);
+    }
+    fclose(f);
+    return added;
 }
 
 static int load_sfx(void)

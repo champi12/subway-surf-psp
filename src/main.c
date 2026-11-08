@@ -270,6 +270,16 @@ int main(int argc, char **argv)
         if (frame_no == 560) pr |= PSP_CTRL_START;                         /* pausa */
         if (frame_no == 620) pr |= PSP_CTRL_CROSS;                         /* seguir */
         { static int go; go = ginfo.state == GS_GAMEOVER ? go + 1 : 0; if (go == 60 || go == 120 || go == 180) pr |= PSP_CTRL_CROSS; }
+#elif defined(AT_BOARDS)
+        /* prueba de tablas: personajes, R a tablas, una a la derecha (Lowrider), comprarla, menu, jugar y tabla */
+        if (frame_no == 30) ginfo.total_coins = 400000;
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 70) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no == 100) pr |= PSP_CTRL_RIGHT;
+        if (frame_no == 140) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 170) pr |= PSP_CTRL_CIRCLE;
+        if (ginfo.state == GS_MENU && frame_no > 200 && frame_no < 260) pr |= PSP_CTRL_CROSS;
+        { extern void game_debug_powerup(int k); if (frame_no == 330 || frame_no == 900) game_debug_powerup(4); }
 #elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;

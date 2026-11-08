@@ -3,7 +3,8 @@
 #define GAME_H
 #include "vmath.h"
 
-enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS, GS_TROPHIES };
+enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS, GS_TROPHIES,
+       GS_BOARDS };
 
 /* botones (ya filtrados: solo los recien pulsados) */
 enum { IN_LEFT = 1, IN_RIGHT = 2, IN_UP = 4, IN_DOWN = 8, IN_BOARD = 16, IN_START = 32, IN_CROSS = 64, IN_CIRCLE = 128,
@@ -27,6 +28,7 @@ typedef struct {
     int gameover_coins;
     int tokens, character;        /* tokens: fichas de personaje recogidas (total); character: personaje elegido */
     int char_sel;                 /* personaje marcado en la pantalla de personajes */
+    int board_sel;                /* tabla marcada en la pantalla de tablas */
     int trophy_sel;               /* trofeo marcado en la pantalla de trofeos */
     int missions_open;            /* ventana de misiones abierta en el menu */
     int popup;                    /* ventana encima del menu (POPUP_...) */
@@ -47,6 +49,13 @@ int shop_amount(int i);
  * Lucy/Ninja/Frank/King/Frizzy con monedas */
 enum { UL_FREE, UL_TOKENS, UL_COINS };
 int char_count(void);
+/* tablas de la 1.5.2 (fila = orden de la tienda); board_count 0 si no hay boards.bin */
+int board_count(void);
+const char *board_name(int row);
+int board_price(int row);
+int board_is_owned(int row);
+int board_is_selected(int row);
+int board_effect(int row);
 const char *char_name(int i);
 const char *char_thumb(int row);   /* nombre de su miniatura (thumb_<nombre> en CharThumbs) */
 int char_unlock_type(int i);

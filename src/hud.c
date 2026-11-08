@@ -490,7 +490,8 @@ static int bg_tex = -2, bg_loaded;
 static int bg_screen(void)
 {
     if (ginfo.paused) return ginfo.countdown <= 0;
-    return ginfo.state == GS_SHOP || ginfo.state == GS_CHARS || ginfo.state == GS_GAMEOVER || ginfo.state == GS_TROPHIES;
+    return ginfo.state == GS_SHOP || ginfo.state == GS_CHARS || ginfo.state == GS_GAMEOVER || ginfo.state == GS_TROPHIES ||
+           ginfo.state == GS_BOARDS;
 }
 int hud_background(void)
 {
@@ -803,6 +804,62 @@ static void thumbs_release(void)
     if (thumbs_loaded && ginfo.state != GS_CHARS) { r_tex_unload(atl[a_thumbs].tex); thumbs_loaded = 0; }
 }
 
+/* ------------------------------------------------------------ pantalla de tablas (BoardScreen de la 1.5.2)
+ * como la de personajes: la tabla marcada con el personaje encima a la derecha (3D), nombre, efecto, boton de
+ * comprar o elegir y el carrusel con las tablas en pequeno (miniaturas del conversor: 256x128, 32 KB, cargadas
+ * solo aqui) */
+static int a_bthumbs = -2, bthumbs_loaded;
+static void draw_boards(void)
+{
+    char buf[48];
+    bg_fallback();
+    coin_box(SCR_W - 8, 15);
+    if (a_bthumbs == -2) a_bthumbs = ui_atlas("BoardThumbs");
+    int i = ginfo.board_sel, nb = board_count();
+    lab(0, 14, 8, 30, C_NAME, 0, 0, board_name(i));
+    int fx = board_effect(i);
+    if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : TR("Va agachado", "Stays Low"));
+    /* boton de comprar / elegir (HoverboardBuyButton / HoverboardSelectButton) */
+    float bx = U(100), by = 112;
+    ui_sliced(a_ui, "background_character_buy", bx - U(77), by - U(26), U(154), U(52), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_2_outline", bx - U(81), by - U(30), U(166), U(64), UIS, C_OUTLINE);
+    if (board_is_owned(i)) {
+        labc(0, bx, by, 20, C_WHITE, 1, 1, board_is_selected(i) ? TR("ELEGIDA", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
+    } else {
+        snprintf(buf, sizeof(buf), "%d", board_price(i));
+        float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
+        spr_c("icon_coin_large", px - U(16), by, U(29), U(28), C_WHITE);
+        labc(0, px, by, 20, ginfo.total_coins >= board_price(i) ? C_WHITE : 0xff8080ffu, 0, 1, buf);
+    }
+    /* carrusel: la marcada en el centro a tamano completo, dos a cada lado mas pequenas */
+    const float cx = 150, cy = 172, step = 56;
+    spr_c("background_superglow", cx, cy, 92, 92, 0x60ffffffu);
+    for (int k = -2; k <= 2 && a_bthumbs >= 0; k++) {
+        if (nb < 5 && (k < -(nb - 1) / 2 || k > nb / 2)) continue;
+        int j = ((i + k) % nb + nb) % nb;
+        float sc = k ? 0.78f : 1.0f, w = 64 * sc, x = cx + k * step;
+        snprintf(buf, sizeof(buf), "board_%d", j);
+        USprite *sp = find_sprite(a_bthumbs, buf);
+        if (sp) {
+            r_sprite(atl[a_bthumbs].tex, x - w * 0.5f, cy - w * 0.5f, w, w, sp->ox / atl[a_bthumbs].w,
+                     sp->oy / atl[a_bthumbs].h, (sp->ox + sp->ow) / atl[a_bthumbs].w, (sp->oy + sp->oh) / atl[a_bthumbs].h,
+                     k ? 0xffd8d8d8u : C_WHITE);
+            bthumbs_loaded = 1;
+        }
+        if (board_is_selected(j)) spr_c("icon_character_selected", x + w * 0.5f - 6, cy + w * 0.5f - 8, 15, 15, C_WHITE);
+        else if (board_is_owned(j)) spr_c("icon_character_owned", x + w * 0.5f - 6, cy + w * 0.5f - 8, 15, 15, C_WHITE);
+    }
+    spr_c("button_arrow_left", cx - 2.5f * step - 4, cy, 14, 20, C_WHITE);
+    spr_c("button_arrow_right", cx + 2.5f * step + 4, cy, 14, 20, C_WHITE);
+    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
+    foot_btn(0, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L");
+    foot_btn(100, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
+}
+static void bthumbs_release(void)
+{
+    if (bthumbs_loaded && ginfo.state != GS_BOARDS) { r_tex_unload(atl[a_bthumbs].tex); bthumbs_loaded = 0; }
+}
+
 static void draw_chars(void)
 {
     char buf[48];
@@ -863,8 +920,13 @@ static void draw_chars(void)
         lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
     }
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
-    foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
-    foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
+    if (board_count() > 0) {
+        foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L");
+        foot_btn(100, "button_fill_menuShop", "icon_hoverboard", 32, 20, TR("Tablas", "Boards"), "R");
+    } else {
+        foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
+        foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
+    }
 }
 
 /* las cajas y lo que sale de ellas: los modelos 3D de la 1.4 (MysteryBoxHandler) que el conversor dibuja una vez,
@@ -1109,11 +1171,13 @@ void hud_draw(void)
     if (a_thumbs == -2) a_thumbs = ui_atlas("CharThumbs");
     if (a_rewards == -2) a_rewards = ui_atlas("RewardIcons");
     thumbs_release();
+    bthumbs_release();
     rewards_release();
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
     case GS_CHARS: draw_chars(); break;
+    case GS_BOARDS: draw_boards(); break;
     case GS_TROPHIES: draw_trophies(); break;
     case GS_GAMEOVER: draw_gameover(); break;
     default:

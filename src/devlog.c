@@ -326,8 +326,8 @@ void dlog_init(void)
 static const char *state_name(int s)
 {
     static const char *n[] = {"MENU", "INTRO", "CARRERA", "JETPACK", "CAYENDO", "MUERTE", "FIN", "CHECKPOINT", "TIENDA",
-                              "PERSONAJES", "TROFEOS"};
-    return s >= 0 && s < 11 ? n[s] : "?";
+                              "PERSONAJES", "TROFEOS", "TABLAS"};
+    return s >= 0 && s < (int)(sizeof(n) / sizeof(n[0])) ? n[s] : "?";
 }
 
 static struct {

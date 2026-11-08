@@ -81,6 +81,15 @@ llame: reconoce cada APK por dentro (`tools/apk_kind.py`). Tiene que ser la **1.
 2012); otras versiones no traen el tema. Al terminar, `actualizar.sh` dice si el contenido de la 1.4 quedó incluido.
 Sin él, el juego funciona igual con el contenido de la 1.0.
 
+### Tablas de la 1.5.2
+
+Con el APK de la **1.5.2**, en Personajes R abre las **tablas** (`BoardScreen`): Hoverboard (la de siempre), Starboard
+(gratis), Superhero (8.000), Freestyler (45.000), Big Kahuna (65.000), Bouncer (280.000, súper salto) y Lowrider
+(320.000, va agachado: pasa por debajo de las barreras sin rodar). La elegida es la que sale al usar el power-up, con
+sus propias animaciones (Lowrider tumbado, Freestyler de lado...). El conversor deja la lista en `boards.bin` con
+precio, efecto y animaciones de cada una; el juego solo lee las animaciones (`boardanim.bin`), la malla y la textura
+de la tabla elegida.
+
 ### Mundo de la 1.5.2
 
 Si además está el APK de la **1.5.2** (la de Navidad de 2012), el conversor monta un segundo mundo en `data/w15/`:
