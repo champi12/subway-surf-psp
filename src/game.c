@@ -3261,6 +3261,12 @@ void game_draw(void)
         scene_draw_subtree(n_sky);
     }
     SECT(1);
+    /* debajo del suelo de las vias (y = 0; lo mas bajo, los fosos, llega a -6): si queda una rendija se ve suelo */
+#ifdef AT_CRACKS
+    if (state != GS_MENU) r_draw_underlay(-32, 32, -7, r_cam_pos.z - 30, r_cam_pos.z + r_fog_end, 0xff00ff00);   /* verde */
+#else
+    if (state != GS_MENU) r_draw_underlay(-32, 32, -7, r_cam_pos.z - 30, r_cam_pos.z + r_fog_end, r_clear_color);
+#endif
     if (state != GS_MENU) for (int i = 0; i < track_nactive; i++) {
         extern int track_chunk_node(int ci);
         scene_draw_subtree(track_chunk_node(track_active[i]));

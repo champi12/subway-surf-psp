@@ -1076,6 +1076,42 @@ static int cmp_defer(const void *a, const void *b)
     return da < db ? 1 : (da > db ? -1 : 0);
 }
 
+/* franja del color del suelo por debajo de las vias (y), curvada como el escenario. No se ve nunca salvo por una
+ * rendija de 1 pixel entre dos trozos del suelo: en la consola real el GE redondea las juntas un poco distinto que
+ * el emulador y por ahi se colaba el cielo (lineas blancas en el suelo al correr). 2 triangulos por tramo */
+#define UL_SEG 24
+void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned int abgr)
+{
+    static MVert v[2 * (UL_SEG + 1)];
+    static uint16_t idx[UL_SEG * 6];
+    for (int i = 0; i <= UL_SEG; i++) {
+        float z = z0 + (z1 - z0) * i / UL_SEG;
+        v[2 * i] = (MVert){{32768, 0, 0, 0}, 0, 0, x0, y, z};
+        v[2 * i + 1] = (MVert){{32768, 0, 0, 0}, 0, 0, x1, y, z};
+        if (i < UL_SEG) {
+            uint16_t *t = &idx[i * 6], a = 2 * i;
+            t[0] = a; t[1] = a + 1; t[2] = a + 2; t[3] = a + 1; t[4] = a + 3; t[5] = a + 2;
+        }
+    }
+    Batch b;
+    if (list_full(LIST_RESERVE) || !batch_begin(&b, 2 * (UL_SEG + 1), 256, UL_SEG * 6 + 512)) return;
+    model_identity();
+    transform_into(&b, v, 2 * (UL_SEG + 1), &r_view, -0.0005f / P00, -0.0003f / P11);
+    batch_tris(&b, idx, UL_SEG * 6);
+    if (b.ni > 0) {
+        sceGuDisable(GU_TEXTURE_2D);
+        sceGuDisable(GU_CULL_FACE);
+        sceGuColor(abgr);
+        sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
+                       b.ni, b.idx, b.verts);
+        sceGuEnable(GU_CULL_FACE);
+        sceGuEnable(GU_TEXTURE_2D);
+        cur_color = abgr;
+        r_stat_draws++;
+    }
+    batch_commit(&b);
+}
+
 void r_flush_transparent(void)
 {
     model_identity();
