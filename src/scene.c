@@ -789,6 +789,9 @@ static void perform_selection(int n, int *visit, int *nv)
         int cnt = c[0];
         int num = (int)floorf(nrt[n].world.m[11] / 3000.0f) + randhold_start;
         int pick = randhold_seq[((randhold_start + num) % 21 + 21) % 21];
+#ifdef AT_RANDHOLD
+        pick = AT_RANDHOLD;   /* prueba: siempre el mismo ambiente (2 = subterraneo) */
+#endif
         for (int i = 0; i < cnt; i++) {
             int t = (int)c[1 + i];
             if (t < 0) continue;
