@@ -187,7 +187,11 @@ int main(int argc, char **argv)
         unsigned int b = pad.Buttons, pr = b & ~prev_buttons;
         prev_buttons = b;
         /* el stick analogico funciona como un deslizamiento del dedo */
+#if defined(NO_ANALOG) && NO_ANALOG
+        int ax = 0, ay = 0, sdir = 0;   /* NOANALOG=1: stick ignorado (consolas con el stick roto que se mueve solo) */
+#else
         int ax = pad.Lx - 128, ay = pad.Ly - 128, sdir = 0;
+#endif
         if (ax < -80) sdir = 1; else if (ax > 80) sdir = 2; else if (ay < -80) sdir = 3; else if (ay > 80) sdir = 4;
         int sl = 0, sr = 0, su = 0, sd = 0;
         if (sdir && sdir != stick_state) { sl = sdir == 1; sr = sdir == 2; su = sdir == 3; sd = sdir == 4; }

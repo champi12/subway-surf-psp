@@ -12,6 +12,9 @@ endif
 ifdef AUTOTEST
 CFLAGS += -DAUTOTEST=$(AUTOTEST)
 endif
+ifdef NOANALOG
+CFLAGS += -DNO_ANALOG=$(NOANALOG)
+endif
 ifdef MIPMAPS
 CFLAGS += -DMIPMAPS=$(MIPMAPS)
 endif

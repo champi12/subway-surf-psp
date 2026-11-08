@@ -11,6 +11,7 @@
 # Tambien se puede indicar con APK14=ruta.apk ./actualizar.sh ...
 #
 # Sale la version publica (sin devlog). Para la de pruebas (devlog.txt y crash.txt): DEVLOG=1 ./actualizar.sh ...
+# Sin el stick analogico (consolas con el stick roto): NOANALOG=1 ./actualizar.sh ... (se puede juntar con DEVLOG=1)
 set -e
 cd "$(dirname "$0")"
 
