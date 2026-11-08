@@ -1364,10 +1364,14 @@ def fix_coin_glow(ex):
     """El brillo de las monedas (material "glow gold", Additive falloff) es un trocito de 26x26 pixeles de la hoja
     'main' de 1024x1024, pegado a otros dibujos. En la PSP la hoja va a 512 y el filtrado mezcla esos vecinos en el
     borde del plano: se veia un cuadro semitransparente con el borde de colores. Se saca a su propia textura de 32x32
-    (2 KB) con el borde a negro (en Additive el negro no suma nada) y el material apunta a ella."""
-    mi = next((i for i, m in enumerate(ex.materials) if m['name'] == 'glow gold'), None)
-    if mi is None or ex.materials[mi]['tex'] < 0:
-        return
+    (2 KB) con el borde a negro (en Additive el negro no suma nada) y el material apunta a ella.
+    Con el mundo de otra version (data/w15) hay mas de un material asi (el de la 1.0 y el de la 1.5.2): todos."""
+    for mi, mat in enumerate(ex.materials):
+        if mat['name'] == 'glow gold' and mat['tex'] >= 0:
+            fix_glow_material(ex, mi)
+
+
+def fix_glow_material(ex, mi):
     box = None
     for n in ex.nodes:
         comps = n['go']['comps']
@@ -1963,7 +1967,7 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
@@ -2039,7 +2043,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None):
                 names10.add(c.read_typetree()['m_Name'])
         boards = export_boards(sc15, ex, names10)
     print('Exportando interfaz...')
-    ui = export_ui(sc, ex, sc14, boards)
+    # los otros mundos (data/w15) tienen su propio ui.bin: tambien llevan las miniaturas de las tablas
+    ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui)
     print('Exportando mallas...')
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)
@@ -2094,6 +2099,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None):
             export_halloween(sc14, outdir, ex, hq, boards)
         elif boards is not None:
             export_extras_only(outdir, hq, boards)
+    ex.boards = boards
     return ex
 
 
@@ -2125,11 +2131,11 @@ def main():
         print('Descomprimiendo el APK de la 1.5.2...')
         sc15 = Scene(unpack_apk(apk15))
     print('== Mundo clasico (data/)')
-    export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     print('Listo.')

@@ -776,7 +776,21 @@ static void recursive_selection(int parent, int sort_spawn)
  * unidades), desde un punto al azar en cada carrera (RandomizerHold.Initialize) */
 static const unsigned char randhold_seq[21] = {0, 1, 2, 3, 0, 4, 5, 1, 0, 2, 4, 1, 3, 2, 0, 5, 1, 0, 3, 1, 3};
 static int randhold_start;
-void scene_randhold_init(void) { randhold_start = rnd_range(0, 21); }
+/* tramos en los que ha salido el subterraneo (z inicial): por detras se dibuja un fondo del color del tunel */
+#define MAX_SUBWAY 32
+static float subway_z[MAX_SUBWAY];
+static int nsubway;
+void scene_randhold_init(void) { randhold_start = rnd_range(0, 21); nsubway = 0; }
+int scene_subway_ranges(const float **z) { *z = subway_z; return nsubway; }
+static void subway_add(float z)
+{
+    for (int i = 0; i < nsubway; i++) if (subway_z[i] == z) return;
+    if (nsubway < MAX_SUBWAY) { subway_z[nsubway++] = z; return; }
+    /* lleno: se sustituye el que mas atras se haya quedado */
+    int k = 0;
+    for (int i = 1; i < nsubway; i++) if (subway_z[i] < subway_z[k]) k = i;
+    subway_z[k] = z;
+}
 
 static void perform_selection(int n, int *visit, int *nv)
 {
@@ -795,7 +809,10 @@ static void perform_selection(int n, int *visit, int *nv)
         for (int i = 0; i < cnt; i++) {
             int t = (int)c[1 + i];
             if (t < 0) continue;
-            if (i == pick) { if (*nv < MAXV) visit[(*nv)++] = t; }
+            if (i == pick) {
+                if (*nv < MAXV) visit[(*nv)++] = t;
+                if (strstr(gd.strings[gd.nodes[t].name], "subway")) subway_add(nrt[n].world.m[11]);
+            }
             else scene_set_active_recursive(t, 0);
         }
         return;

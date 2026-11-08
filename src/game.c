@@ -300,6 +300,9 @@ static void score_missions(int num, int from_meters)
 /* power-up recogido: jetpack, zapatillas, iman, multiplicador (OneOfEachPowerup: el producto de los cuatro) */
 static void powerup_picked(int k)
 {
+    static const char *const kn[] = {"iman", "zapatillas", "jetpack", "x2"};
+    dlog("POWERUP %s cogido", k >= 0 && k < 4 ? kn[k] : "?");
+    (void)kn;
     run_pickups++;
     if (k >= 0) run_pk[k]++;
     missions_did(M_ONEOFEACHPOWERUP, run_pk[0] * run_pk[1] * run_pk[2] * run_pk[3]);
@@ -340,7 +343,7 @@ static void play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); sn
  * de las que solo se cargan las de la tabla elegida. La normal es la de la 1.0 (su malla y su textura main); las
  * demas cambian la malla de la tabla del personaje (chars14.bin, se lee al usarla) y su material (board_props) */
 static int board_sel = -1, board_owned;       /* fila de boards.bin; bit i: comprada */
-static int board_applied = -2, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
+static int board_applied = -2, board_applied_full, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
 static uint32_t *hb_mesh_comp, hb_mesh0, hb_mat0;
 
 static int board_default(void)
@@ -382,11 +385,13 @@ static void board_find_mesh_comp(void)
     }
 }
 
-/* pone la tabla i en el personaje: malla, material y sus animaciones (las de la anterior se liberan) */
-static void board_apply(int i)
+/* pone la tabla i en el personaje: malla, material y sus animaciones (las de la anterior se liberan). full = 0: solo
+ * la de correr (vista previa del carrusel: cada animacion que se lee de la Memory Stick es un tiron) */
+static void board_apply_mode(int i, int full)
 {
-    if (gd_nboards <= 0 || i < 0 || i >= gd_nboards || i == board_applied) return;
+    if (gd_nboards <= 0 || i < 0 || i >= gd_nboards || (i == board_applied && (board_applied_full || !full))) return;
     board_applied = i;
+    board_applied_full = full;
     const BoardDef *d = &gd_boards[i];
     /* animaciones: fuera las de la tabla anterior, dentro las de esta */
     if (board_base_states < 0) board_base_states = anim_char.nstates;
@@ -397,7 +402,7 @@ static void board_apply(int i)
     const char *names[BOARD_MAX_CLIPS];
     int n = 0;
     for (int a = 0; src && a < BOARD_NACT; a++)
-        for (int k = 0; k < src->nact[a] && n < BOARD_MAX_CLIPS; k++) {
+        for (int k = 0; k < src->nact[a] && n < BOARD_MAX_CLIPS && (full || a == BA_RUN); k++) {
             int dup = 0;
             for (int j = 0; j < n && !dup; j++) dup = !strcmp(names[j], src->act[a][k]);
             if (!dup) names[n++] = src->act[a][k];
@@ -420,9 +425,10 @@ static void board_apply(int i)
             board_mesh_cur = m;
         }
     }
-    dlog("TABLA %s (%d animaciones propias cargadas)", d->name, added);
+    dlog("TABLA %s (%d animaciones propias cargadas%s)", d->name, added, full ? "" : ", vista previa");
     (void)added;
 }
+static void board_apply(int i) { board_apply_mode(i, 1); }
 
 /* ------------------------------------------------------------ animaciones del personaje */
 static int rnd_i(int n) { return rnd_range(0, n); }
@@ -2831,7 +2837,7 @@ int board_effect(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row]
 /* el personaje de pie en la tabla marcada, de cara a la camara (como la pose de la pantalla de personajes) */
 static void board_preview(int row)
 {
-    board_apply(row);
+    board_apply_mode(row, 0);
     set_node_active(n_meshHoverboard, 1);
     nrt[n_sprayCan].rend = 0;
     nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);

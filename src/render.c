@@ -1096,14 +1096,15 @@ static int cmp_defer(const void *a, const void *b)
  * rendija de 1 pixel entre dos trozos del suelo: en la consola real el GE redondea las juntas un poco distinto que
  * el emulador y por ahi se colaba el cielo (lineas blancas en el suelo al correr). 2 triangulos por tramo */
 #define UL_SEG 24
-void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned int abgr)
+/* banda entre los puntos (x0, y0) y (x1, y1) de la seccion, de z0 a z1 (suelo, paredes o techo de fondo) */
+void r_draw_backdrop(float x0, float y0, float x1, float y1, float z0, float z1, unsigned int abgr)
 {
     static MVert v[2 * (UL_SEG + 1)];
     static uint16_t idx[UL_SEG * 6];
     for (int i = 0; i <= UL_SEG; i++) {
         float z = z0 + (z1 - z0) * i / UL_SEG;
-        v[2 * i] = (MVert){{32768, 0, 0, 0}, 0, 0, x0, y, z};
-        v[2 * i + 1] = (MVert){{32768, 0, 0, 0}, 0, 0, x1, y, z};
+        v[2 * i] = (MVert){{32768, 0, 0, 0}, 0, 0, x0, y0, z};
+        v[2 * i + 1] = (MVert){{32768, 0, 0, 0}, 0, 0, x1, y1, z};
         if (i < UL_SEG) {
             uint16_t *t = &idx[i * 6], a = 2 * i;
             t[0] = a; t[1] = a + 1; t[2] = a + 2; t[3] = a + 1; t[4] = a + 3; t[5] = a + 2;
@@ -1126,6 +1127,11 @@ void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned i
         r_stat_draws++;
     }
     batch_commit(&b);
+}
+
+void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned int abgr)
+{
+    r_draw_backdrop(x0, y, x1, y, z0, z1, abgr);
 }
 
 void r_flush_transparent(void)

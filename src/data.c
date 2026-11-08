@@ -291,7 +291,8 @@ int data_hw_ok;
 int data_theme_init_tex(void)
 {
     char path[256];
-    snprintf(path, sizeof(path), "%s/hw_tex.bin", basedir);
+    /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
+    snprintf(path, sizeof(path), "data/hw_tex.bin");
     hwtexfile = fopen(path, "rb");
     if (!hwtexfile) return 0;
     int n0 = gd.ntex;
@@ -544,26 +545,47 @@ void data_board_clips_free(void)
     gd.nclips = clips_base;
 }
 
+/* indice de boardanim.bin (nombre y posicion de cada clip): se lee una vez. Antes se buscaba cada vez con una
+ * lectura por clip y en la consola eran ~220 ms cada vez que se movia el carrusel de tablas */
+static int bclip_n = -1;
+static uint32_t *bclip_off;
+static char (*bclip_name)[48];
+
+static void board_clip_index(FILE *f)
+{
+    bclip_n = 0;
+    uint8_t h[8];
+    if (fread(h, 1, 8, f) != 8 || memcmp(h, "SSA1", 4)) return;
+    int nc = rd32(h + 4);
+    bclip_off = malloc(4 * (nc + 1));
+    bclip_name = malloc(48 * (nc ? nc : 1));
+    if (!bclip_off || !bclip_name || (int)fread(bclip_off, 4, nc, f) != nc) return;
+    fseek(f, 0, SEEK_END);
+    bclip_off[nc] = ftell(f);
+    for (int k = 0; k < nc; k++) {
+        char nm[48];
+        fseek(f, bclip_off[k], SEEK_SET);
+        if (fread(nm, 1, 48, f) != 48) return;
+        int l = (unsigned char)nm[0]; if (l > 47) l = 47;
+        memcpy(bclip_name[k], nm + 1, l); bclip_name[k][l] = 0;
+    }
+    bclip_n = nc;
+}
+
 /* lee de boardanim.bin los clips con esos nombres que no esten ya cargados; devuelve cuantos */
 int data_board_clips_load(const char *const *names, int n)
 {
     if (clips_base < 0) clips_base = gd.nclips;
     FILE *f = fopen("data/boardanim.bin", "rb");
     if (!f) return 0;
-    uint8_t h[8];
+    if (bclip_n < 0) board_clip_index(f);
     int added = 0;
-    if (fread(h, 1, 8, f) == 8 && !memcmp(h, "SSA1", 4)) {
-        int nc = rd32(h + 4);
-        uint32_t *offs = malloc(4 * (nc + 1));
-        if (offs && (int)fread(offs, 4, nc, f) == nc) {
-            fseek(f, 0, SEEK_END);
-            offs[nc] = ftell(f);
+    {
+        int nc = bclip_n;
+        uint32_t *offs = bclip_off;
+        if (nc > 0) {
             for (int k = 0; k < nc && board_nbuf < BOARD_MAX_CLIPS; k++) {
-                char nm[49];
-                fseek(f, offs[k], SEEK_SET);
-                if (fread(nm, 1, 48, f) != 48) break;
-                int l = (unsigned char)nm[0]; if (l > 47) l = 47;
-                memmove(nm, nm + 1, l); nm[l] = 0;
+                const char *nm = bclip_name[k];
                 int want = 0;
                 for (int i = 0; i < n && !want; i++) want = names[i] && !strcmp(names[i], nm);
                 for (int c = 0; c < gd.nclips && want; c++) if (!strcmp(gd.clips[c].name, nm)) want = 0;
@@ -582,7 +604,6 @@ int data_board_clips_load(const char *const *names, int n)
                 added++;
             }
         }
-        free(offs);
     }
     fclose(f);
     return added;

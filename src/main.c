@@ -275,7 +275,11 @@ int main(int argc, char **argv)
         if (frame_no == 30) ginfo.total_coins = 400000;
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no == 70) pr |= PSP_CTRL_RTRIGGER;
+#ifdef AT_BOARD_LEFT
+        if (frame_no == 100 || frame_no == 120) pr |= PSP_CTRL_LEFT;   /* dos a la izquierda: Freestyler */
+#else
         if (frame_no == 100) pr |= PSP_CTRL_RIGHT;
+#endif
         if (frame_no == 140) pr |= PSP_CTRL_CROSS;
         if (frame_no == 170) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 200 && frame_no < 260) pr |= PSP_CTRL_CROSS;

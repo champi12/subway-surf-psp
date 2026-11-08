@@ -24,6 +24,7 @@ void r_draw_skinned(int mesh, const M34 *bones, int nbones, const int *mats, int
 /* sombra/plano proyectado en el suelo (quad) */
 void r_flush_transparent(void);
 void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned int abgr);
+void r_draw_backdrop(float x0, float y0, float x1, float y1, float z0, float z1, unsigned int abgr);
 /* estadisticas del ultimo frame */
 extern int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_hw, r_stat_seam;
 extern int r_stat_skin_cpu;   /* vertices de personajes con la piel calculada en la CPU (los caros) */
