@@ -353,7 +353,7 @@ class Exporter:
                 elif cl == 'TutorialEvent':
                     txt = self.strings.get(f.get('text') or '')
                     out.append((C_TUTORIAL, [int(bool(f['displayText'])), txt, int(bool(f['displayMesh'])),
-                                             self.ref(o, f['mesh']) & 0xffffffff, f2u(f['direction']),
+                                             self.ref(o, f.get('mesh')) & 0xffffffff, f2u(f['direction']),
                                              f2u(f['time']), int(bool(f['endTutorial'])),
                                              int(bool(f['allowHoverboard']))]))
                 elif cl == 'CurvePoint':
@@ -843,15 +843,46 @@ def write_wav(path, a, rate):
         w.writeframes(np.clip(a, -32768, 32767).astype('<i2').tobytes())
 
 
+def streamed_audio(ao):
+    """AudioClip de Unity 3.5 con el sonido aparte, en el .resS de su archivo (m_Stream = 2; en la 1.5.2 la musica
+    del menu). UnityPy no lee bien su typetree: nombre, formato, tipo, 3D/hardware, stream, tamano y posicion."""
+    raw = ao.get_raw_data()
+    n = struct.unpack_from('<I', raw, 0)[0]
+    if n <= 0 or n > 64 or 4 + n > len(raw):
+        return None, None
+    name = raw[4:4 + n].decode('utf-8', 'replace')
+    p = 4 + n + (-n % 4)
+    if p + 20 > len(raw):
+        return None, None
+    stream, size, off = struct.unpack_from('<III', raw, p + 12)
+    # el .resS va junto al archivo .assets del clip, en la carpeta de datos del APK
+    path = None
+    base = os.path.basename(getattr(ao.assets_file, 'name', '') or '')
+    folder = getattr(getattr(ao.assets_file, 'parent', None), 'path', None)
+    if base and folder and os.path.exists(os.path.join(folder, base + '.resS')):
+        path = os.path.join(folder, base + '.resS')
+    if stream != 2 or path is None:
+        return None, None
+    with open(path, 'rb') as f:
+        f.seek(off)
+        return name, f.read(size)
+
+
 def export_audio(ex, outdir):
     os.makedirs(os.path.join(outdir, 'music'), exist_ok=True)
     os.makedirs(os.path.join(outdir, 'wav'), exist_ok=True)
     names = []
     blobs = []
     for ao in ex.audio:
-        d = ao.read()
-        raw = bytes(d.m_AudioData or b'')
-        name = d.m_Name
+        try:
+            d = ao.read()
+            raw = bytes(d.m_AudioData or b'')
+            name = d.m_Name
+        except Exception:
+            name, raw = streamed_audio(ao)
+            if name is None:
+                print('  AVISO: no se puede leer un AudioClip (%d)' % ao.path_id)
+                continue
         names.append(name)
         if raw[:4] == b'FORM':
             r = decode_aiff(raw)
