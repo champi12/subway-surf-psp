@@ -45,7 +45,7 @@ C_MESH, C_SKIN, C_BOX, C_SPHERE, C_CAPSULE, C_TRACKCHUNK, C_RANDOMIZER, C_RANDTA
     C_SPAWNPOINT, C_RANDOFFSET, C_MIRROR, C_MOVINGTRAIN, C_MOVINGCOIN, C_COINPLACE, C_COINLINE, \
     C_COINJUMP, C_PICKUP, C_PICKUPROTATE, C_PICKUPDEFAULT, C_TUNNEL, C_TRACKOBJECT, C_RENDACT, \
     C_SNAP, C_GLOW, C_TUTORIAL, C_ANIMATION, C_CHARCTRL, C_CAMERA, C_COIN, C_VISIBLE, C_SSGROUP, \
-    C_ONTRIGGER, C_DAILYLETTER, C_CURVEPOINT, C_JETCLOUD = range(1, 37)
+    C_ONTRIGGER, C_DAILYLETTER, C_CURVEPOINT, C_JETCLOUD, C_RANDHOLD = range(1, 38)
 
 TAG_IDS = {'Untagged': 0, 'Player': 1, 'HitMovingTrain': 2, 'JumpTrain': 3, 'DodgeTrain': 4, 'RollBarrier': 5,
            'JumpBarrier': 6, 'HitBarrier': 7, 'HitTrain': 8, 'Ground': 9, 'Station': 10, 'Subway': 11,
@@ -291,6 +291,11 @@ class Exporter:
                     out.append((C_TRACKCHUNK, w))
                 elif cl in ('Randomizer',):
                     out.append((C_RANDOMIZER, []))
+                elif cl == 'RandomizerHold':
+                    # 1.5.2: el ambiente de cada tramo de carretera (carretera, con edificios, subterraneo, bosque,
+                    # talud derecho o izquierdo); se elige uno y se mantiene 3000 unidades
+                    tg = [self.ref(o, p) for p in f.get('children') or []]
+                    out.append((C_RANDHOLD, [len(tg)] + [x & 0xffffffff for x in tg]))
                 elif cl == 'RandomizerTarget':
                     tg = [self.ref(o, p) for p in f.get('Targets') or []]
                     out.append((C_RANDTARGET, [len(tg)] + [x & 0xffffffff for x in tg]))

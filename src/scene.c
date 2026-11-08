@@ -67,7 +67,8 @@ static int find_parent_collider(int n)
 
 static int is_selector(int n)
 {
-    return node_comp(n, C_RANDOMIZER, NULL) || node_comp(n, C_RANDTARGET, NULL) || node_comp(n, C_SPAWNPOINT, NULL);
+    return node_comp(n, C_RANDOMIZER, NULL) || node_comp(n, C_RANDTARGET, NULL) || node_comp(n, C_SPAWNPOINT, NULL) ||
+           node_comp(n, C_RANDHOLD, NULL);
 }
 
 static int is_group(int n) { return node_comp(n, C_GROUP, NULL) || node_comp(n, C_SSGROUP, NULL); }
@@ -725,6 +726,7 @@ static void random_offset(int n)
 
 #define MAXV 2048
 static void perform_selection(int n, int *visit, int *nv);
+void scene_randhold_init(void);
 
 static int cmp_z_nodes(const void *a, const void *b)
 {
@@ -770,11 +772,29 @@ static void recursive_selection(int parent, int sort_spawn)
     depth--;
 }
 
+/* RandomizerHold (1.5.2): el ambiente del tramo de carretera sale de una secuencia fija segun la z (cambia cada 3000
+ * unidades), desde un punto al azar en cada carrera (RandomizerHold.Initialize) */
+static const unsigned char randhold_seq[21] = {0, 1, 2, 3, 0, 4, 5, 1, 0, 2, 4, 1, 3, 2, 0, 5, 1, 0, 3, 1, 3};
+static int randhold_start;
+void scene_randhold_init(void) { randhold_start = rnd_range(0, 21); }
+
 static void perform_selection(int n, int *visit, int *nv)
 {
     const uint32_t *c;
     if (node_comp(n, C_SPAWNPOINT, NULL)) {
         spawn_perform_selection(n, visit, nv, MAXV);
+        return;
+    }
+    if ((c = node_comp(n, C_RANDHOLD, NULL))) {
+        int cnt = c[0];
+        int num = (int)floorf(nrt[n].world.m[11] / 3000.0f) + randhold_start;
+        int pick = randhold_seq[((randhold_start + num) % 21 + 21) % 21];
+        for (int i = 0; i < cnt; i++) {
+            int t = (int)c[1 + i];
+            if (t < 0) continue;
+            if (i == pick) { if (*nv < MAXV) visit[(*nv)++] = t; }
+            else scene_set_active_recursive(t, 0);
+        }
         return;
     }
     if ((c = node_comp(n, C_RANDTARGET, NULL))) {
@@ -897,6 +917,7 @@ void track_deactivate_all(void)
 
 void track_restart(void)
 {
+    scene_randhold_init();
     for (int i = 0; i < nchunks; i++) {
         nrt[chunks[i].node].lpos.y = -1000.0f;
         scene_update_world(chunks[i].node);
