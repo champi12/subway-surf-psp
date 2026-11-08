@@ -276,8 +276,10 @@ void anim_update(Animator *a, float dt)
         const Clip *c = &gd.clips[s->clip];
         float prev = s->time;
         s->time += dt * s->speed;
-        /* eventos registrados (pasos, etc.) */
-        if (a->on_event && s->weight > 0.01f) {
+        /* eventos registrados (pasos, etc.). Tambien los de un estado que entra con CrossFade: empieza con peso 0 y,
+         * si solo contara el peso, el evento del instante 0 no saltaba nunca (el grito del guardia y el perro de
+         * startPan al empezar la carrera, Hr_intro_gameStart) */
+        if (a->on_event && (s->weight > 0.01f || s->target_weight > 0.01f)) {
             for (int e = 0; e < a->nev; e++) {
                 if (a->ev_clip[e] != i) continue;
                 float et = a->ev_times[e];
