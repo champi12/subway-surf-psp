@@ -123,10 +123,22 @@ int main(int argc, char **argv)
     lang_init();
     if (clk < 0) dlog("AVISO no se pudo poner la CPU a 333 MHz (0x%08x)", clk);
     unsigned int tl = sceKernelGetSystemTimeLow();
+    /* el mundo (las vias y el escenario): el de la 1.5.2 (data/w15, normal y Navidad) si esta, salvo en Halloween,
+     * que es el de la 1.4 sobre el clasico (data/). El nucleo del juego es el mismo en los dos; solo se carga uno */
+    const char *wdir = "data";
+    {
+        extern int halloween_season(void);
+        SceUID f = sceIoOpen("data/w15/world.bin", PSP_O_RDONLY, 0);
+        int has15 = f >= 0, has_hw = 0;
+        if (f >= 0) sceIoClose(f);
+        if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
+        if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
+        dlog("Mundo: %s", has15 && !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
+    }
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
-    if (data_load_step("data", 0) != 0) fatal(data_err());
+    if (data_load_step(wdir, 0) != 0) fatal(data_err());
     data_theme_init_tex();   /* texturas de Halloween y las nuevas de la 1.4 (antes de r_init: puede anadir) */
-    if (ui_load("data") != 0) dlog_error("No se pudo cargar data/ui.bin: la interfaz no tendra textos");
+    if (ui_load(wdir) != 0) dlog_error("No se pudo cargar ui.bin: la interfaz no tendra textos");
     r_init();
     {
         extern int r_using_vfpu(void);
@@ -135,7 +147,7 @@ int main(int argc, char **argv)
     }
     hud_loading(0.05f);
     for (int st = 1; st <= DATA_STEPS; st++) {
-        if (data_load_step("data", st) != 0) fatal(data_err());
+        if (data_load_step(wdir, st) != 0) fatal(data_err());
         if (st == 2) r_init_materials();
         hud_loading(0.05f + 0.75f * st / DATA_STEPS);
     }

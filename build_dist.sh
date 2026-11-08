@@ -24,7 +24,7 @@ if [ "$DEVLOG" != 0 ]; then
 fi
 if [ -d data ]; then
     cp -rL data dist/PSP/GAME/SUBWAY/   # -L: si data es un enlace, se copia lo que hay dentro
-    rm -rf dist/PSP/GAME/SUBWAY/data/{wav,meshes.txt,.version,ICON0.PNG,PIC1.PNG}
+    rm -rf dist/PSP/GAME/SUBWAY/data/{wav,meshes.txt,.version,ICON0.PNG,PIC1.PNG} dist/PSP/GAME/SUBWAY/data/w15/meshes.txt
 fi
 [ "$DEVLOG" != 0 ] && echo "Version de PRUEBAS (con devlog)" || echo "Version publica (sin devlog)"
 [ "$NOANALOG" != 0 ] && echo "Stick analogico DESACTIVADO (NOANALOG=1)"

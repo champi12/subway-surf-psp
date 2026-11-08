@@ -46,7 +46,10 @@ float r_near = 2.0f, r_far = 1000.0f;
  * llevan los materiales opacos (Custom/Distorted/Unlit); los transparentes del original tienen "Fog { Mode Off }".
  * Mas alla de r_fog_end todo es del color de la niebla, asi que los objetos enteros de detras no se dibujan: el
  * plano lejano de la proyeccion sigue en 1000 porque la curvatura del mundo depende de el. */
-float r_fog_start = 200.0f, r_fog_end = 700.0f;
+#ifndef FOG_END
+#define FOG_END 700.0f
+#endif
+float r_fog_start = 200.0f, r_fog_end = FOG_END;
 unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
 /* color de borrado: el cielo tapa todo el fondo, asi que solo asoma por las juntas de un pixel entre dos tramos de via
  * (precision del GE); con el color de la niebla (casi blanco) se veian lineas blancas en el suelo, con el del suelo no */
@@ -643,7 +646,9 @@ static int batch_begin(Batch *b, int nv, int extra_v, int maxi)
     return 1;
 }
 
-static void batch_tris(Batch *b, const uint16_t *src, int n)
+/* skip_inside: el trozo ya lo ha dibujado el GE entero; aqui solo hacen falta los triangulos que el GE descarta
+ * (los que se salen de la banda de guarda o cruzan el plano cercano) */
+static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
 {
     OV *V = b->verts;
     const unsigned char *C = b->codes;
@@ -651,6 +656,7 @@ static void batch_tris(Batch *b, const uint16_t *src, int n)
         int i0 = src[i], i1 = src[i + 1], i2 = src[i + 2];
         int c0 = C[i0], c1 = C[i1], c2 = C[i2];
         if (c0 & c1 & c2) continue;
+        if (skip_inside && !((c0 | c1 | c2) & ~OC_FAR)) continue;
         if (!(c0 | c1 | c2) || !((c0 | c1 | c2) & ~OC_FAR)) {
             if (b->ni + 3 > b->maxi) return;
             b->idx[b->ni++] = i0; b->idx[b->ni++] = i1; b->idx[b->ni++] = i2;
@@ -905,6 +911,14 @@ static void transform_fast_c(OV *o, const MVert *src, int nv, const M34 *mv, flo
 
 static void transform_into(Batch *b, const MVert *src, int nv, const M34 *mv, float kx, float ky)
 {
+    if (use_vfpu) {
+        /* la VFPU transforma (una instruccion por vertice) y aqui solo se calculan los codigos de recorte */
+        transform_vfpu(b->verts, src, nv, mv, kx, ky);
+        const OV *o = b->verts;
+        for (int i = 0; i < nv; i++, o++) codebuf[i] = outcode(o->x, o->y, -o->z);
+        b->codes = codebuf;
+        return;
+    }
     const float *m = mv->m;
     OV *o = b->verts;
     unsigned char *c = codebuf;
@@ -992,6 +1006,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             r_stat_tris += pt->ni / 3;
             continue;
         }
+        int ge_drawn = 0;
         if (vis == 2 && !sky && HW_OK && me->nparts > 1) {
             /* trozo que hay que recortar por CPU: se dibuja tambien en el GE, como sus vecinos. Si no, la junta con
              * ellos sale de dos cuentas distintas (CPU y GE) que no caen en el mismo pixel y queda una rendija por
@@ -1003,6 +1018,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
             r_stat_draws++;
             r_stat_seam++;
+            ge_drawn = 1;
         }
         model_identity();
         if (vis == 1 && FAST_OK) {
@@ -1029,7 +1045,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         transform_into(&b, pt->verts, pt->nv, &mv, kx, ky);
         r_stat_verts += pt->nv;
         if (mi < 512) r_mesh_verts[mi] += pt->nv;
-        batch_tris(&b, pt->idx, pt->ni);
+        batch_tris(&b, pt->idx, pt->ni, ge_drawn);
         PT_ADD(1, tc0);
         if (b.ni > 0) {
             bind_material(mat, amul);
@@ -1097,7 +1113,7 @@ void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned i
     if (list_full(LIST_RESERVE) || !batch_begin(&b, 2 * (UL_SEG + 1), 256, UL_SEG * 6 + 512)) return;
     model_identity();
     transform_into(&b, v, 2 * (UL_SEG + 1), &r_view, -0.0005f / P00, -0.0003f / P11);
-    batch_tris(&b, idx, UL_SEG * 6);
+    batch_tris(&b, idx, UL_SEG * 6, 0);
     if (b.ni > 0) {
         sceGuDisable(GU_TEXTURE_2D);
         sceGuDisable(GU_CULL_FACE);
@@ -1222,7 +1238,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         b.codes = codebuf;
         r_stat_verts += pt->nv;
         r_stat_skin_cpu += pt->nv;
-        batch_tris(&b, pt->idx, pt->ni);
+        batch_tris(&b, pt->idx, pt->ni, 0);
         if (b.ni > 0) {
             bind_material(mat, 1.0f);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,

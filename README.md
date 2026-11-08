@@ -81,6 +81,14 @@ llame: reconoce cada APK por dentro (`tools/apk_kind.py`). Tiene que ser la **1.
 2012); otras versiones no traen el tema. Al terminar, `actualizar.sh` dice si el contenido de la 1.4 quedó incluido.
 Sin él, el juego funciona igual con el contenido de la 1.0.
 
+### Mundo de la 1.5.2
+
+Si además está el APK de la **1.5.2** (la de Navidad de 2012), el conversor monta un segundo mundo en `data/w15/`:
+el núcleo del juego es el mismo (personajes, guardia, interfaz, power-ups), pero las vías y el escenario son los de
+la 1.5.2 (raíz `Level` de su escena). El juego elige el mundo al arrancar y solo carga uno: el de la 1.5.2 siempre,
+salvo en Halloween, que usa el clásico con el tema de la 1.4. Las ciudades de versiones posteriores entrarán igual,
+como mundos o temas aparte, sin ocupar memoria mientras no se usan.
+
 ### Halloween (1.4 clásica)
 
 La 1.4 era la actualización de Halloween de 2012, y el port usa su tema del **24 de octubre al 4 de noviembre**

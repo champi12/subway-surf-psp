@@ -36,7 +36,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from unityscene import Scene  # noqa: E402
+from unityscene import Scene, MultiScene  # noqa: E402
 from UnityPy.helpers.MeshHelper import MeshHandler  # noqa: E402
 
 # ---------------------------------------------------------------- formato
@@ -86,7 +86,8 @@ class Strings:
 
 
 def key(obj):
-    return (os.path.basename(obj.assets_file.name), obj.path_id)
+    # el archivo concreto (no su nombre): con dos APK a la vez los dos tienen sharedassets0.assets
+    return (id(obj.assets_file), obj.path_id)
 
 
 # ---------------------------------------------------------------- escena
@@ -435,7 +436,7 @@ def subdivide(V, UV, tris, max_edge):
     return V, UV, out
 
 
-CLUSTER = 64.0       # tamano de celda para trocear el escenario (culling por trozos); la curvatura es exacta en el GE
+CLUSTER = float(os.environ.get('SS_CLUSTER', 64))       # tamano de celda para trocear el escenario (culling por trozos); la curvatura es exacta en el GE
 
 
 def mesh_triangles(mo, h):
@@ -868,9 +869,11 @@ def streamed_audio(ao):
         return name, f.read(size)
 
 
-def export_audio(ex, outdir):
-    os.makedirs(os.path.join(outdir, 'music'), exist_ok=True)
-    os.makedirs(os.path.join(outdir, 'wav'), exist_ok=True)
+def export_audio(ex, outdir, write_files=True):
+    # write_files: la musica (mp3) y los wav de consulta solo en data/ (los demas mundos la comparten)
+    if write_files:
+        os.makedirs(os.path.join(outdir, 'music'), exist_ok=True)
+        os.makedirs(os.path.join(outdir, 'wav'), exist_ok=True)
     names = []
     blobs = []
     for ao in ex.audio:
@@ -890,12 +893,14 @@ def export_audio(ex, outdir):
                 blobs.append(b'')
                 continue
             a, rate = r
-            write_wav(os.path.join(outdir, 'wav', name + '.wav'), a, rate)
+            if write_files:
+                write_wav(os.path.join(outdir, 'wav', name + '.wav'), a, rate)
             pcm = resample(a, rate, 22050)
             blobs.append(np.clip(pcm, -32768, 32767).astype('<i2').tobytes())
         elif raw[:4] == b'RIFF':
-            with open(os.path.join(outdir, 'wav', name + '.wav'), 'wb') as f:
-                f.write(raw)
+            if write_files:
+                with open(os.path.join(outdir, 'wav', name + '.wav'), 'wb') as f:
+                    f.write(raw)
             with wave.open(io.BytesIO(raw)) as w:
                 fr = w.readframes(w.getnframes())
                 a = np.frombuffer(fr, '<i2').astype(np.float32).reshape(-1, w.getnchannels()).mean(axis=1)
@@ -903,8 +908,9 @@ def export_audio(ex, outdir):
             blobs.append(np.clip(resample(a, rate, 22050), -32768, 32767).astype('<i2').tobytes())
         else:
             # MP3 (musica y algun efecto): se guarda tal cual
-            with open(os.path.join(outdir, 'music', name + '.mp3'), 'wb') as f:
-                f.write(raw)
+            if write_files:
+                with open(os.path.join(outdir, 'music', name + '.mp3'), 'wb') as f:
+                    f.write(raw)
             blobs.append(b'')
     out = bytearray(b'SSS1')
     out += struct.pack('<I', len(names))
@@ -1820,30 +1826,22 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
-def main():
-    if len(sys.argv) < 3:
-        print(__doc__)
-        sys.exit(1)
-    apk, outdir = sys.argv[1], sys.argv[2]
-    apk14 = None
-    for opt in ('--apk14', '--halloween'):
-        if opt in sys.argv:
-            i = sys.argv.index(opt)
-            apk14 = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
+def export_set(sc, level_sc, sc14, outdir, classic=True):
+    """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
+    guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
+    siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
-    print('Descomprimiendo el APK...')
-    data_dir = unpack_apk(apk)
-    export_eboot_art(data_dir, outdir)
-    print('Cargando la escena de Unity...')
-    sc = Scene(data_dir)
-    ex = Exporter(sc)
-    roots = sc.roots('level0')
+    msc = sc if level_sc is sc else MultiScene([sc, level_sc])
+    ex = Exporter(msc)
     trees = []
-    for r in roots:
+    for r in sc.roots('level0'):
         go = sc.go_tree(r)
-        if go['name'] in EXCLUDE_ROOTS:
+        if go['name'] in EXCLUDE_ROOTS or (go['name'] == 'Level' and level_sc is not sc):
             continue
         trees.append(go)
+    if level_sc is not sc:
+        lv = [level_sc.go_tree(r) for r in level_sc.roots('level0')]
+        trees += [g for g in lv if g['name'] == 'Level']
     # prefabs de las monedas (CoinPool / InAirCoinsManager) y otros referenciados
     extra = []
     for t in trees:
@@ -1854,7 +1852,7 @@ def main():
             for c in g['comps']:
                 if c.get('class') in ('CoinPool', 'InAirCoinsManager') and c.get('fields'):
                     p = c['fields']['coinPrefab']
-                    o = sc.resolve_ptr(c['obj'], p)
+                    o = msc.resolve_ptr(c['obj'], p)
                     if o is not None and o.type.name == 'GameObject':
                         extra.append(o)
     seen = set()
@@ -1862,7 +1860,7 @@ def main():
         if key(o) in seen:
             continue
         seen.add(key(o))
-        trees.append(sc.go_tree(o))
+        trees.append(msc.go_tree(o))
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -1871,7 +1869,7 @@ def main():
     for n in ex.nodes:
         for c in n['go']['comps']:
             if c['type'] == 'AudioSource' and c.get('data'):
-                ex.audio_id(sc.resolve_ptr(c['obj'], c['data']['m_audioClip']))
+                ex.audio_id(msc.resolve_ptr(c['obj'], c['data']['m_audioClip']))
             f = c.get('fields')
             if not f:
                 continue
@@ -1882,23 +1880,19 @@ def main():
                     stack += list(v.values())
                 elif isinstance(v, list):
                     if len(v) == 3 and v[0] == 'ptr':
-                        o = sc.resolve_ptr(c['obj'], v)
+                        o = msc.resolve_ptr(c['obj'], v)
                         if o is not None and o.type.name == 'AudioClip':
                             ex.audio_id(o)
                     else:
                         stack += v
                 elif isinstance(v, tuple) and len(v) == 3 and v[0] == 'ptr':
-                    o = sc.resolve_ptr(c['obj'], v)
+                    o = msc.resolve_ptr(c['obj'], v)
                     if o is not None and o.type.name == 'AudioClip':
                         ex.audio_id(o)
     # el resto de clips de audio del juego (por si acaso)
     for o in sc.env.objects:
         if o.type.name == 'AudioClip':
             ex.audio_id(o)
-    sc14 = None
-    if apk14:
-        print('Descomprimiendo el APK de la 1.4...')
-        sc14 = Scene(unpack_apk(apk14))
     print('Exportando interfaz...')
     ui = export_ui(sc, ex, sc14)
     print('Exportando mallas...')
@@ -1914,7 +1908,7 @@ def main():
     anim = export_anims(ex)
     print('  %d clips' % len(ex.clips))
     print('Exportando audio...')
-    sfx, names = export_audio(ex, outdir)
+    sfx, names = export_audio(ex, outdir, write_files=classic)
     print('  %d sonidos' % len(names))
     # materiales
     mat = bytearray(b'SSX1')
@@ -1926,10 +1920,6 @@ def main():
                            1 if m['sky'] else 0)
     # world.bin lleva al final materiales y nombres de sonidos (las cadenas se escriben al final)
     world = ex.build_world()
-    names_blob = bytearray(struct.pack('<I', len(names)))
-    for n in names:
-        nb = n.encode()[:31]
-        names_blob += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0')
     for fn, b in (('world.bin', world), ('mat.bin', bytes(mat)), ('mesh.bin', mesh), ('tex.bin', tex),
                   ('anim.bin', anim), ('sfx.bin', sfx), ('ui.bin', ui)):
         with open(os.path.join(outdir, fn), 'wb') as f:
@@ -1938,11 +1928,48 @@ def main():
     with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))
-    for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
-        if os.path.exists(os.path.join(outdir, fn)):
-            os.remove(os.path.join(outdir, fn))
-    if sc14 is not None:
-        export_halloween(sc14, outdir, ex, hq)
+    if classic:
+        for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
+            if os.path.exists(os.path.join(outdir, fn)):
+                os.remove(os.path.join(outdir, fn))
+        if sc14 is not None:
+            export_halloween(sc14, outdir, ex, hq)
+    return ex
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(__doc__)
+        sys.exit(1)
+    apk, outdir = sys.argv[1], sys.argv[2]
+
+    def opt(*names):
+        for o in names:
+            if o in sys.argv:
+                i = sys.argv.index(o)
+                return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
+        return None
+    apk14, apk15 = opt('--apk14', '--halloween'), opt('--apk15', '--world')
+    os.makedirs(outdir, exist_ok=True)
+    print('Descomprimiendo el APK...')
+    data_dir = unpack_apk(apk)
+    export_eboot_art(data_dir, outdir)
+    print('Cargando la escena de Unity...')
+    sc = Scene(data_dir)
+    sc14 = None
+    if apk14:
+        print('Descomprimiendo el APK de la 1.4...')
+        sc14 = Scene(unpack_apk(apk14))
+    print('== Mundo clasico (data/)')
+    export_set(sc, sc, sc14, outdir, classic=True)
+    w15 = os.path.join(outdir, 'w15')
+    if apk15:
+        print('Descomprimiendo el APK de la 1.5.2...')
+        sc15 = Scene(unpack_apk(apk15))
+        print('== Mundo de la 1.5.2 (data/w15/)')
+        export_set(sc, sc15, sc14, w15, classic=False)
+    elif os.path.isdir(w15):
+        shutil.rmtree(w15, True)
     print('Listo.')
 
 

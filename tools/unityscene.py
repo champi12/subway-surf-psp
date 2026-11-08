@@ -168,3 +168,39 @@ class Scene:
                     g = t['m_GameObject']
                     res.append(self.resolve(f, g['m_FileID'], g['m_PathID']))
         return res
+
+
+class MultiScene:
+    """Varias escenas (APK) a la vez: cada objeto se resuelve en la escena de su propio archivo. Sirve para montar el
+    nucleo del juego de una version (personaje, guardia, interfaz) con el mundo (Level) de otra."""
+
+    def __init__(self, scenes):
+        self.scenes = scenes
+        self._of = {id(f): s for s in scenes for f in s.files.values()}
+        self.env = scenes[0].env
+        self.files = scenes[0].files
+        self.data_dir = scenes[0].data_dir
+
+    def of(self, af):
+        return self._of.get(id(af), self.scenes[0])
+
+    def resolve(self, af, fid, pid):
+        return self.of(af).resolve(af, fid, pid)
+
+    def resolve_ptr(self, obj, ptr):
+        return self.of(obj.assets_file).resolve_ptr(obj, ptr)
+
+    def script_of(self, obj):
+        return self.of(obj.assets_file).script_of(obj)
+
+    def read_mono(self, obj):
+        return self.of(obj.assets_file).read_mono(obj)
+
+    def read_go(self, obj):
+        return self.of(obj.assets_file).read_go(obj)
+
+    def go_tree(self, root_go_obj, out=None):
+        return self.of(root_go_obj.assets_file).go_tree(root_go_obj)
+
+    def roots(self, fname):
+        return self.scenes[0].roots(fname)

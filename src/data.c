@@ -343,7 +343,7 @@ static int nlazy;
 static void chars14_init(void)
 {
     char path[256];
-    snprintf(path, sizeof(path), "%s/chars14.bin", basedir);
+    snprintf(path, sizeof(path), "data/chars14.bin");   /* compartido por todos los mundos */
     charsfile = fopen(path, "rb");
     if (!charsfile) return;
     uint8_t h[8];

@@ -28,18 +28,20 @@ APK10=""
 for f in *.apk; do
     [ -f "$f" ] || continue
     case "$(python3 tools/apk_kind.py "$f")" in
+        15) [ -z "$APK15" ] && APK15="$f" ;;
         14) [ -z "$APK14" ] && APK14="$f" ;;
         10) [ -z "$APK10" ] && APK10="$f" ;;
     esac
 done
 APK=${1:-$APK10}
-if [ -n "$APK" ] && [ -f "$APK" ] && [ "$(python3 tools/apk_kind.py "$APK")" = 14 ]; then
-    echo "$APK es el APK de la 1.4: hace falta tambien el de la 1.0 (la base). Copia los dos a esta carpeta."
+if [ -n "$APK" ] && [ -f "$APK" ] && [ "$(python3 tools/apk_kind.py "$APK")" != 10 ]; then
+    echo "$APK no es el APK de la 1.0: hace falta tambien el de la 1.0 (la base). Copialos todos a esta carpeta."
     exit 1
 fi
+if [ -n "$APK15" ]; then echo "APK de la 1.5.2: $APK15 (mundo nuevo, Navidad y tablas)"; fi
 if [ -n "$APK14" ]; then echo "APK de la 1.4 clasica: $APK14"
 else echo "AVISO: no hay APK de la 1.4 clasica (1.4.0, la de Halloween de 2012): sin Halloween ni contenido de la 1.4"; fi
-VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14") | sha1sum | cut -c1-16)
+VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
 else
@@ -49,12 +51,10 @@ else
     fi
     [ -f ~/venv-subway/bin/activate ] && source ~/venv-subway/bin/activate
     echo "El extractor ha cambiado (o es la primera vez): regenerando data/ desde $APK ..."
-    if [ -n "$APK14" ] && [ -f "$APK14" ]; then
-        echo "Con el contenido de la 1.4 de $APK14"
-        python3 tools/extract.py "$APK" data/ --apk14 "$APK14"
-    else
-        python3 tools/extract.py "$APK" data/
-    fi
+    OPTS=()
+    if [ -n "$APK14" ] && [ -f "$APK14" ]; then echo "Con el contenido de la 1.4 de $APK14"; OPTS+=(--apk14 "$APK14"); fi
+    if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el mundo de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
+    python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
     echo "$VER" > data/.version
 fi
 
@@ -62,6 +62,11 @@ echo "== 3/3 Compilando =="
 [ -z "$PSPDEV" ] && export PSPDEV=$HOME/pspdev && export PATH=$PSPDEV/bin:$PATH
 ./build_dist.sh
 echo
+if [ -f data/w15/world.bin ]; then
+    echo "Mundo de la 1.5.2: INCLUIDO (se usa siempre salvo en Halloween, que usa el clasico con su tema)"
+else
+    echo "Mundo de la 1.5.2: NO incluido (copia el APK de Subway Surfers 1.5.2 a esta carpeta para tenerlo)"
+fi
 if [ -f data/hw_tex.bin ]; then
     echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"
     echo "segun la fecha de la consola: compruebala en Ajustes del sistema > Fecha y hora)"
