@@ -1399,7 +1399,7 @@ def fix_coin_glow(ex):
           (round((u1 - u0) * W), round((v1 - v0) * H), src.read().m_Name))
 
 
-def export_ui(sc, ex, sc14=None):
+def export_ui(sc, ex, sc14=None, boards=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
     fonts = []
@@ -1462,6 +1462,10 @@ def export_ui(sc, ex, sc14=None):
             ex.extra_anim['avatar_prefab'] = [len(ex.clips)]
             for c in prev[2]:
                 ex.clips.append(('pose', c['clip'], 'pose_' + c['name']))
+        if boards is not None and boards.thumbs is not None:
+            atlases.append({'name': 'BoardThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 128, 'pixel': 1.0,
+                            'sprites': boards.thumbs[1], 'key': ('gen', 'BoardThumbs')})
+            ex.textures.append(('generada', 'ui_boards', boards.thumbs[0], True))
         bg = ui_backgrounds(sc14)
         if bg:
             ex.textures.append(('generada', 'ui_bg', bg[0]))
@@ -1681,8 +1685,133 @@ def unpack_apk(apk):
     return os.path.join(tmp, 'assets', 'bin', 'Data')
 
 
-def export_halloween(sc, outdir, ex, hq):
-    """ThemeAssets de la 1.4: texturas y mallas del tema "halloween" con los mismos nombres que en la 1.0."""
+# ---------------------------------------------------------------- tablas (Hoverboards.cs de la 1.5.2)
+# boardType -> nombre, precio, desbloqueo (0 siempre, 1 gratis, 2 monedas), efecto (1 super salto, 2 va agachado);
+# en el orden de la lista de la tienda (Hoverboards.boardOrder). El de la malla es el campo boardModelName
+BOARDS_15 = [(3, 'Freestyler', 45000, 2, 0), (1, 'Bouncer', 280000, 2, 1), (0, 'Hoverboard', 0, 0, 0),
+             (2, 'Lowrider', 320000, 2, 2), (6, 'Starboard', 0, 1, 0), (4, 'Big Kahuna', 65000, 2, 0),
+             (5, 'Superhero', 8000, 2, 0)]
+BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
+                 'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
+                 'getOnBoardAnimations')
+
+
+def export_boards(sc15, ex, clip_names10):
+    """Las 7 tablas de la 1.5.2 (Hoverboard.hoverboardSelector): malla y textura de cada una (se leen solo mientras
+    se usan), sus animaciones del personaje para correr, saltar, rodar... (HoverboardRendering) y boards.bin, la
+    tabla que lee el juego. Las animaciones que ya estan en la 1.0 (h_run, h_jump...) no se repiten."""
+    from types import SimpleNamespace
+    hb = None
+    for f in sc15.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            try:
+                cl, fl = sc15.read_mono(o)
+            except Exception:
+                continue
+            if cl == 'Hoverboard' and fl and fl.get('hoverboardSelector'):
+                hb = (o, fl)
+                break
+        if hb:
+            break
+    if hb is None:
+        print('  AVISO: la 1.5.2 no trae las tablas')
+        return None
+    obj, fl = hb
+    prefabs = {s['boardType']: sc15.resolve_ptr(obj, s['hoverboardPrefab']) for s in fl['hoverboardSelector']}
+    meshes, gen, new_clips = [], [], []
+    props = None
+    rows = []
+    thumb_src = []      # (nombre del sprite, malla) para las miniaturas
+    for btype, name, price, unlock, effect in BOARDS_15:
+        go = prefabs.get(btype)
+        if go is None:
+            continue
+        g = sc15.go_tree(go)
+        mf = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
+        mr = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
+        hr = next((c for c in g['comps'] if c.get('class') == 'HoverboardRendering'), None)
+        mesh_name = ''
+        if mf is not None:
+            mo_t = sc15.resolve_ptr(mf['obj'], mf['data']['m_Mesh'])
+            if mo_t is not None:
+                thumb_src.append(('board_%d' % len(rows), mo_t))
+        if btype != 0 and mf is not None:       # la normal es la de la 1.0 (misma malla y textura main)
+            mo = sc15.resolve_ptr(mf['obj'], mf['data']['m_Mesh'])
+            if mo is not None:
+                meshes.append(mo)
+                mesh_name = mo.read().m_Name
+            if props is None and mr is not None:
+                mat = sc15.resolve_ptr(mr['obj'], mr['data']['m_Materials'][0])
+                for _, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+                    to = sc15.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if to is not None:
+                        props = to.read()
+                        break
+        acts = []
+        for a in BOARD_ACTIONS:
+            names = []
+            for pair in (hr['fields'].get(a) or []) if hr else []:
+                c = sc15.resolve_ptr(hr['obj'], pair['characterAnimationClip'])
+                if c is None:
+                    continue
+                cn = c.read().m_Name
+                names.append(cn)
+                if cn not in clip_names10 and cn not in [x[1] for x in new_clips]:
+                    new_clips.append((c, cn))
+            acts.append(names)
+        rows.append((name, mesh_name, price, unlock, effect, acts))
+    # las animaciones nuevas van aparte (boardanim.bin): el juego carga solo las de la tabla elegida
+    thumbs = None
+    if props is not None:
+        gen.append(('gen', 'board_props', tex_rgba(props).resize((256, 256), Image.LANCZOS), True))
+        # miniaturas para la pantalla de tablas (como las de personajes): de pie e inclinadas, 64x64 cada una
+        texa = np.asarray(tex_rgba(props).convert('RGBA'))
+        sheet = Image.new('RGBA', (256, 128), (0, 0, 0, 0))
+        sprites = []
+        rot = np.eye(4)
+        rot[:3, :3] = quat_mat(np.array(euler_quat(-25.0, 0.0, 62.0)))
+        for k, (sname, mo) in enumerate(thumb_src):
+            h = MeshHandler(mo.read())
+            h.process()
+            V = np.array(h.m_Vertices, np.float64).reshape(-1, 3)
+            Wv = (rot @ np.c_[V, np.ones(len(V))].T).T[:, :3]
+            tris = np.array([t for sm in mesh_triangles(mo, h) for t in sm], np.int64)
+            parts = [(Wv, np.array(h.m_UV0, np.float64).reshape(-1, 2), tris, texa)]
+            im = draw_parts(parts, 64, (Wv.min(axis=0), Wv.max(axis=0)))
+            x, y = (k % 4) * 64, (k // 4) * 64
+            sheet.paste(im, (x, y))
+            r_ = {'x': x, 'y': y, 'width': 64, 'height': 64}
+            sprites.append({'name': sname, 'outer': r_, 'inner': dict(r_)})
+        thumbs = (sheet, sprites)
+    out = bytearray(b'SSB1') + struct.pack('<I', len(rows))
+    for name, mesh_name, price, unlock, effect, acts in rows:
+        out += name.encode()[:31].ljust(32, b'\0') + mesh_name.encode()[:31].ljust(32, b'\0')
+        out += struct.pack('<iII', price, unlock, effect)
+        for names in acts:
+            out += struct.pack('<I', len(names))
+            for n in names:
+                out += n.encode()[:31].ljust(32, b'\0')
+    print('  tablas: %s (%d animaciones nuevas)' % (', '.join(r[0] for r in rows), len(new_clips)))
+    return SimpleNamespace(meshes=meshes, gen=gen, table=bytes(out), clips=[c for c, _ in new_clips], thumbs=thumbs)
+
+
+def export_extras_only(outdir, hq, extra):
+    """Sin la 1.4: chars14.bin (mallas que se leen al usarlas) y hw_tex.bin (texturas nuevas) solo con lo de la 1.5.2."""
+    from types import SimpleNamespace
+    cbin, cstats = export_meshes(SimpleNamespace(meshes=extra.meshes, mesh_world=[False] * len(extra.meshes)))
+    with open(os.path.join(outdir, 'chars14.bin'), 'wb') as f:
+        f.write(cbin)
+    tbin = export_textures(SimpleNamespace(textures=extra.gen), hq=hq)
+    with open(os.path.join(outdir, 'hw_tex.bin'), 'wb') as f:
+        f.write(tbin)
+    print('  chars14.bin %d KB, hw_tex.bin %d KB (solo contenido de la 1.5.2)' % (len(cbin) // 1024, len(tbin) // 1024))
+
+
+def export_halloween(sc, outdir, ex, hq, extra=None):
+    """ThemeAssets de la 1.4: texturas y mallas del tema "halloween" con los mismos nombres que en la 1.0.
+    extra: contenido de la 1.5.2 (tablas) que va en los mismos archivos."""
     from types import SimpleNamespace
     themes = None
     for f in sc.files.values():
@@ -1797,6 +1926,9 @@ def export_halloween(sc, outdir, ex, hq):
         cmeshes.append(mo)
         gen.append(('gen', 'avatar_' + ('zombieJake' if k == 'zombiejake' else k), td.image, True))
     print('  personajes de la 1.4: %s' % ', '.join(k for k in want if k in found))
+    if extra is not None:
+        cmeshes = cmeshes + extra.meshes
+        gen = gen + extra.gen
     cm = SimpleNamespace(meshes=cmeshes, mesh_world=[False] * len(cmeshes))
     cbin, cstats = export_meshes(cm)
     with open(os.path.join(outdir, 'chars14.bin'), 'wb') as f:
@@ -1826,7 +1958,7 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
@@ -1893,8 +2025,16 @@ def export_set(sc, level_sc, sc14, outdir, classic=True):
     for o in sc.env.objects:
         if o.type.name == 'AudioClip':
             ex.audio_id(o)
+    boards = None
+    if classic and sc15 is not None:
+        print('Exportando las tablas de la 1.5.2...')
+        names10 = set()
+        for c in ex.clips:
+            if not isinstance(c, tuple):
+                names10.add(c.read_typetree()['m_Name'])
+        boards = export_boards(sc15, ex, names10)
     print('Exportando interfaz...')
-    ui = export_ui(sc, ex, sc14)
+    ui = export_ui(sc, ex, sc14, boards)
     print('Exportando mallas...')
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)
@@ -1907,6 +2047,13 @@ def export_set(sc, level_sc, sc14, outdir, classic=True):
     print('Exportando animaciones...')
     anim = export_anims(ex)
     print('  %d clips' % len(ex.clips))
+    boardanim = None
+    if boards is not None and boards.clips:
+        from types import SimpleNamespace
+        # mismo formato que anim.bin; las rutas de los huesos van en las cadenas de world.bin (se escribe despues)
+        boardanim = export_anims(SimpleNamespace(clips=boards.clips, strings=ex.strings))
+        print('  boardanim.bin: %d animaciones de las tablas, %d KB (se cargan solo las de la elegida)' %
+              (len(boards.clips), len(boardanim) // 1024))
     print('Exportando audio...')
     sfx, names = export_audio(ex, outdir, write_files=classic)
     print('  %d sonidos' % len(names))
@@ -1929,11 +2076,19 @@ def export_set(sc, level_sc, sc14, outdir, classic=True):
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))
     if classic:
-        for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
+        for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin', 'boards.bin', 'boardanim.bin'):
             if os.path.exists(os.path.join(outdir, fn)):
                 os.remove(os.path.join(outdir, fn))
+        if boards is not None:
+            with open(os.path.join(outdir, 'boards.bin'), 'wb') as f:
+                f.write(boards.table)
+            if boardanim is not None:
+                with open(os.path.join(outdir, 'boardanim.bin'), 'wb') as f:
+                    f.write(boardanim)
         if sc14 is not None:
-            export_halloween(sc14, outdir, ex, hq)
+            export_halloween(sc14, outdir, ex, hq, boards)
+        elif boards is not None:
+            export_extras_only(outdir, hq, boards)
     return ex
 
 
@@ -1960,13 +2115,15 @@ def main():
     if apk14:
         print('Descomprimiendo el APK de la 1.4...')
         sc14 = Scene(unpack_apk(apk14))
-    print('== Mundo clasico (data/)')
-    export_set(sc, sc, sc14, outdir, classic=True)
-    w15 = os.path.join(outdir, 'w15')
+    sc15 = None
     if apk15:
         print('Descomprimiendo el APK de la 1.5.2...')
         sc15 = Scene(unpack_apk(apk15))
-        print('== Mundo de la 1.5.2 (data/w15/)')
+    print('== Mundo clasico (data/)')
+    export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15)
+    w15 = os.path.join(outdir, 'w15')
+    if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
+        print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
         export_set(sc, sc15, sc14, w15, classic=False)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)

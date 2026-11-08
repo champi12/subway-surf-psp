@@ -3,7 +3,7 @@
 #define ANIM_H
 #include "vmath.h"
 
-#define ANIM_MAX_STATES 72
+#define ANIM_MAX_STATES 104   /* las tablas de la 1.5.2 anaden ~25 animaciones al personaje */
 #define ANIM_MAX_QUEUE 4
 
 typedef struct {

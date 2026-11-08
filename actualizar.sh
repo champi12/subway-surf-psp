@@ -53,10 +53,9 @@ else
     echo "El extractor ha cambiado (o es la primera vez): regenerando data/ desde $APK ..."
     OPTS=()
     if [ -n "$APK14" ] && [ -f "$APK14" ]; then echo "Con el contenido de la 1.4 de $APK14"; OPTS+=(--apk14 "$APK14"); fi
-    # el mundo de la 1.5.2 aun esta en pruebas (en la consola iba lento): solo con WORLD15=1
-    if [ "${WORLD15:-0}" != 0 ] && [ -n "$APK15" ] && [ -f "$APK15" ]; then
-        echo "Con el mundo de la 1.5.2 de $APK15 (EN PRUEBAS)"; OPTS+=(--apk15 "$APK15")
-    fi
+    # de la 1.5.2: las tablas y Elf Tricky; su mundo aun esta en pruebas (en la consola iba lento): solo con WORLD15=1
+    if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el contenido de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
+    export WORLD15=${WORLD15:-0}
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
     echo "$VER" > data/.version
 fi
