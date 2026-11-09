@@ -1516,6 +1516,47 @@ def render_rewards(sc14):
     return (sheet, sprites) if sprites else None
 
 
+REWARD_SPIN_FRAMES, REWARD_SPIN_PX = 12, 64
+
+
+def render_reward_spins(sc14):
+    """Los premios de la caja dando vueltas como en el original (MysteryBoxHandler los gira en 3D): cada modelo se
+    dibuja desde 12 angulos (cada 30 grados alrededor del eje vertical) con la misma escala en todos, en una hoja de
+    256x256 por premio (64 KB en T8) que el juego carga solo mientras ese premio esta en pantalla. Devuelve
+    [(nombre del sprite plano, imagen)]"""
+    fl = obj = None
+    for f in sc14.files.values():
+        for o in f.objects.values():
+            if o.type.name == 'MonoBehaviour':
+                cl, fl_ = sc14.read_mono(o)
+                if cl == 'MysteryBoxHandler' and fl_:
+                    fl, obj = fl_, o
+                    break
+        if fl:
+            break
+    if fl is None:
+        return []
+    out = []
+    texcache = {}
+    px = REWARD_SPIN_PX
+    for field, names in REWARD_PREFABS:
+        go = sc14.resolve_ptr(obj, fl.get(field))
+        if go is None:
+            continue
+        rx, ry, rz = REWARD_ROT.get(field, (15.0, -10.5, 0.0))
+        frames = [reward_parts(sc14, go, euler_quat(rx, ry + k * 360.0 / REWARD_SPIN_FRAMES, rz), texcache)
+                  for k in range(REWARD_SPIN_FRAMES)]
+        if not all(frames):
+            continue
+        allv = np.vstack([p_[0] for fr in frames for p_ in fr])   # la misma escala en todos: no late al girar
+        box = (allv.min(axis=0), allv.max(axis=0))
+        sheet = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+        for k, fr in enumerate(frames):
+            sheet.paste(draw_parts(fr, px, box), ((k % 4) * px, (k // 4) * px))
+        out.append((names[0], sheet))
+    return out
+
+
 def fix_coin_glow(ex):
     """El brillo de las monedas (material "glow gold", Additive falloff) es un trocito de 26x26 pixeles de la hoja
     'main' de 1024x1024, pegado a otros dibujos. En la PSP la hoja va a 512 y el filtrado mezcla esos vecinos en el
@@ -1622,6 +1663,10 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
                             'sprites': rw[1], 'key': ('gen', 'RewardIcons')})
             ex.textures.append(('generada', 'ui_rewards', rw[0], True))
             print('  premios de las cajas: %d dibujos' % len(set(s_['outer']['x'] * 1000 + s_['outer']['y'] for s_ in rw[1])))
+            spins = render_reward_spins(sc14)
+            for nm, im in spins:
+                ex.textures.append(('generada', ('rw3d_' + nm)[:31], im, True))
+            print('  premios girando en 3D: %d (12 vistas cada uno)' % len(spins))
         if prev:
             # el Animation del personaje recibe solo la primera: el juego cambia el clip de ese estado
             ex.extra_anim['avatar_prefab'] = [len(ex.clips)]

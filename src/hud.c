@@ -1084,6 +1084,36 @@ static void reward_spr(const char *name, const char *fallback, float cx, float c
     spr_c(fallback, cx, cy, w < 0 ? -w : w, s->oh * f * k, col);
 }
 
+/* premio girando en 3D (como MysteryBoxHandler): 12 vistas del modelo, cada 30 grados, en "rw3d_<sprite>" (256x256,
+ * 64 KB). Solo esta cargada la del premio que se ve; sin ella, el dibujo plano estrechandose (el giro de antes) */
+static int spin_tex = -1;
+static char spin_name[40];
+static void reward_spin_release(void)
+{
+    if (spin_tex >= 0) { r_wait_idle(); r_tex_unload(spin_tex); }
+    spin_tex = -1;
+    spin_name[0] = 0;
+}
+static int reward_spin(const char *name, float cx, float cy, float k, float ang, unsigned int col)
+{
+    if (strcmp(name, spin_name)) {
+        char tn[40];
+        reward_spin_release();
+        snprintf(spin_name, sizeof(spin_name), "%s", name);
+        snprintf(tn, sizeof(tn), "rw3d_%s", name);
+        tn[31] = 0;
+        spin_tex = data_tex_find(tn);
+    }
+    if (spin_tex < 0) return 0;
+    float a = fmodf(ang, 6.2831853f);
+    if (a < 0) a += 6.2831853f;
+    int fr = (int)(a / 6.2831853f * 12.0f + 0.5f) % 12;
+    float sz = 64.0f * 1.2f * k;
+    r_sprite(spin_tex, (int)(cx - sz * 0.5f), (int)(cy - sz * 0.5f), sz, sz,
+             (fr % 4) * 0.25f, (fr / 4) * 0.25f, (fr % 4) * 0.25f + 0.25f, (fr / 4) * 0.25f + 0.25f, col);
+    return 1;
+}
+
 static float ease_cos(float f) { f = f < 0 ? 0 : f > 1 ? 1 : f; return 0.5f - 0.5f * cosf(f * 3.14159265f); }
 
 /* MysteryBoxHandler._ShowReward: la tapa se levanta (clip "up"), la caja se va hacia abajo (0,7 s), el premio
@@ -1140,7 +1170,8 @@ static void draw_box_popup(int sup)
         float ang = (1 - (1 - r) * (1 - r)) * 4.0f * 3.14159265f;      /* 2 vueltas que se van frenando */
         float wk = cosf(ang);
         if (wk > -0.1f && wk < 0.1f) wk = wk < 0 ? -0.1f : 0.1f;       /* de canto: una raya, no desaparece */
-        reward_spr(ginfo.reward_icon, ginfo.reward_icon, bx, y, k, wk, C_WHITE);
+        if (!reward_spin(ginfo.reward_icon, bx, y, k, ang, C_WHITE))
+            reward_spr(ginfo.reward_icon, ginfo.reward_icon, bx, y, k, wk, C_WHITE);
     }
     if (t >= REWARD_REVEAL) {
         unsigned a = t < REWARD_REVEAL + 0.2f ? (unsigned)(255 * (t - REWARD_REVEAL) / 0.2f) : 255;
@@ -1188,7 +1219,7 @@ static void draw_gameover(void)
         if (mbox_bg < 0) r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);   /* sin el APK de la 1.5.2 */
         /* super caja (SuperMysteryBoxEffect): la plateada con mas brillo; se abren antes que las normales */
         draw_box_popup(ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0);
-    } else mbox_bg_release(0);
+    } else { mbox_bg_release(0); reward_spin_release(); }
 }
 
 /* ------------------------------------------------------------ pausa (PauseUI de la 1.4) */
