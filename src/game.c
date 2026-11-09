@@ -2381,7 +2381,7 @@ static void game_die(void)
         pw_on[PT_HOVERBOARD] = 0; pw_left[PT_HOVERBOARD] = 0;
         return;
     }
-    if (track_running_tutorial) { back_to_checkpoint(); return; }
+    if (track_running_tutorial && track_last_checkpoint(ch.z) >= 0) { back_to_checkpoint(); return; }
     clear_powerups();
     isDead = 1;
     missions_did(M_TIMEDEATH, (int)(game_time - start_time));

@@ -1061,8 +1061,10 @@ float track_last_checkpoint(float charZ)
             float best = 0; int found = 0;
             for (int k = 0; k < c->ncp; k++)
                 if (c->cp_z[k] <= charZ && (!found || c->cp_z[k] >= best)) { best = c->cp_z[k]; found = 1; }
-            return found ? best : 0;
+            return found ? best : -1.0f;
         }
     }
-    return 0;
+    /* el tramo del tutorial ya no esta cargado (se ha pasado): no hay punto de control al que volver. Antes devolvia 0
+     * y el personaje volvia al principio de la via, donde ya no habia escenario (pantalla vacia) */
+    return -1.0f;
 }
