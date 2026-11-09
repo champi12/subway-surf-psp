@@ -50,12 +50,12 @@ float r_near = 2.0f, r_far = 1000.0f;
 #define FOG_END 700.0f
 #endif
 #ifndef DIST_FIXED
-#define DIST_FIXED 0.8f
+#define DIST_FIXED 1.0f        /* como el original: niebla de 200 a 700 (RenderSettings de level0) */
 #endif
 float r_fog_start = 200.0f * DIST_FIXED, r_fog_end = FOG_END * DIST_FIXED;
 unsigned int r_sky_tint = 0xffffffffu;   /* color que multiplica el cielo (blanco: sin tinte) */
 int r_sky_flat;                           /* cielo liso del color de la niebla (Navidad) */
-/* Distancia de dibujo fija en todo el juego: la del principio de la carrera (80 % de los 700 del original). Antes se
+/* Distancia de dibujo fija en todo el juego: la del original (niebla de 200 a 700, se dibuja hasta 700). Antes se
  * ajustaba sola segun lo que tardaba cada fotograma y la niebla se acercaba y se alejaba durante la partida; se notaba
  * mucho (sobre todo la de Navidad). r_load_ms se sigue midiendo para el devlog */
 float r_load_ms, r_dist_scale = DIST_FIXED;
