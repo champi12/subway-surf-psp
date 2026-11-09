@@ -314,3 +314,20 @@ Al empezar cada carrera se parte del 80 %, porque es el tramo más pesado. A 60 
 triángulos y los vértices del GE un ~30 %; visualmente solo se nota algo más de niebla al fondo.
 
 En el registro: `STAT ... carga media/max ms dist N%` y una línea `DISTANCIA` cada vez que recorta.
+
+## 10. Personajes en menos lotes
+
+El GE hace el skinning con como mucho 8 huesos por dibujo, así que el conversor parte cada personaje en lotes. Antes
+cortaba un lote cada vez que el siguiente triángulo (en el orden de la malla) se pasaba de 8 huesos: el perro salía en
+35 lotes, el inspector en 21 y Jake en ~30, cada uno con su llamada de dibujo y sus matrices. Ahora junta los triángulos
+que usan los mismos huesos y empaqueta esos grupos en lotes de hasta 8: perro 5, inspector 4, Jake 4. Los dibujos de
+personajes bajan de ~90 a ~13 por fotograma al empezar la carrera (cuando aparecen el inspector y el perro, que es
+justo cuando la consola bajaba a 20 FPS), hay ~1.200 vértices menos para el GE (se repiten menos entre lotes) y
+`mesh.bin` ocupa ~190 KB menos. Las matrices de los huesos se calculan una vez por malla en lugar de una vez por lote.
+
+## 11. Rendijas en las paredes (líneas negras/blancas)
+
+Los trozos que cruzan el borde de la pantalla los dibuja el GE y la CPU rellena los triángulos que el GE descarta. En la
+junta, el GE de la consola redondea distinto que la CPU y quedaba una rendija de 1 píxel (líneas negras en las paredes
+rojas de arcos de la 1.5.2, blancas en los túneles). Lo que recorta la CPU se ensancha ahora 0,75 píxeles hacia fuera
+(`SEAM_GROW_PX` en `src/render.c`) y tapa la junta; lo que se solapa es la misma superficie.

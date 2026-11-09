@@ -3518,6 +3518,26 @@ void game_draw(void)
     SECT(4);
     scene_draw_subtree(n_character);
     if (gu.showing || state == GS_DIE || state == GS_DIEFALL) scene_draw_subtree(n_enemies);
+#ifdef AT_STAT1
+    {   /* prueba: que mallas dibuja el inspector con el perro (una vez) */
+        static int done;
+        if (gu.showing && !done) {
+            done = 1;
+            for (int i = 0; i < gd.nnodes; i++) {
+                int in = 0;
+                for (int k = i; k >= 0 && !in; k = gd.nodes[k].parent) in = k == n_enemies;
+                if (!in || !nrt[i].active || !nrt[i].rend) continue;
+                const uint32_t *sk = node_comp(i, C_SKIN, NULL), *me = node_comp(i, C_MESH, NULL);
+                if (!sk && !me) continue;
+                const Mesh *m = &gd.meshes[sk ? sk[0] : me[0]];
+                int vb = 0;
+                for (int b = 0; b < m->nbatches; b++) vb += m->batches[b].nv;
+                dlog("ENEMIGO %s malla %s piel %d trozos %d lotes %d (vert %d) huesos %d", gd.strings[gd.nodes[i].name], m->name,
+                     sk != NULL, m->nparts, m->nbatches, vb, sk ? (int)sk[3 + sk[2]] : 0);
+            }
+        }
+    }
+#endif
     SECT(5);
     if (n_efx >= 0) scene_draw_subtree(n_efx);
     tutorial_draw_arrow();

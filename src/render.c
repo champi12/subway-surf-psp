@@ -113,6 +113,10 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 /* banda de guarda en NDC: el GE admite coordenadas de pantalla de 0 a 4096 (+-2048 px desde el centro, es decir
  * +-8,5 NDC en horizontal y +-15 en vertical); con 6 queda margen y mas trozos van por el camino rapido */
 #define GUARD 6.0f
+#ifndef SEAM_GROW_PX
+#define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
+#endif
+static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de la proyeccion) */
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 
@@ -498,6 +502,8 @@ void r_init(void)
     ZB = -2.0f * r_far * r_near / (r_far - r_near);
     gx = GUARD / P00;
     gy = GUARD / P11;
+    pix_x = P00 * SCR_W * 0.5f;
+    pix_y = P11 * SCR_H * 0.5f;
     band_gxn = 1.0f / gx; band_gyn = 1.0f / gy;
     band_igl = 1.0f / sqrtf(band_gxn * band_gxn + 1.0f); band_igll = 1.0f / sqrtf(band_gyn * band_gyn + 1.0f);
     band_ilx = 1.0f / sqrtf(P00 * P00 + 1.0f); band_ily = 1.0f / sqrtf(P11 * P11 + 1.0f);
@@ -720,6 +726,24 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
         }
         if (cnt < 3) continue;
         if (b->nv + cnt > b->maxv || b->ni + (cnt - 2) * 3 > b->maxi) return;
+        /* El recortado por CPU se ensancha ~0,75 px hacia fuera en pantalla. Sus vecinos los transforma el GE, que en la
+         * consola redondea la junta distinto: quedaba una rendija de 1 px por la que se veia lo de detras (lineas
+         * negras en las paredes rojas de arcos de la 1.5.2, blancas en los tuneles). Lo que se solapa es la misma
+         * superficie, asi que no se nota */
+        {
+            float cx = 0, cy = 0;
+            for (int k = 0; k < cnt; k++) { cx += in[k].x / in[k].d; cy += in[k].y / in[k].d; }
+            cx /= cnt; cy /= cnt;
+            for (int k = 0; k < cnt; k++) {
+                float sx = in[k].x / in[k].d, sy = in[k].y / in[k].d;
+                float px = (sx - cx) * pix_x, py = (sy - cy) * pix_y;   /* en pixeles */
+                float l2 = px * px + py * py;
+                if (l2 < 1e-4f) continue;
+                float g = SEAM_GROW_PX / sqrtf(l2);
+                in[k].x += px * g / pix_x * in[k].d;
+                in[k].y += py * g / pix_y * in[k].d;
+            }
+        }
         int base = b->nv;
         for (int k = 0; k < cnt; k++) {
             OV *o = &V[b->nv++];
@@ -1224,22 +1248,22 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
             id.x.x = id.y.y = id.z.z = id.w.w = 1.0f;
             sceGuSetMatrix(GU_MODEL, &id);
             model_set = 0;
+            /* cada hueso por la camara curvada, una vez por malla (antes una vez por lote y hueso) */
+            static ScePspFMatrix4 gbone[64];
+            for (int i = 0; i < nb; i++) {
+                M34 r2;
+                m34_mul(&r2, &bv, &bones[i]);
+                float *o = (float *)&gbone[i];
+                for (int c2 = 0; c2 < 4; c2++) {
+                    o[c2 * 4 + 0] = r2.m[c2 * 3]; o[c2 * 4 + 1] = r2.m[c2 * 3 + 1]; o[c2 * 4 + 2] = r2.m[c2 * 3 + 2];
+                    o[c2 * 4 + 3] = c2 == 3 ? 1.0f : 0.0f;
+                }
+            }
             for (int k = 0; k < me->nbatches; k++) {
                 SkinBatch *sb = &me->batches[k];
                 int mat = sb->sub < nmats ? mats[sb->sub] : (nmats > 0 ? mats[nmats - 1] : -1);
                 if (mat < 0) continue;
-                for (int j = 0; j < sb->nb; j++) {
-                    int bi = sb->bones[j] < nb ? sb->bones[j] : 0;
-                    M34 r2;
-                    m34_mul(&r2, &bv, &bones[bi]);
-                    ScePspFMatrix4 *gm = (ScePspFMatrix4 *)sceGuGetMemory(sizeof(ScePspFMatrix4));
-                    float *o = (float *)gm;
-                    for (int c2 = 0; c2 < 4; c2++) {
-                        o[c2 * 4 + 0] = r2.m[c2 * 3]; o[c2 * 4 + 1] = r2.m[c2 * 3 + 1]; o[c2 * 4 + 2] = r2.m[c2 * 3 + 2];
-                        o[c2 * 4 + 3] = c2 == 3 ? 1.0f : 0.0f;
-                    }
-                    sceGuBoneMatrix(j, gm);
-                }
+                for (int j = 0; j < sb->nb; j++) sceGuBoneMatrix(j, &gbone[sb->bones[j] < nb ? sb->bones[j] : 0]);
                 bones_zero = 0;
                 bind_material(mat, 1.0f);
                 sceGuDrawArray(GU_TRIANGLES, GU_WEIGHTS(sb->nb) | GU_WEIGHT_32BITF | GU_TEXTURE_32BITF | GU_VERTEX_32BITF |

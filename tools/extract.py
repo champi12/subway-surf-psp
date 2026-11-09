@@ -555,23 +555,38 @@ def export_meshes(ex):
             # lotes para el skinning por hardware del GE (como mucho 8 huesos por lote)
             bw, bi = h.m_BoneWeights, h.m_BoneIndices
             batches = []
+            # Antes se cortaba un lote cada vez que el siguiente triangulo (en el orden de la malla) pasaba de 8 huesos:
+            # el perro salia en 35 lotes y el inspector en 21 (cada lote es un dibujo y sus matrices). Ahora se juntan
+            # los triangulos con los mismos huesos y esos grupos se empaquetan en lotes de hasta 8 huesos, empezando por
+            # los grupos con mas huesos y anadiendo los que menos huesos nuevos traen
             for si, sm in enumerate(subs):
-                cur, bones = [], []
+                groups = {}
                 for t in sm:
                     tb = set()
                     for i in t:
                         for k in range(4):
                             if bw[i][k] > 0.0001:
                                 tb.add(int(bi[i][k]))
-                    nb = sorted(set(bones) | tb)
-                    if len(nb) > 8 and cur:
-                        batches.append((si, bones, cur))
-                        cur, bones = [], []
-                        nb = sorted(tb)
-                    bones = nb
-                    cur.append(t)
-                if cur:
-                    batches.append((si, bones, cur))
+                    groups.setdefault(frozenset(tb), []).append(t)
+                left = sorted(groups.items(), key=lambda g: (-len(g[0]), -len(g[1])))
+                while left:
+                    bones, cur = set(left[0][0]), list(left[0][1])
+                    left = left[1:]
+                    while True:
+                        best, bk = None, None
+                        for k, (gb, gt) in enumerate(left):
+                            add = len(gb - bones)
+                            if len(bones) + add > 8:
+                                continue
+                            key = (add, -len(gt))
+                            if bk is None or key < bk:
+                                best, bk = k, key
+                        if best is None:
+                            break
+                        bones |= left[best][0]
+                        cur += left[best][1]
+                        del left[best]
+                    batches.append((si, sorted(bones), cur))
             body += struct.pack('<I', len(batches))
             for si, bones, tris in batches:
                 remap = {}
