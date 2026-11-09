@@ -468,21 +468,43 @@ def mesh_triangles(mo, h):
     return out
 
 
-def make_parts(V, UV, subs, skin, world):
+# Mapa de la 1.5.2: sus modelos grandes (bordes del barranco, bosque, carreteras, puente) son largos y con pocos
+# vertices: en celdas de CLUSTER salian trozos de ~40 vertices, cada uno un dibujo (3,5 veces mas trozos que el mapa
+# clasico). Ahi se empieza con celdas de ADAPT_MAX y solo se parten (a la mitad, hasta CLUSTER) las que pasan de
+# ADAPT_VERTS vertices: lo denso queda igual que antes y lo disperso en menos trozos. Misma geometria y textura
+ADAPT_MAX = 256.0
+ADAPT_VERTS = 240
+
+
+def cells_of(V, tris, size):
+    cells = {}
+    for t in tris:
+        cx = sum(V[i][0] for i in t) / 3.0
+        cy = sum(V[i][1] for i in t) / 3.0
+        cz = sum(V[i][2] for i in t) / 3.0
+        k = (int(math.floor(cx / size)), int(math.floor(cy / size)), int(math.floor(cz / size)))
+        cells.setdefault(k, []).append(t)
+    return list(cells.values())
+
+
+def adaptive_cells(V, tris, size):
+    out = []
+    for g in cells_of(V, tris, size):
+        if size > CLUSTER and len({i for t in g for i in t}) > ADAPT_VERTS:
+            out += adaptive_cells(V, g, max(CLUSTER, size * 0.5))
+        else:
+            out.append(g)
+    return out
+
+
+def make_parts(V, UV, subs, skin, world, adaptive=False):
     """Divide la malla en trozos (submalla + celda espacial) con sus propios vertices."""
     parts = []
     for si, sm in enumerate(subs):
         if not sm:
             continue
         if world and not skin:
-            cells = {}
-            for t in sm:
-                cx = sum(V[i][0] for i in t) / 3.0
-                cy = sum(V[i][1] for i in t) / 3.0
-                cz = sum(V[i][2] for i in t) / 3.0
-                k = (int(math.floor(cx / CLUSTER)), int(math.floor(cy / CLUSTER)), int(math.floor(cz / CLUSTER)))
-                cells.setdefault(k, []).append(t)
-            groups = list(cells.values())
+            groups = adaptive_cells(V, sm, ADAPT_MAX) if adaptive else cells_of(V, sm, CLUSTER)
         else:
             groups = [sm]
         for g in groups:
@@ -564,7 +586,7 @@ def export_meshes(ex):
         ctr = (mn + mx) * 0.5
         rad = float(np.sqrt(((Va - ctr) ** 2).sum(axis=1)).max())
         world = ex.mesh_world[mi] and rad > CLUSTER * 0.75
-        parts = make_parts(V, UV, subs, skin, world)
+        parts = make_parts(V, UV, subs, skin, world, getattr(ex, 'adaptive_parts', False))
         offs.append(len(body))
         names_ = getattr(ex, 'mesh_names', None)
         nm = (names_[mi] if names_ else d.m_Name).encode()[:31]
@@ -2389,7 +2411,8 @@ def export_xmas(sc15, outdir, ex, hq):
                 meshes.append(mo)
                 mworld.append(bool(names[tgt]))
                 mnames.append(tgt)
-    hm = SimpleNamespace(meshes=meshes, mesh_world=mworld, mesh_names=mnames)
+    hm = SimpleNamespace(meshes=meshes, mesh_world=mworld, mesh_names=mnames,
+                         adaptive_parts=getattr(ex, 'adaptive_parts', False))
     mbin, stats = export_meshes(hm)
     tbin = export_textures(SimpleNamespace(textures=gen), hq=hq)
     for fn, b in (('xm_tex.bin', tbin), ('xm_mesh.bin', mbin)):
@@ -2517,6 +2540,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui,
                    sc15 if sc15 is not None else (level_sc if level_sc is not sc else None))
     print('Exportando mallas...')
+    ex.adaptive_parts = not classic   # solo el mapa de la 1.5.2 (el clasico como antes)
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)
     tt = sum(s[2] for s in stats)
