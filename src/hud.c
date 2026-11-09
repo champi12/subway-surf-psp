@@ -1014,7 +1014,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, TR("Especial de Halloween", "Halloween Special"));
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 2 ? TR("Especial de Navidad", "Holiday Special")
+                                                              : TR("Especial de Halloween", "Halloween Special"));
     if (limited && !un && secs > 0) {
         /* pegatina naranja "10 DAYS LEFT" / "LAST DAY" */
         float sx = 14 + nw + U(36), sy = 26;

@@ -2406,6 +2406,28 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             if not isinstance(c, tuple):
                 names10.add(c.read_typetree()['m_Name'])
         boards = export_boards(sc15, ex, names10)
+        if boards is not None:
+            # Elf Tricky (Characters.cs de la 1.5.2: 95000 monedas, solo en Navidad): con los personajes de la 1.4
+            # en chars14.bin (mismo esqueleto de 18 huesos); se lee solo mientras se usa
+            for o in sc15.env.objects:
+                if o.type.name != 'SkinnedMeshRenderer':
+                    continue
+                d = o.read_typetree()
+                mo = sc15.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
+                if mo is None or mo.read().m_Name != 'xmasTricky':
+                    continue
+                mat = sc15.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
+                tex = None
+                for _, t in (mat.read_typetree()['m_SavedProperties']['m_TexEnvs'] if mat else []):
+                    tt = sc15.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if tt is not None:
+                        tex = tt.read()
+                        break
+                if tex is not None:
+                    boards.meshes.append(mo)
+                    boards.gen.append(('gen', 'avatar_trickyXmas', tex_rgba(tex), True))
+                    print('  personaje de Navidad: Elf Tricky')
+                break
     print('Exportando interfaz...')
     # los otros mundos (data/w15) tienen su propio ui.bin: tambien llevan las miniaturas de las tablas
     ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui,

@@ -2701,7 +2701,7 @@ void game_init(void)
 enum { TK_JAKE, TK_TRICKY, TK_FRESH, TK_SPIKE, TK_YUTANI, TK_FRANK, TK_FRIZZY, TK_KING, TK_LUCY, TK_NINJA, TK_COUNT };
 typedef struct {
     const char *model, *name; int unlock, token, price; const char *tok_es, *tok_en, *tok_sprite;
-    int event;                     /* solo se compra en Halloween */
+    int event;                     /* solo se compra en temporada: 1 Halloween, 2 Navidad */
     const char *mesh14, *tex14;    /* personajes de la 1.4: malla (chars14.bin) y textura (hw_tex.bin) */
 } CharDef;
 /* el indice es el que se guarda en save.dat: los nuevos van siempre al final */
@@ -2723,6 +2723,8 @@ static const CharDef chars[] = {
     {"slick", "Zoe", UL_COINS, TK_JAKE, 120000, "", "", NULL, 0, "zoe", "avatar_zoe"},
     {"slick", "Brody", UL_COINS, TK_JAKE, 350000, "", "", NULL, 0, "brody", "avatar_brody"},
     {"slick", "Prince K", UL_COINS, TK_JAKE, 980000, "", "", NULL, 0, "princek", "avatar_princek"},
+    /* 1.5.2: Elf Tricky, solo en Navidad (event 2); comprado se queda */
+    {"slick", "Elf Tricky", UL_COINS, TK_JAKE, 95000, "", "", NULL, 2, "xmasTricky", "avatar_trickyXmas"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
@@ -2746,7 +2748,7 @@ static int char_available(int i)
 {
     if (!is14(i)) return 1;
     if (!ext_ready(i)) return 0;
-    return !chars[i].event || owned_14(i) || theme_halloween;
+    return !chars[i].event || owned_14(i) || (chars[i].event == 1 ? theme_halloween : xmas_season());
 }
 
 static int ch_unlocked(int i)
@@ -3797,7 +3799,7 @@ void game_load(void)
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    if (!v2 && n >= 32) { owned14 = d[31] & 0x3f; hw_popup_year = (d[31] >> 16) & 0xff; }
+    if (!v2 && n >= 32) { owned14 = d[31] & 0xff; hw_popup_year = (d[31] >> 16) & 0xff; }
     if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }
