@@ -3611,85 +3611,6 @@ void game_draw(void)
 #undef SECT
 }
 
-/* ------------------------------------------------------------ partida guardada */
-#define SAVE_MAGIC 0x53535033   /* v3: + fichas por personaje (v2 sin ellas se sigue leyendo) */
-void game_save(void)
-{
-    FILE *f = fopen("save.dat", "wb");
-    if (!f) return;
-    int d[32] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
-                 ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
-                 upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
-                 mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
-    for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
-    d[30] = trophies_mask;
-    d[31] = owned14 | (hw_popup_year & 0xff) << 16;
-    d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
-    fwrite(d, sizeof(d), 1, f);
-    /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
-    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned};
-    fwrite(e, sizeof(e), 1, f);
-    fclose(f);
-}
-
-void game_load(void)
-{
-    FILE *f = fopen("save.dat", "rb");
-    if (!f) return;
-    int d[32];
-    memset(d, 0, sizeof(d));
-    int n = fread(d, 4, 32, f);
-    int e[8];
-    memset(e, 0, sizeof(e));
-    int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
-    fclose(f);
-    if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
-    if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
-    if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
-    int v2 = d[0] == 0x53535032;
-    if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;
-    ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; ginfo.hs500 = d[4]; ginfo.hs2000 = d[5];
-    ginfo.boxes_pending = d[6]; ginfo.boxes_opened = d[7];
-    upgrade_tier[PW_JETPACK] = d[8]; upgrade_tier[PW_SNEAKERS] = d[9]; upgrade_tier[PW_MAGNET] = d[10]; upgrade_tier[PW_DOUBLE] = d[11];
-    tutorial_completed = v2 ? 1 : d[12];   /* quien ya jugo con la version anterior no repite el tutorial */
-    if (n >= 20) {
-        mission_set = d[13]; ginfo.tokens = d[14];
-        mission_progress[0] = d[15]; mission_progress[1] = d[16]; mission_progress[2] = d[17]; ginfo.character = d[18];
-    }
-    if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
-    else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
-    if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    if (!v2 && n >= 32) { owned14 = d[31] & 0x3f; hw_popup_year = (d[31] >> 16) & 0xff; }
-    if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
-    /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
-}
-
-void scene_on_chunk_laid(int chunk) { (void)chunk; }
-
-#ifdef AUTOTEST
-/* para la prueba automatica: todo desbloqueado (personajes, Zombie Jake, trofeos, mejoras, tablas, headstarts) */
-void game_debug_unlock_all(void)
-{
-    for (int i = 0; i < NCHARS; i++) if (!chars[i].event) char_tokens[chars[i].token] = chars[i].price;
-    owned14 = 0x3f;
-    trophies_mask = (1 << NTROPHIES) - 1;
-    for (int k = 0; k < PW_COUNT; k++) upgrade_tier[k] = 5;
-    ginfo.total_coins = 999999; ginfo.hoverboards = 99; ginfo.hs500 = 20; ginfo.hs2000 = 20;
-    ginfo.boxes_pending = 5;
-    ginfo.character = ext_ready(15) ? 15 : 0;   /* Prince K */
-    char_show_model(ginfo.character);
-    game_save();
-    dlog("PRUEBA todo desbloqueado, personaje %s", chars[ginfo.character].name);
-}
-
-/* para la prueba automatica: abrir n cajas misteriosas de golpe */
-void game_debug_boxes(int n)
-{
-    for (int i = 0; i < n; i++) { ginfo.boxes_pending++; mystery_open(); }
-    dlog("PRUEBA %d cajas abiertas: %d trofeos, monedas %d", n, trophies_collected(), ginfo.total_coins);
-}
-
-/* para la prueba automatica: activar power-ups a voluntad */
 /* ------------------------------------------------------------ humo al romperse la tabla
  * Character.hoverboardCrashParticleSystem de la 1.5.2, con sus parametros (fx.bin, del ParticleSystem de la escena):
  * una rafaga de 35 manchas de spray (spraySplash) que salen en un cono hacia arriba y atras, vida 1 s, velocidad y
@@ -3783,6 +3704,86 @@ int game_cloud_tex(void)
     int m = cloud_mat[0];
     return m >= 0 && m < gd.nmats ? gd.mats[m].tex : -1;
 }
+
+/* ------------------------------------------------------------ partida guardada */
+#define SAVE_MAGIC 0x53535033   /* v3: + fichas por personaje (v2 sin ellas se sigue leyendo) */
+void game_save(void)
+{
+    FILE *f = fopen("save.dat", "wb");
+    if (!f) return;
+    int d[32] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
+                 ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
+                 upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
+                 mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
+    for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
+    d[30] = trophies_mask;
+    d[31] = owned14 | (hw_popup_year & 0xff) << 16;
+    d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
+    fwrite(d, sizeof(d), 1, f);
+    /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
+    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned};
+    fwrite(e, sizeof(e), 1, f);
+    fclose(f);
+}
+
+void game_load(void)
+{
+    FILE *f = fopen("save.dat", "rb");
+    if (!f) return;
+    int d[32];
+    memset(d, 0, sizeof(d));
+    int n = fread(d, 4, 32, f);
+    int e[8];
+    memset(e, 0, sizeof(e));
+    int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
+    fclose(f);
+    if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
+    if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
+    if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
+    int v2 = d[0] == 0x53535032;
+    if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;
+    ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; ginfo.hs500 = d[4]; ginfo.hs2000 = d[5];
+    ginfo.boxes_pending = d[6]; ginfo.boxes_opened = d[7];
+    upgrade_tier[PW_JETPACK] = d[8]; upgrade_tier[PW_SNEAKERS] = d[9]; upgrade_tier[PW_MAGNET] = d[10]; upgrade_tier[PW_DOUBLE] = d[11];
+    tutorial_completed = v2 ? 1 : d[12];   /* quien ya jugo con la version anterior no repite el tutorial */
+    if (n >= 20) {
+        mission_set = d[13]; ginfo.tokens = d[14];
+        mission_progress[0] = d[15]; mission_progress[1] = d[16]; mission_progress[2] = d[17]; ginfo.character = d[18];
+    }
+    if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
+    else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
+    if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
+    if (!v2 && n >= 32) { owned14 = d[31] & 0x3f; hw_popup_year = (d[31] >> 16) & 0xff; }
+    if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
+    /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
+}
+
+void scene_on_chunk_laid(int chunk) { (void)chunk; }
+
+#ifdef AUTOTEST
+/* para la prueba automatica: todo desbloqueado (personajes, Zombie Jake, trofeos, mejoras, tablas, headstarts) */
+void game_debug_unlock_all(void)
+{
+    for (int i = 0; i < NCHARS; i++) if (!chars[i].event) char_tokens[chars[i].token] = chars[i].price;
+    owned14 = 0x3f;
+    trophies_mask = (1 << NTROPHIES) - 1;
+    for (int k = 0; k < PW_COUNT; k++) upgrade_tier[k] = 5;
+    ginfo.total_coins = 999999; ginfo.hoverboards = 99; ginfo.hs500 = 20; ginfo.hs2000 = 20;
+    ginfo.boxes_pending = 5;
+    ginfo.character = ext_ready(15) ? 15 : 0;   /* Prince K */
+    char_show_model(ginfo.character);
+    game_save();
+    dlog("PRUEBA todo desbloqueado, personaje %s", chars[ginfo.character].name);
+}
+
+/* para la prueba automatica: abrir n cajas misteriosas de golpe */
+void game_debug_boxes(int n)
+{
+    for (int i = 0; i < n; i++) { ginfo.boxes_pending++; mystery_open(); }
+    dlog("PRUEBA %d cajas abiertas: %d trofeos, monedas %d", n, trophies_collected(), ginfo.total_coins);
+}
+
+/* para la prueba automatica: activar power-ups a voluntad */
 
 /* prueba: romper la tabla como al chocar */
 void game_debug_board_crash(void) { if (mods[MOD_HOVERBOARD].active) mods[MOD_HOVERBOARD].stop = STOP_STOP; }
