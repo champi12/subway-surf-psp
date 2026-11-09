@@ -49,48 +49,25 @@ float r_near = 2.0f, r_far = 1000.0f;
 #ifndef FOG_END
 #define FOG_END 700.0f
 #endif
-float r_fog_start = 200.0f, r_fog_end = FOG_END;
+#ifndef DIST_FIXED
+#define DIST_FIXED 0.8f
+#endif
+float r_fog_start = 200.0f * DIST_FIXED, r_fog_end = FOG_END * DIST_FIXED;
 unsigned int r_sky_tint = 0xffffffffu;   /* color que multiplica el cielo (blanco: sin tinte) */
 int r_sky_flat;                           /* cielo liso del color de la niebla (Navidad) */
-/* Distancia de dibujo adaptativa (30 FPS fijos): r_load_ms es lo que tardo de verdad el ultimo fotograma, desde que se
- * mando su lista al GE hasta que terminaron el GE y la CPU del siguiente (lo que mas tarde). Si se acerca a 33 ms se
- * acerca un poco la niebla (menos via, menos dibujos, menos vertices: baja la CPU y el GE a la vez) y, con margen, se
- * devuelve poco a poco. Asi los tramos pesados (el principio de la carrera con el entorno del menu, el inspector y el
- * perro; algunos ambientes de la 1.5.2) no bajan a 20 FPS; en los ligeros se ve hasta 700 como el original */
-float r_load_ms, r_dist_scale = 1.0f;
-/* como mucho se acerca al 80 % (al 60 % la niebla de Navidad tapaba media pantalla) y la niebla se mueve despacio
- * hacia la distancia elegida (~2 s del 100 % al 80 %): antes saltaba un 10 % de un fotograma a otro y se notaba */
-#define DIST_MIN 0.8f
-static float fog_scale = 1.0f;
-void r_dist_hint(float scale) { if (r_dist_scale > scale) r_dist_scale = scale; }
+/* Distancia de dibujo fija en todo el juego: la del principio de la carrera (80 % de los 700 del original). Antes se
+ * ajustaba sola segun lo que tardaba cada fotograma y la niebla se acercaba y se alejaba durante la partida; se notaba
+ * mucho (sobre todo la de Navidad). r_load_ms se sigue midiendo para el devlog */
+float r_load_ms, r_dist_scale = DIST_FIXED;
+void r_dist_hint(float scale) { (void)scale; }
 static void dist_adapt(float load)
 {
-    static int calm, over;
-    static float prev;
-    /* un fotograma suelto lento (leer una textura, escribir el registro) no cuenta: solo dos seguidos. Y los de mas de
-     * 100 ms son cargas (de la Memory Stick, de un tramo nuevo), no de dibujar: acortar la vista no los arregla */
-    if (load > 100.0f) { over = 0; prev = 0; return; }
-    over = load > 30.0f ? over + 1 : 0;
-    if (over >= 2) {   /* pasado o al limite */
-        r_dist_scale -= load > 33.0f ? 0.05f : 0.02f;
-        calm = 0;
-#if DEVLOG
-        static int nlog;
-        if (nlog < 40 && r_dist_scale >= DIST_MIN) { nlog++; dlog("DISTANCIA %.0f%% (fotogramas de %.1f y %.1f ms)", r_dist_scale * 100, prev, load); }
-#endif
-    }
-    else if (load < 26.0f) { if (++calm >= 20) { r_dist_scale += 0.02f; calm = 10; } }
-    else calm = 0;
-    if (r_dist_scale < DIST_MIN) r_dist_scale = DIST_MIN;
-    if (r_dist_scale > 1.0f) r_dist_scale = 1.0f;
+    (void)load;
 #ifdef AT_DIST
-    r_dist_scale = AT_DIST;   /* prueba: distancia fija */
+    r_dist_scale = AT_DIST;   /* prueba: otra distancia */
 #endif
-    if (fog_scale > r_dist_scale) fog_scale = fog_scale - 0.004f < r_dist_scale ? r_dist_scale : fog_scale - 0.004f;
-    else if (fog_scale < r_dist_scale) fog_scale = fog_scale + 0.003f > r_dist_scale ? r_dist_scale : fog_scale + 0.003f;
-    r_fog_end = FOG_END * fog_scale;
-    r_fog_start = 200.0f * fog_scale;
-    prev = load;
+    r_fog_end = FOG_END * r_dist_scale;
+    r_fog_start = 200.0f * r_dist_scale;
 }
 unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
 /* color de borrado: el cielo tapa todo el fondo, asi que solo asoma por las juntas de un pixel entre dos tramos de via
