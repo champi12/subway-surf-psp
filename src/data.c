@@ -1,5 +1,6 @@
 /* data.c - carga de world.bin, mat.bin, mesh.bin, tex.bin, anim.bin y sfx.bin */
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -228,6 +229,16 @@ static int load_textures(void)
 }
 
 /* lee los datos de la textura i de su archivo (el normal o el del tema) */
+/* archivo del que se lee la textura i (para el hilo de carga, que abre el suyo propio) */
+void data_tex_path(int i, char *out, int n)
+{
+    /* ruta completa: sceIoOpen no resuelve las relativas como fopen (la carpeta actual la lleva la libreria de C) */
+    static char cwd[160];
+    if (!cwd[0] && !getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
+    if (gd.tex[i].src) snprintf(out, n, "%s/data/hw_tex.bin", cwd);
+    else snprintf(out, n, "%s/%s/tex.bin", cwd, basedir);
+}
+
 int data_tex_read(int i, void *pal, void *data)
 {
     Texture *t = &gd.tex[i];

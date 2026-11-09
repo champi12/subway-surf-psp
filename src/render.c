@@ -169,8 +169,26 @@ static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int s
     for (int y = 0; y < dh; y++)
         for (int x = 0; x < dw; x++) {
             if (bpp == 1) {
-                /* con paleta no se puede promediar: un pixel de cada 2x2 */
-                dst[swz_off(x, y, dwb)] = src[swz_off(2 * x, 2 * y, swb)];
+                /* con paleta no se puede promediar: de los 4 pixeles del 2x2 se queda el de color mas parecido a la
+                 * media. Antes era siempre el de arriba a la izquierda: si caia en el borde oscuro de una pieza del atlas,
+                 * la linea de 1 pixel se volvia una franja ancha en los niveles pequenos, que es lo que la PSP usa en las
+                 * paredes vistas de lado (lineas negras en las paredes rojas de arcos de la 1.5.2) */
+                const unsigned *pal = (const unsigned *)tx->pal;
+                unsigned char id[4];
+                int cr[4], cg[4], cb[4], ar = 0, ag = 0, ab = 0;
+                for (int k = 0; k < 4; k++) {
+                    id[k] = src[swz_off(2 * x + (k & 1), 2 * y + (k >> 1), swb)];
+                    unsigned c = pal ? pal[id[k]] : id[k] * 0x010101u;
+                    cr[k] = c & 255; cg[k] = (c >> 8) & 255; cb[k] = (c >> 16) & 255;
+                    ar += cr[k]; ag += cg[k]; ab += cb[k];
+                }
+                int best = 0, bd = 0x7fffffff;
+                for (int k = 0; k < 4; k++) {
+                    int dr = cr[k] * 4 - ar, dg = cg[k] * 4 - ag, db = cb[k] * 4 - ab;
+                    int d = dr * dr + dg * dg + db * db;
+                    if (d < bd) { bd = d; best = k; }
+                }
+                dst[swz_off(x, y, dwb)] = id[best];
                 continue;
             }
             unsigned p[4];
@@ -214,6 +232,31 @@ static void mips_build(int t, const unsigned char *src)
         w /= 2; h /= 2;
         src = m;
     }
+}
+
+/* reserva los bufferes de los mipmaps (para que el hilo de carga los rellene con mips_build sin reservar memoria);
+ * devuelve los bytes reservados */
+static int mips_alloc(int t)
+{
+    Texture *tx = &gd.tex[t];
+    tex_nmip[t] = 0;
+    if (MIPMAPS <= 0 || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return 0;
+    int bpp = tx->fmt == TEX_T8 ? 1 : 2, w = tx->w, h = tx->h, bytes = 0;
+    for (int l = 0; l < MIPMAPS; l++) {
+        if ((w / 2) * bpp < 16 || h / 2 < 8) break;
+        void *m = memalign(16, (w / 2) * bpp * (h / 2));
+        if (!m) break;
+        tex_mip[t][l] = m;
+        tex_nmip[t] = l + 1;
+        bytes += (w / 2) * (h / 2) * bpp;
+        w /= 2; h /= 2;
+    }
+    return bytes;
+}
+static void mips_free(int t)
+{
+    for (int l = 0; l < tex_nmip[t]; l++) { free(tex_mip[t][l]); tex_mip[t][l] = NULL; }
+    tex_nmip[t] = 0;
 }
 
 /* espera a que el GE termine el fotograma que esta dibujando (antes de liberar memoria que use) */
@@ -261,10 +304,15 @@ void r_tex_reload(int t)
 }
 
 /* lee la textura de la Memory Stick la primera vez que se usa (y la sube a la VRAM si cabe) */
+void r_tex_async_poll(void);
+static volatile int ld_tex = -1, ld_state;   /* carga en segundo plano: 0 libre, 1 leyendo, 2 leida, 3 error */
 static int tex_ensure(int t)
 {
     Texture *tx = &gd.tex[t];
     if (tx->loaded) return 0;
+    /* la esta leyendo el hilo de carga: se espera a que acabe (comparten los bufferes) */
+    while (ld_tex == t && ld_state == 1) sceKernelDelayThread(1000);
+    if (ld_tex == t) { r_tex_async_poll(); if (tx->loaded) return 0; }
     if (tex_failed && tex_failed[t]) return -1;
     unsigned int t0 = sceKernelGetSystemTimeLow();
     volatile const char *ph = dbg_phase_main;
@@ -303,6 +351,111 @@ static int tex_ensure(int t)
          tx->fmt == TEX_T8 ? "paleta" : tx->fmt == TEX_4444 ? "4444" : tx->fmt == TEX_5650 ? "5650" : "8888",
          (int)((tx->databytes + tx->palbytes) / 1024), where, tex_nmip[t], (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
     return 0;
+}
+
+/* ---- carga en segundo plano ----
+ * Un hilo de menos prioridad que el juego lee la textura de la Memory Stick (lo lento: ~50 ms por textura de 512x512)
+ * mientras el juego sigue dibujando; el hilo solo lee, la memoria se reserva y se termina de preparar (mipmaps) en el
+ * hilo principal. En la pantalla de personajes cada personaje nuevo era un tiron de 83-100 ms. Solo texturas que se
+ * quedan en la RAM (las que van a la VRAM siguen el camino normal) */
+static SceUID ld_thid = -1, ld_sema = -1;
+static void *ld_pal, *ld_data;
+static unsigned int ld_t0;
+static int ld_want = -1;                      /* la ultima pedida mientras el hilo estaba ocupado */
+static int ld_failed = -1;                    /* la ultima que fallo: esa se lee como siempre */
+
+static int loader_thread(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    char path[256], open_path[256] = "";
+    SceUID fd = -1;
+    for (;;) {
+        if (sceKernelWaitSema(ld_sema, 1, NULL) < 0) break;
+        int t = ld_tex;
+        if (t < 0) continue;
+        Texture *tx = &gd.tex[t];
+        data_tex_path(t, path, sizeof(path));
+        if (fd < 0 || strcmp(path, open_path)) {
+            if (fd >= 0) sceIoClose(fd);
+            fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+            strcpy(open_path, path);
+        }
+        int ok = fd >= 0 && sceIoLseek32(fd, tx->file_off, PSP_SEEK_SET) == (int)tx->file_off;
+        if (ok && tx->palbytes) ok = sceIoRead(fd, ld_pal, tx->palbytes) == (int)tx->palbytes;
+        if (ok) ok = sceIoRead(fd, ld_data, tx->databytes) == (int)tx->databytes;
+        /* los mipmaps tambien aqui (en sus bufferes ya reservados): elegir el color de cada 2x2 cuesta */
+        if (ok && tex_nmip[t] > 0) mips_build(t, ld_data);
+        ld_state = ok ? 2 : 3;
+    }
+    return 0;
+}
+
+static int async_ok(int t)
+{
+    const Texture *tx = &gd.tex[t];
+    return !(tx->fmt != TEX_T8 && t < 64 && tex_3d[t]);   /* las de 16 bits del escenario van a la VRAM */
+}
+
+static int ld_mipbytes;
+static void async_start(int t)
+{
+    Texture *tx = &gd.tex[t];
+    ld_pal = tx->palbytes ? memalign(64, tx->palbytes) : NULL;
+    ld_data = memalign(64, tx->databytes);
+    if ((tx->palbytes && !ld_pal) || !ld_data) { free(ld_pal); free(ld_data); ld_pal = ld_data = NULL; return; }
+    tx->pal = ld_pal;          /* mip_make la usa; la textura no esta cargada, nadie mas la mira */
+    ld_mipbytes = mips_alloc(t);
+    ld_tex = t;
+    ld_state = 1;
+    ld_t0 = sceKernelGetSystemTimeLow();
+    sceKernelSignalSema(ld_sema, 1);
+}
+
+/* cada fotograma: termina la que haya leido el hilo y empieza la siguiente pedida */
+void r_tex_async_poll(void)
+{
+    if (ld_state >= 2) {
+        int t = ld_tex;
+        Texture *tx = &gd.tex[t];
+        if (ld_state == 2 && !tx->loaded) {
+            tx->pal = ld_pal; tx->data = ld_data;
+            tx->loaded = 1;
+            r_mip_bytes += ld_mipbytes;
+            r_mem.ram_tex += (int)(tx->databytes + tx->palbytes); r_mem.ram_tex_n++;
+            sceKernelDcacheWritebackAll();
+            dlog("TEXTURA %s %dx%d %d KB en RAM, %d mipmaps (en segundo plano, %.0f ms)", tx->name, tx->w, tx->h,
+                 (int)((tx->databytes + tx->palbytes) / 1024), tex_nmip[t], (sceKernelGetSystemTimeLow() - ld_t0) / 1000.0f);
+        } else {
+            if (!tx->loaded) { mips_free(t); tx->pal = NULL; }
+            free(ld_pal); free(ld_data);
+            if (ld_state == 3) { ld_failed = t; dlog_error("Error leyendo la textura %s en segundo plano", tx->name); }
+        }
+        ld_pal = ld_data = NULL;
+        ld_tex = -1;
+        ld_state = 0;
+    }
+    if (ld_state == 0 && ld_want >= 0) {
+        int t = ld_want;
+        ld_want = -1;
+        if (!gd.tex[t].loaded) async_start(t);
+    }
+}
+
+/* 1 si la textura ya esta en memoria; si no, la pide al hilo (sin esperar) y devuelve 0 */
+int r_tex_request(int t)
+{
+    if (t < 0 || t >= gd.ntex) return 1;
+    if (gd.tex[t].loaded) return 1;
+    if (ld_sema < 0) {
+        ld_sema = sceKernelCreateSema("tex_loader", 0, 0, 1, NULL);
+        ld_thid = sceKernelCreateThread("tex_loader", loader_thread, 0x30, 0x2000, PSP_THREAD_ATTR_USER, NULL);
+        if (ld_sema < 0 || ld_thid < 0) { tex_ensure(t); return 1; }   /* sin hilo: como siempre */
+        sceKernelStartThread(ld_thid, 0, NULL);
+    }
+    if (!async_ok(t) || t == ld_failed) { tex_ensure(t); return 1; }
+    if (ld_tex != t) ld_want = t;
+    r_tex_async_poll();
+    return gd.tex[t].loaded;
 }
 
 /* carga una textura por nombre antes de empezar a jugar, para que no se lea en plena carrera */

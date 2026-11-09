@@ -331,3 +331,14 @@ Los trozos que cruzan el borde de la pantalla los dibuja el GE y la CPU rellena 
 junta, el GE de la consola redondea distinto que la CPU y quedaba una rendija de 1 píxel (líneas negras en las paredes
 rojas de arcos de la 1.5.2, blancas en los túneles). Lo que recorta la CPU se ensancha ahora 0,75 píxeles hacia fuera
 (`SEAM_GROW_PX` en `src/render.c`) y tapa la junta; lo que se solapa es la misma superficie.
+
+## 12. Carga en segundo plano (pantalla de personajes)
+
+Cada personaje del carrusel necesita su textura (512x512, 257 KB): leerla de la Memory Stick paraba el juego 83-100 ms
+cada vez. Ahora la lee un hilo de menos prioridad (`r_tex_request` / `r_tex_async_poll` en `src/render.c`), que
+también genera sus mipmaps en bufferes ya reservados; mientras tanto se sigue viendo el personaje anterior y se cambia
+en cuanto está lista (unos 100 ms después, sin tirones).
+
+Los mipmaps de las texturas con paleta se hacen ahora eligiendo, de cada 2x2, el píxel de color más parecido a la
+media (antes, siempre el de arriba a la izquierda): las líneas oscuras de 1 píxel de los bordes de las piezas del atlas
+se convertían en franjas en los niveles pequeños (líneas negras en las paredes rojas vistas de lado).

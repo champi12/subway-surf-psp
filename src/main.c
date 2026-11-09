@@ -424,6 +424,7 @@ int main(int argc, char **argv)
         unsigned int t1 = sceKernelGetSystemTimeLow();
         if (show_perf) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();
+        r_tex_async_poll();   /* texturas leidas en segundo plano */
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
         {
             extern float phys_ms;

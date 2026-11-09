@@ -140,7 +140,9 @@ static void sounds_init(void)
     ci(&snd_deathtrain, "Hr_death_hitCam", 0.8f, 1.1f, 0.8f, 0.9f);
     ci(&snd_bodyfall, "Hr_death_bodyfall", 0.8f, 1.1f, 0.8f, 0.9f);
     ci(&snd_catch, "Hr_Guard_catchPlayer", 0.9f, 1.0f, 0.5f, 0.5f);
-    ci(&snd_startpan, "Hr_intro_gameStart", 1.0f, 1.0f, 0.25f, 0.25f);
+    /* el original lo pone al 25 % (KeyFrameAudio de la camara), pero en la PSP, con la musica encima y el resto de
+     * efectos al 70-100 %, el silbato del inspector (sale a los 1,6 s) no se oia: solo el perro */
+    ci(&snd_startpan, "Hr_intro_gameStart", 1.0f, 1.0f, 0.7f, 0.7f);
     sfx_guardloop = sfx_find("Hr_Guard_proximityLoop");
     sfx_trainpass = sfx_find("Hr_trainPass");
     sfx_magnetloop = sfx_find("Hr_magnet_mainLOOP");
@@ -336,7 +338,7 @@ static float bell(float x) { return smoothstepf(0, 1, 1.0f - fabsf(x - 0.5f) / 0
 
 static void set_node_active(int n, int on) { if (n >= 0) nrt[n].active = on; }
 
-static void play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); snd_clip(c); }
+static int play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); return snd_clip(c); }
 
 /* ------------------------------------------------------------ tablas (Hoverboards / HoverboardManager de la 1.5.2)
  * boards.bin trae la lista (nombre, precio, efecto y animaciones de cada accion); boardanim.bin, las animaciones,
@@ -533,7 +535,12 @@ static void char_anim_event(Animator *a, int state, float t)
 }
 
 static void guard_anim_event(Animator *a, int state, float t) { (void)a; (void)state; (void)t; play_ci(&snd_catch); }
-static void cam_anim_event(Animator *a, int state, float t) { (void)a; (void)state; (void)t; play_ci(&snd_startpan); }
+static void cam_anim_event(Animator *a, int state, float t)
+{
+    (void)a; (void)state; (void)t;
+    int h = play_ci(&snd_startpan);
+    dlog("SONIDO inicio de carrera (silbato y perro): %s", h >= 0 ? "suena" : "sin voz libre");
+}
 
 /* ------------------------------------------------------------ guardia (FollowingGuard) */
 static void show_rec(int n, int vis)
@@ -2722,9 +2729,11 @@ const char *char_token_sprite(int row) { return chars[char_id(row)].tok_sprite; 
  * personajes del original solo lo llevaba Jake, pero alli el modelo no pintaba: aqui es la misma animacion del
  * menu, asi que sin spray parecia que pintaba con la mano.
  * Memoria: solo quedan cargadas la malla y la textura del que se ve y las del elegido */
+static int char_shown = -1;   /* personaje cuyo modelo se esta viendo */
 static void char_show_model(int i)
 {
     if (i < 0 || i >= NCHARS) i = 0;
+    char_shown = i;
     if (n_avatars >= 0)
         for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
             nrt[c].rend = !strcmp(gd.strings[gd.nodes[c].name], chars[i].model);
@@ -2926,9 +2935,12 @@ static void chars_input(unsigned in, int confirm)
      * rodar): aqui no deben mover la seleccion */
     if (in & IN_LEFT) in |= IN_UP;
     if (in & IN_RIGHT) in |= IN_DOWN;
-    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; char_show_model(char_id(ginfo.char_sel)); char_pose(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
-    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; char_show_model(char_id(ginfo.char_sel)); char_pose(char_id(ginfo.char_sel)); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
+    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
     int i = char_id(ginfo.char_sel);
+    /* el modelo cambia cuando su textura ya esta en memoria (se lee en segundo plano): mientras tanto se sigue viendo
+     * el anterior. Antes cada personaje nuevo paraba el juego 83-100 ms leyendo de la Memory Stick */
+    if (i != char_shown && r_tex_request(char_tex(i))) { char_show_model(i); char_pose(i); }
     if (confirm) {
         if (ch_unlocked(i)) {
             ginfo.character = i;

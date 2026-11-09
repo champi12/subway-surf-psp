@@ -16,7 +16,9 @@ void r_end_frame(void);
 void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capturas) */
 extern float r_wait_ms;
 extern float r_load_ms, r_dist_scale;
-void r_dist_hint(float scale);   /* tramo pesado a punto de empezar: como mucho esa distancia (luego se recupera) */
+void r_dist_hint(float scale);
+int r_tex_request(int t);      /* 1 si ya esta cargada; si no, se lee en segundo plano (pedirla cada fotograma) */
+void r_tex_async_poll(void);   /* una vez por fotograma: termina la carga en segundo plano */   /* tramo pesado a punto de empezar: como mucho esa distancia (luego se recupera) */
 /* r_load_ms: fotograma real (CPU o GE, lo que mas tarde) y distancia adaptativa */
 void r_set_camera(V3 pos, V3 target, float fov_deg);
 void r_set_camera_matrix(const M34 *cam_world, float fov_deg);
