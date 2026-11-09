@@ -1837,8 +1837,24 @@ static void stage_menu_sequence(void)
  * La 1.4 activaba el tema por el servidor y lo quitaba el 5 de noviembre de 2012 a las 00:00 (Globals.
  * DEFAULT_ENDSEASON_DATETIME); el evento empezaba el 24 de octubre. Aqui manda el reloj de la consola: del 24 de
  * octubre al 4 de noviembre, cualquier ano. Se mira al arrancar y cada vez que se vuelve al menu. */
-int theme_halloween;
+int theme_halloween, theme_xmas;
 static int theme_available = -1;
+#define FOG_XMAS 0xfff85e8au        /* (0.541, 0.369, 0.973), ThemeAssets "xmas" de la 1.5.2 */
+
+/* Navidad de la 1.5.2 (PlayerInfo.Season.xmas): del 1 de diciembre al 2 de enero, cada ano. Como Halloween, el
+ * contenido se queda en el juego y vuelve cada temporada */
+int xmas_season(void)
+{
+#if defined(AT_XMAS)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return t.month == 12 || (t.month == 1 && t.day <= 2);
+#endif
+}
 #define FOG_NORMAL 0xfff6e6bcu      /* (0.737, 0.902, 0.965), RenderSettings de la 1.0 */
 #define FOG_HALLOWEEN 0xff4affb5u   /* (0.710, 1.000, 0.290), ThemeAssets de la 1.4 */
 
@@ -1908,11 +1924,16 @@ void game_theme_check(int boot)
 {
     if (theme_available < 0) theme_available = data_theme_init(halloween_season());
     int on = theme_available && halloween_season();
-    if (on == theme_halloween && !boot) return;
+    /* Navidad: solo si no es Halloween y este mundo trae su tema (xm_tex.bin, el de la 1.5.2) */
+    int xm = !on && data_xm_ok && xmas_season();
+    if (xm) data_xmas_meshes_init();
+    if (on == theme_halloween && xm == theme_xmas && !boot) return;
     theme_halloween = on;
-    data_theme_set(on);
-    r_fog_color = on ? FOG_HALLOWEEN : FOG_NORMAL;
+    theme_xmas = xm;
+    data_theme_set(on ? 1 : xm ? 2 : 0);
+    r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
     r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
+    if (boot && xm) dlog("TEMA de Navidad activo (fecha de la consola)");
     if (boot) {
 #ifndef AUTOTEST
         ScePspDateTime t;
@@ -1924,7 +1945,7 @@ void game_theme_check(int boot)
         return;
     }
     /* con el juego abierto (el evento empieza o acaba): se vuelven a leer las texturas que ya se usaban */
-    dlog("TEMA %s: cambiando texturas", on ? "de Halloween" : "normal");
+    dlog("TEMA %s: cambiando texturas", on ? "de Halloween" : xm ? "de Navidad" : "normal");
     int n = 0, k = 0;
     for (int t = 0; t < gd.ntex; t++) n += data_theme_has_tex(t);
     hud_loading(0);

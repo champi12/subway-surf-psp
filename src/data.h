@@ -130,7 +130,9 @@ int data_load(const char *dir);
 #define DATA_STEPS 6
 int data_load_step(const char *dir, int step);   /* 0..DATA_STEPS-1 archivos, DATA_STEPS comprobacion final */
 void data_tex_path(int i, char *out, int n);
-void *data_load_world_opt(const char *name);   /* archivo opcional de la carpeta del mundo */
+void *data_load_world_opt(const char *name);
+int data_xmas_meshes_init(void);   /* mallas de Navidad (xm_mesh.bin) */
+extern int data_xm_ok;            /* hay xm_tex.bin (Navidad de la 1.5.2) */   /* archivo opcional de la carpeta del mundo */
 int data_tex_read(int i, void *pal, void *data);
 /* tema de Halloween */
 int data_theme_init_tex(void);      /* tras leer tex.bin, antes de r_init: 1 si esta hw_tex.bin */

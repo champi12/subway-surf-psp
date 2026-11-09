@@ -2132,6 +2132,99 @@ def export_halloween(sc, outdir, ex, hq, extra=None):
     print('  mallas: %s' % ', '.join(s_[0] for s_ in stats))
 
 
+XM_TEXTURES = ('trains', 'train_start', 'environment', 'enemies', 'props')
+
+
+def export_xmas(sc15, outdir, ex, hq):
+    """ThemeAssets de la 1.5.2, tema "xmas" (Navidad): texturas de recambio con el mismo nombre y tamano que las del
+    mundo, y las mallas navidenas del escenario, el perro y el guardia. Mismo formato que hw_tex.bin / hw_mesh.bin
+    (xm_tex.bin / xm_mesh.bin) en la carpeta de este mundo. Devuelve el color de la niebla o None"""
+    from types import SimpleNamespace
+    themes = None
+    for f in sc15.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            try:
+                scr = sc15.script_of(o)
+            except Exception:
+                continue
+            if scr and scr[2] == 'ThemeAssets':
+                themes = (o, sc15.read_mono(o)[1])
+                break
+        if themes:
+            break
+    if not themes or not themes[1]:
+        return None
+    tobj, td = themes
+    by_theme = {a['theme']: a for a in td['assets']}
+    if 'xmas' not in by_theme or 'normal' not in by_theme:
+        print('  AVISO: sin tema de Navidad en ThemeAssets')
+        return None
+
+    def tex_map(a):
+        r = {}
+        for tm in a['textureAndMaterials']:
+            o = sc15.resolve_ptr(tobj, tm['texture'])
+            if o is not None:
+                d = o.read()
+                r.setdefault(d.m_Name, d)
+        return r
+    nrm, xm = tex_map(by_theme['normal']), tex_map(by_theme['xmas'])
+    cur = {}
+    for to in ex.textures:
+        if not isinstance(to, tuple):
+            d = to.read()
+            cur.setdefault(d.m_Name, d)
+    gen = []
+    for name in XM_TEXTURES:
+        if name not in cur or name not in nrm or name not in xm:
+            print('  AVISO: Navidad: falta la textura %s' % name)
+            continue
+        a = np.asarray(tex_rgba(cur[name])).astype(np.int16)
+        n = np.asarray(tex_rgba(nrm[name])).astype(np.int16)
+        h = np.asarray(tex_rgba(xm[name]))
+        if a.shape != n.shape or a.shape != h.shape:
+            print('  AVISO: Navidad: %s no tiene el mismo tamano' % name)
+            continue
+        # como en Halloween: donde la del mundo no es la normal de la 1.5.2 (hueco reutilizado) se deja la del mundo
+        diff = np.abs(a[:, :, :3] - n[:, :, :3]).sum(axis=2) > 30
+        out = np.where(diff[:, :, None], a.astype(np.uint8), h)
+        print('  Navidad: textura %-12s %.1f %% de pixeles se quedan como estaban' % (name, diff.mean() * 100))
+        gen.append(('gen', name, Image.fromarray(out, 'RGBA'), name not in hq))
+    meshes = []
+    names = {m.read().m_Name for m in ex.meshes}
+    a = by_theme['xmas']
+    for p in a['environmentModels'] + a['characterModels']:
+        go = sc15.resolve_ptr(tobj, p)
+        if go is None:
+            continue
+        stack = [sc15.go_tree(go)]
+        while stack:
+            g = stack.pop()
+            stack += g['children']
+            for c in g['comps']:
+                dd = c.get('data')
+                mp = dd.get('m_Mesh') if isinstance(dd, dict) else None
+                if not mp or not mp[2]:
+                    continue
+                mo = sc15.resolve_ptr(c['obj'], mp)
+                nm = mo.read().m_Name if mo is not None else ''
+                base = nm[len('xmas_'):] if nm.startswith('xmas_') else nm
+                if base in names and nm != base and mo not in meshes:
+                    meshes.append(mo)
+    hm = SimpleNamespace(meshes=meshes, mesh_world=[False] * len(meshes))
+    mbin, stats = export_meshes(hm)
+    tbin = export_textures(SimpleNamespace(textures=gen), hq=hq)
+    for fn, b in (('xm_tex.bin', tbin), ('xm_mesh.bin', mbin)):
+        with open(os.path.join(outdir, fn), 'wb') as f:
+            f.write(b)
+        print('  %-11s %8d KB' % (fn, len(b) // 1024))
+    print('  Navidad: mallas %s' % (', '.join(s_[0] for s_ in stats) or '(ninguna)'))
+    c = a.get('fogColor')
+    return (c['r'], c['g'], c['b']) if c else None
+
+
 def export_eboot_art(data_dir, outdir):
     """ICON0.PNG (144x80) y PIC1.PNG (480x272) del EBOOT, recortados de la pantalla de carga del APK (splash.png)."""
     f = os.path.join(data_dir, 'splash.png')
@@ -2282,6 +2375,12 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             export_halloween(sc14, outdir, ex, hq, boards)
         elif boards is not None:
             export_extras_only(outdir, hq, boards)
+    if not classic and level_sc is not sc:
+        # mundo de la 1.5.2: su Navidad (ThemeAssets "xmas") va en esta carpeta
+        for fn in ('xm_tex.bin', 'xm_mesh.bin'):
+            if os.path.exists(os.path.join(outdir, fn)):
+                os.remove(os.path.join(outdir, fn))
+        export_xmas(level_sc, outdir, ex, hq)
     ex.boards = boards
     return ex
 

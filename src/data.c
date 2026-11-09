@@ -45,6 +45,7 @@ void *data_load_world_opt(const char *name)
     snprintf(path, sizeof(path), "%s/%s", basedir, name);
     return load_file_opt(path);
 }
+#define load_file_opt_world(n) ((uint8_t *)data_load_world_opt(n))
 
 /* archivo opcional con su ruta (sin error si no esta); se queda en memoria */
 static void *load_file_opt(const char *path)
@@ -187,7 +188,7 @@ static int load_meshes(void)
     return 0;
 }
 
-static FILE *texfile, *hwtexfile;
+static FILE *texfile, *hwtexfile, *xmtexfile;
 
 /* directorio de un archivo SST1: llama a cb con la cabecera de cada textura */
 static int read_tex_dir(FILE *f, void (*cb)(int i, const char *name, int w, int h, int fmt, int alpha,
@@ -251,7 +252,7 @@ void data_tex_path(int i, char *out, int n)
 int data_tex_read(int i, void *pal, void *data)
 {
     Texture *t = &gd.tex[i];
-    FILE *f = t->src ? hwtexfile : texfile;
+    FILE *f = t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
     if (!f) return -1;
     fseek(f, t->file_off, SEEK_SET);
     if (t->palbytes && fread(pal, 1, t->palbytes, f) != t->palbytes) return -1;
@@ -279,9 +280,11 @@ int data_tex_load(int i)
  * archivo se leen, y si ya estaban cargadas se leen otra vez en el mismo sitio (no se tienen nunca las dos en
  * memoria). Las mallas (inspector y perro zombis) son pequenas: se cargan las dos y se intercambian. */
 typedef struct { uint32_t off, pal, data; uint16_t fmt, alpha; } TexSrc;
-static TexSrc *tex_src[2];          /* [0] normal, [1] Halloween (data == 0: no hay) */
-static Mesh *mesh_alt;              /* la otra version de cada malla con tema */
+static TexSrc *tex_src[3];          /* [0] normal, [1] Halloween, [2] Navidad (data == 0: no hay) */
+static Mesh *mesh_alt;              /* la otra version de cada malla con tema (Halloween) */
 static int *mesh_alt_idx, mesh_nalt;
+static Mesh *mesh_alt2;             /* y las de Navidad (xm_mesh.bin, solo el mundo de la 1.5.2) */
+static int *mesh_alt2_idx, mesh_nalt2;
 static int theme_cur, tex_nbase;
 
 static void hw_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
@@ -306,25 +309,74 @@ static void hw_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha,
     x->file_off = off; x->src = 1;
 }
 
-/* 1: texturas de hw_tex.bin. Despues de leer tex.bin y antes de r_init (puede anadir texturas) */
-int data_hw_ok;
+/* Navidad (xm_tex.bin, en la carpeta del mundo de la 1.5.2): solo recambios de texturas que ya existen */
+static void xm_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
+{
+    (void)i;
+    for (int t = 0; t < tex_nbase; t++) {
+        Texture *x = &gd.tex[t];
+        if (strcmp(x->name, name)) continue;
+        if (x->w != w || x->h != h || x->palbytes != pal || x->databytes != data) {
+            dlog("AVISO la textura de Navidad %s no es como la normal: no se usa", name);
+            return;
+        }
+        tex_src[2][t] = (TexSrc){off, pal, data, (uint16_t)fmt, (uint16_t)alpha};
+        return;
+    }
+}
+
+/* 1: texturas de hw_tex.bin (y xm_tex.bin). Despues de leer tex.bin y antes de r_init (puede anadir texturas) */
+int data_hw_ok, data_xm_ok;
 int data_theme_init_tex(void)
 {
     char path[256];
-    /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
-    snprintf(path, sizeof(path), "data/hw_tex.bin");
-    hwtexfile = fopen(path, "rb");
-    if (!hwtexfile) return 0;
     int n0 = gd.ntex;
-    for (int k = 0; k < 2; k++) tex_src[k] = calloc(n0, sizeof(TexSrc));
+    for (int k = 0; k < 3; k++) tex_src[k] = calloc(n0 ? n0 : 1, sizeof(TexSrc));
     for (int t = 0; t < n0; t++) {
         Texture *x = &gd.tex[t];
         tex_src[0][t] = (TexSrc){x->file_off, x->palbytes, x->databytes, (uint16_t)x->fmt, (uint16_t)x->alpha};
     }
-    int nt = read_tex_dir(hwtexfile, hw_dir_cb);
     tex_nbase = n0;
+    snprintf(path, sizeof(path), "%s/xm_tex.bin", basedir);
+    xmtexfile = fopen(path, "rb");
+    if (xmtexfile) {
+        int nx = read_tex_dir(xmtexfile, xm_dir_cb), k = 0;
+        for (int t = 0; t < n0; t++) k += tex_src[2][t].data != 0;
+        data_xm_ok = nx > 0 && k > 0;
+        dlog("Tema de Navidad disponible: %d texturas", k);
+    }
+    /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
+    snprintf(path, sizeof(path), "data/hw_tex.bin");
+    hwtexfile = fopen(path, "rb");
+    if (!hwtexfile) return 0;
+    int nt = read_tex_dir(hwtexfile, hw_dir_cb);
     data_hw_ok = nt > 0;
     return nt > 0;
+}
+
+/* mallas de Navidad (xm_mesh.bin): las "xmas_X" sustituyen a X mientras dura el tema. Solo se leen en temporada */
+int data_xmas_meshes_init(void)
+{
+    if (mesh_alt2) return mesh_nalt2;
+    uint8_t *b = load_file_opt_world("xm_mesh.bin");
+    if (!b || memcmp(b, "SSM3", 4)) return 0;
+    int n;
+    Mesh *xm = parse_meshes(b, &n);
+    mesh_alt2 = calloc(n ? n : 1, sizeof(Mesh));
+    mesh_alt2_idx = calloc(n ? n : 1, sizeof(int));
+    for (int i = 0; i < n; i++) {
+        const char *nm = xm[i].name;
+        if (strncmp(nm, "xmas_", 5)) continue;
+        nm += 5;
+        for (int m = 0; m < gd.nmeshes; m++)
+            if (!strcmp(gd.meshes[m].name, nm) && gd.meshes[m].nbind == xm[i].nbind) {
+                mesh_alt2[mesh_nalt2] = xm[i];
+                mesh_alt2_idx[mesh_nalt2++] = m;
+                break;
+            }
+    }
+    dlog("Tema de Navidad: %d mallas", mesh_nalt2);
+    return mesh_nalt2;
 }
 
 /* 2: mallas de hw_mesh.bin, con todo lo demas ya cargado. Las que tienen nombre de una malla de la 1.0 son su
@@ -465,24 +517,37 @@ int data_mat_clone(const char *base, int tex)
     return -1;
 }
 
-int data_theme_has_tex(int t) { return tex_src[1] && t < tex_nbase && tex_src[1][t].data != 0; }
-
-void data_theme_set(int on)
+int data_theme_has_tex(int t)
 {
-    on = on && tex_src[1];
-    if (on == theme_cur) return;
-    theme_cur = on;
-    for (int t = 0; t < gd.ntex; t++) {
+    return t < tex_nbase && ((tex_src[1] && tex_src[1][t].data) || (tex_src[2] && tex_src[2][t].data));
+}
+
+static void swap_alt(Mesh *alt, const int *idx, int n)
+{
+    for (int i = 0; i < n; i++) {
+        Mesh tmp = gd.meshes[idx[i]];
+        gd.meshes[idx[i]] = alt[i];
+        alt[i] = tmp;
+    }
+}
+
+/* tema: 0 normal, 1 Halloween, 2 Navidad. Cada textura con recambio se lee del archivo de su tema (o de tex.bin) */
+void data_theme_set(int theme)
+{
+    if (theme < 0 || theme > 2 || !tex_src[0]) theme = 0;
+    if (theme == theme_cur) return;
+    if (theme_cur == 1) swap_alt(mesh_alt, mesh_alt_idx, mesh_nalt);
+    if (theme_cur == 2) swap_alt(mesh_alt2, mesh_alt2_idx, mesh_nalt2);
+    theme_cur = theme;
+    for (int t = 0; t < tex_nbase; t++) {
         if (!data_theme_has_tex(t)) continue;
-        const TexSrc *s = &tex_src[on][t];
+        int k = theme && tex_src[theme][t].data ? theme : 0;
+        const TexSrc *s = &tex_src[k][t];
         Texture *x = &gd.tex[t];
-        x->src = on; x->file_off = s->off; x->fmt = s->fmt; x->alpha = s->alpha;
+        x->src = k; x->file_off = s->off; x->fmt = s->fmt; x->alpha = s->alpha;
     }
-    for (int i = 0; i < mesh_nalt; i++) {
-        Mesh tmp = gd.meshes[mesh_alt_idx[i]];
-        gd.meshes[mesh_alt_idx[i]] = mesh_alt[i];
-        mesh_alt[i] = tmp;
-    }
+    if (theme == 1) swap_alt(mesh_alt, mesh_alt_idx, mesh_nalt);
+    if (theme == 2) swap_alt(mesh_alt2, mesh_alt2_idx, mesh_nalt2);
 }
 
 /* un clip en formato SSA1 (los datos se usan desde el buffer: no se copian) */
