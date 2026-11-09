@@ -163,6 +163,8 @@ void anim_trim_states(Animator *a, int n)
     }
     for (int s = n; s < a->nstates; s++) { free(a->st[s].track_node); free(a->st[s].track_mask); }
     a->nstates = n;
+    /* y sus eventos (se anaden despues de los de los estados fijos: van al final) */
+    while (a->nev > 0 && a->ev_clip[a->nev - 1] >= n) a->nev--;
 }
 
 AnimState *anim_get(Animator *a, const char *name)
@@ -287,7 +289,7 @@ void anim_add_mixing(Animator *a, const char *name, int node)
 void anim_add_event(Animator *a, const char *clip, float time)
 {
     int s = anim_find(a, clip);
-    if (s < 0 || a->nev >= 64) return;
+    if (s < 0 || a->nev >= ANIM_MAX_EV) return;
     a->ev_clip[a->nev] = s;
     a->ev_times[a->nev] = time;
     a->nev++;

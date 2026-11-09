@@ -396,6 +396,36 @@ static void board_find_mesh_comp(void)
 
 /* pone la tabla i en el personaje: malla, material y sus animaciones (las de la anterior se liberan). full = 0: solo
  * la de correr (vista previa del carrusel: cada animacion que se lee de la Memory Stick es un tiron) */
+/* HoverboardRendering.InitialieAnimationSounds (1.5.2): las animaciones propias de la tabla elegida llevan los sonidos
+ * de la tabla clasica: salto -> patada (fotograma 1) y silbido largo (2); aterrizaje -> patada (0); agacharse -> roce
+ * (0) y patadita (4). Sin esto las tablas de la 1.5.2 no sonaban al saltar, caer ni agacharse */
+#define MAX_BOARD_EV 48
+static struct { int ev; ClipInfo *snd; } board_ev[MAX_BOARD_EV];
+static int nboard_ev, kfa_ready;
+static void board_add_sounds(void)
+{
+    nboard_ev = 0;
+    if (!kfa_ready || board_base_states < 0) return;
+    const BoardDef *src = board_anim_src(board_applied);
+    static const struct { int act, frame; ClipInfo *snd; } rule[] = {
+        {BA_JUMP, 1, &snd_hkick}, {BA_JUMP, 2, &snd_hlong}, {BA_LAND, 0, &snd_hkick},
+        {BA_ROLL, 0, &snd_hroll}, {BA_ROLL, 4, &snd_hminikick},
+    };
+    for (int r = 0; src && r < (int)(sizeof(rule) / sizeof(rule[0])); r++)
+        for (int k = 0; k < src->nact[rule[r].act] && nboard_ev < MAX_BOARD_EV; k++) {
+            const char *nm = src->act[rule[r].act][k];
+            int st = anim_find(&anim_char, nm);
+            /* las de la tabla clasica (estados fijos) ya los tienen en kfa */
+            if (st < board_base_states) continue;
+            float rate = gd.clips[anim_char.st[st].clip].sample_rate;
+            if (rate <= 0) rate = 30;
+            int e = anim_char.nev;
+            anim_add_event(&anim_char, nm, rule[r].frame / rate);
+            if (anim_char.nev == e + 1) { board_ev[nboard_ev].ev = e; board_ev[nboard_ev++].snd = rule[r].snd; }
+        }
+    dlog("TABLA sonidos: %d en sus animaciones (eventos del personaje %d de %d)", nboard_ev, anim_char.nev, ANIM_MAX_EV);
+}
+
 static void board_apply_mode(int i, int full)
 {
     if (gd_nboards <= 0 || i < 0 || i >= gd_nboards || (i == board_applied && (board_applied_full || !full))) return;
@@ -407,7 +437,8 @@ static void board_apply_mode(int i, int full)
     if (board_base_states < 0) board_base_states = anim_char.nstates;
     anim_stop_all(&anim_char);
     if (!(board_previewing && !full)) {
-        anim_trim_states(&anim_char, board_base_states);
+        anim_trim_states(&anim_char, board_base_states);   /* y los eventos de sonido de esos estados */
+        nboard_ev = 0;
         data_board_clips_free();
     }
     const BoardDef *src = board_anim_src(i);
@@ -441,6 +472,7 @@ static void board_apply_mode(int i, int full)
             board_mesh_cur = m;
         }
     }
+    if (full) board_add_sounds();
     dlog("TABLA %s (%d animaciones propias cargadas%s)", d->name, added, full ? "" : ", vista previa");
     (void)added;
 }
@@ -546,6 +578,8 @@ static void char_anim_event(Animator *a, int state, float t)
         else if (kfa[i].kind == 2) { if (paint_sound) play_ci(kfa[i].snd); }
         else play_ci(kfa[i].snd);
     }
+    for (int i = 0; i < nboard_ev; i++)
+        if (a->ev_clip[board_ev[i].ev] == state && a->ev_times[board_ev[i].ev] == t) play_ci(board_ev[i].snd);
 }
 
 static void guard_anim_event(Animator *a, int state, float t) { (void)a; (void)state; (void)t; play_ci(&snd_catch); }
@@ -1954,9 +1988,8 @@ void game_theme_check(int boot)
     r_wait_idle();       /* el GE no debe estar dibujando con las mallas o texturas que se cambian */
     data_theme_set(on ? 1 : xm ? 2 : 0);
     r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
-    /* el cielo de Navidad del original es el mismo cielo con el ambiente morado: se tine hacia el color de su niebla
-     * (la malla de cielo del tema no trae textura propia y salia negro) */
-    r_sky_tint = xm ? 0xfff8a8c4u : 0xffffffffu;
+    /* el cielo de Navidad es su propia malla con el degradado morado del atlas (data_theme_set): sin tintes */
+    r_sky_tint = 0xffffffffu;
     r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
     if (boot && xm) dlog("TEMA de Navidad activo (fecha de la consola)");
     if (boot) {
@@ -2706,6 +2739,8 @@ void game_init(void)
         anim_add_event(&anim_char, kfa[i].clip, kfa[i].frame / rate);
     }
     anim_char.on_event = char_anim_event;
+    kfa_ready = 1;
+    if (board_applied_full) board_add_sounds();   /* la tabla elegida ya se puso: sus sonidos detras de los fijos */
     anim_add_event(&anim_guard, "catch", 0);
     anim_add_event(&anim_guard, "catch2", 0);
     anim_guard.on_event = guard_anim_event;
@@ -2755,7 +2790,7 @@ static const CharDef chars[] = {
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -2849,6 +2884,19 @@ const char *char_thumb(int row) { return char_key(char_id(row)); }
 #ifndef CHARS_TURN
 #define CHARS_TURN 200.0f     /* de cara a la camara y un poco girado hacia el centro, como en la 1.4 */
 #endif
+/* el esqueleto a su postura de reposo (la de world.bin): la pose solo pone los huesos que lleva, y los demas se quedaban
+ * como los dejo la ultima animacion (al atraparte el inspector, "caught" gira el esqueleto y salia de espaldas) */
+static void skeleton_rest(int n)
+{
+    for (int c = gd.nodes[n].first_child; c >= 0; c = gd.nodes[c].next_sibling) {
+        const NodeFile *f = &gd.nodes[c];
+        nrt[c].lpos = v3(f->pos[0], f->pos[1], f->pos[2]);
+        nrt[c].lrot = q4(f->rot[0], f->rot[1], f->rot[2], f->rot[3]);
+        nrt[c].lscl = v3(f->scl[0], f->scl[1], f->scl[2]);
+        skeleton_rest(c);
+    }
+}
+
 static void char_pose(int i)
 {
     char nm[32];
@@ -2864,6 +2912,9 @@ static void char_pose(int i)
         int ci = -1;
         for (int c = 0; c < gd.nclips && pose_state >= 0; c++) if (!strcmp(gd.clips[c].name, nm)) { ci = c; break; }
         if (ci >= 0 && anim_set_clip(&anim_char, pose_state, ci) == 0) {
+            /* "caught" (atrapado por el inspector) va en otra capa: seguia sonando encima de la pose y le giraba */
+            anim_stop_all(&anim_char);
+            skeleton_rest(n_avatar);
             anim_play(&anim_char, nm);
             nrt[n_sprayCan].rend = 0;
             nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);   /* en el menu mira al tren: aqui, a la camara */
@@ -3411,6 +3462,10 @@ static int extra_cols[8];
 
 void game_update(float dt)
 {
+#ifdef AT_CAUGHT
+    /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
+    { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
+#endif
     if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {

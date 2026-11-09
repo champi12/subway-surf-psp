@@ -121,6 +121,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
 static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de la proyeccion) */
+/* prueba en la consola (devlog, SELECT + L): las lineas de la 1.5.2 solo salen en la PSP de verdad, el emulador no las
+ * reproduce. 0 normal, 1 junta del recorte mas ancha, 2 sin mipmaps, 3 curvatura exacta siempre, 4 las tres */
+int r_dbg_mode;
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 
@@ -487,7 +490,7 @@ static void tex_filter(void)
      * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
      * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
     int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
-    int use = cur_mips && mip_ok;
+    int use = cur_mips && mip_ok && r_dbg_mode != 2 && r_dbg_mode != 4;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
     if (cur_mips) sceGuTexLevelMode(use ? GU_TEXTURE_AUTO : GU_TEXTURE_CONST, 0.0f);
     sceGuTexFilter(min, mag);
@@ -908,7 +911,7 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
                 float px = (sx - cx) * pix_x, py = (sy - cy) * pix_y;   /* en pixeles */
                 float l2 = px * px + py * py;
                 if (l2 < 1e-4f) continue;
-                float g = SEAM_GROW_PX / sqrtf(l2);
+                float g = (r_dbg_mode == 1 || r_dbg_mode == 4 ? 2.5f : SEAM_GROW_PX) / sqrtf(l2);
                 in[k].x += px * g / pix_x * in[k].d;
                 in[k].y += py * g / pix_y * in[k].d;
             }
@@ -1234,7 +1237,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             /* cerca de la camara tambien las piezas pequenas van con la curvatura exacta: el tunel de la 1.5.2 son
              * muchas piezas sueltas y con la aproximacion lineal quedaban rendijas de menos de un pixel entre una y otra
              * (puntos blancos en las paredes en la consola). De lejos la diferencia no llega a un pixel */
-            if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
+            if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D && r_dbg_mode != 3 && r_dbg_mode != 4) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
             else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);

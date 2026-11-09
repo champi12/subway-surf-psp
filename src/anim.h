@@ -6,6 +6,7 @@
 #define ANIM_MAX_STATES 104   /* las tablas de la 1.5.2 anaden ~25 animaciones al personaje */
 #define ANIM_MAX_QUEUE 4
 
+#define ANIM_MAX_EV 192      /* los sonidos del personaje (RunnerAnimPlayer) son mas de 100, y luego los de la tabla */
 typedef struct {
     int clip;
     float time, speed, weight, target_weight, fade_rate;
@@ -30,7 +31,7 @@ typedef struct Animator {
     int *bones;
     V3 *bind_pos; Q4 *bind_rot; V3 *bind_scl;
     void (*on_event)(struct Animator *a, int state, float t);  /* para sonidos de pasos, etc. */
-    float ev_times[64]; int ev_clip[64]; int nev;               /* eventos registrados */
+    float ev_times[ANIM_MAX_EV]; int ev_clip[ANIM_MAX_EV]; int nev;   /* eventos registrados */
     void *user;
 } Animator;
 

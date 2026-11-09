@@ -1693,6 +1693,16 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
         # pantalla de personajes como la de la 1.4 (CharacterModelPreviewFactory): miniaturas del carrusel y, para
         # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
         prev = char_previews(sc14)
+        if prev and sc15 is not None:
+            # los que trae la 1.5.2 de mas (Elf Tricky): con el nombre de su malla, que es como los busca el juego
+            have = {c['name'] for c in prev[2]}
+            p15 = char_previews(sc15)
+            for c in (p15[2] if p15 else []):
+                if c['name'] not in have and c['name'] != 'zombiejake':
+                    c = dict(c, name=c['mesh'].read().m_Name)
+                    if c['name'] not in have:
+                        prev[2].append(c)
+                        print('  miniatura y pose de la 1.5.2: %s' % c['name'])
         th = render_char_thumbs(prev) if prev else None
         if th:
             atlases.append({'name': 'CharThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 256, 'pixel': 1.0,
@@ -2309,10 +2319,8 @@ def export_xmas(sc15, outdir, ex, hq):
                 if not nm.startswith('xmas_') or mo in meshes:
                     continue
                 base = nm[len('xmas_'):]
-                # el cielo del tema no trae textura (usa el material de la escena): en la PSP salia negro. Se deja
-                # el cielo normal y el juego lo tine con el color de la niebla de Navidad
-                if base == 'skyPlane':
-                    continue
+                # el cielo (xmas_skyPlane) lee el degradado morado del atlas environment de Navidad: el juego le pone
+                # esa textura al material del cielo mientras dura el tema (ThemeAssets: environment -> sky)
                 # el escenario de la 1.5.2 se llama "normal_X" y su version de Navidad "xmas_X" (tuneles, estacion,
                 # carreteras, bordes del barranco, puente, edificios...): con otras coordenadas de textura, hechas
                 # para el atlas de Navidad. Sin ellas el escenario normal leia el atlas nuevo en sitios que cambiaron

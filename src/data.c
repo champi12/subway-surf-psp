@@ -662,6 +662,19 @@ void data_theme_set(int theme)
     }
     if (theme == 1) swap_alt(mesh_alt, mesh_alt_idx, mesh_nalt);
     if (theme == 2) xmas_meshes_apply(1);
+    /* ThemeAssets de la 1.5.2: en Navidad el material del cielo usa el atlas environment (su malla xmas_skyPlane lee
+     * de ahi el degradado morado, del color de la niebla: tapa el final del mundo como en la 1.0) */
+    static int sky_mat = -2, sky_tex0;
+    if (sky_mat == -2) {
+        sky_mat = -1;
+        for (int m = 0; m < gd.nmats; m++) if (gd.mats[m].sky) { sky_mat = m; sky_tex0 = gd.mats[m].tex; break; }
+    }
+    if (sky_mat >= 0) {
+        int env = theme == 2 && xm_nmesh ? data_tex_find("environment") : -1;
+        int has_sky = 0;
+        for (int i = 0; i < xm_nmesh; i++) has_sky |= !strcmp(gd.meshes[xm_mesh_idx[i]].name, "skyPlane");
+        gd.mats[sky_mat].tex = env >= 0 && has_sky ? env : sky_tex0;
+    }
 }
 
 /* un clip en formato SSA1 (los datos se usan desde el buffer: no se copian) */
