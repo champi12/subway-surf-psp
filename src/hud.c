@@ -483,6 +483,15 @@ static void foot_btn_me(float nx, const char *icon, float iw, float ih, const ch
         ui_sliced(a_ui, "button_generic_2_outline", cx - U(34), cy - U(25), U(72), U(56), UIS, C_OUTLINE);
         if (!strcmp(icon, "icon_boards")) ui_sprite_wh(a_nb, icon, cx - U(iw) * 0.5f, cy - U(ih) * 0.5f, U(iw), U(ih), C_WHITE);
         else spr_c(icon, cx, cy, U(iw), U(ih), C_WHITE);
+        if (key && !strcmp(key, "[]")) {
+            /* la tecla cuadrado: un cuadradito con borde en lugar de "[]" (la letra no tiene ese simbolo) */
+            float tw = labw(0, 14, title), x0 = cx - (tw + 14) * 0.5f, ty = cy + U(30);
+            lab(0, x0, ty, 14, C_WHITE, 0, 1, title);
+            float qx = x0 + tw + 5, qy = ty + 3, q = 8;
+            r_rect(qx, qy, q, 1.5f, C_WHITE); r_rect(qx, qy + q - 1.5f, q, 1.5f, C_WHITE);
+            r_rect(qx, qy, 1.5f, q, C_WHITE); r_rect(qx + q - 1.5f, qy, 1.5f, q, C_WHITE);
+            return;
+        }
         char t[48];
         if (key) snprintf(t, sizeof(t), "%s (%s)", title, key); else snprintf(t, sizeof(t), "%s", title);
         lab(0, cx, cy + U(30), 14, C_WHITE, 1, 1, t);
@@ -530,7 +539,7 @@ static int bg_screen(void)
 {
     if (ginfo.paused) return ginfo.countdown <= 0;
     return ginfo.state == GS_SHOP || ginfo.state == GS_CHARS || ginfo.state == GS_GAMEOVER || ginfo.state == GS_TROPHIES ||
-           ginfo.state == GS_BOARDS;
+           ginfo.state == GS_BOARDS || (ginfo.state == GS_MENU && ginfo.missions_open);
 }
 /* NotebookPanel2 de la 1.5.2: hoja de libreta (newbackground, 9-slice), el dibujo gris de fondo (menu_decal8) y la
  * espiral metalica arriba (metal_spiral_lo repetida). Son ~40 sprites 2D de una hoja de 512x256 (128 KB, solo en los menus): no se nota
@@ -667,13 +676,21 @@ static void draw_missions_panel(float x, float y, float w)
 }
 
 /* ventana de misiones del menu (triangulo) */
+static void challenges_page(int pause);
 static void draw_missions_popup(void)
 {
-    r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
-    float w = 300, h = 186, x = (SCR_W - w) * 0.5f, y = 26;
-    panel(x, y, w, h);
-    draw_missions_panel(x + 12, y + 8, w - 24);
-    lab(0, SCR_W * 0.5f, y + h + 10, 14, C_WHITE, 1, 1, TR("X / O cerrar", "X / O close"));
+    /* la hoja de la libreta con el desafio diario y las misiones, sobre el fondo desenfocado (como en la 1.5.2) */
+    if (bg_tex == -2) bg_tex = data_tex_find("ui_bg");
+    if (bg_tex >= 0) { r_sprite(bg_tex, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE); bg_loaded = 1; }
+    if (!notebook_panel()) {
+        r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
+        float w = 300, h = 186, x = (SCR_W - w) * 0.5f, y = 26;
+        panel(x, y, w, h);
+        draw_missions_panel(x + 12, y + 8, w - 24);
+        lab(0, SCR_W * 0.5f, y + h + 10, 14, C_WHITE, 1, 1, TR("X / O cerrar", "X / O close"));
+        return;
+    }
+    challenges_page(0);
 }
 
 /* ------------------------------------------------------------ menu principal (FrontUI) */
@@ -1175,7 +1192,9 @@ static void draw_gameover(void)
 }
 
 /* ------------------------------------------------------------ pausa (PauseUI de la 1.4) */
-static void draw_pause(void)
+/* pagina de la libreta con el desafio diario y las misiones: la de la pausa y la que abre "Misiones" en la portada
+ * (Mission_popup / DailyChallengePopup de la 1.5.2 son la misma hoja) */
+static void challenges_page(int pause)
 {
     char buf[48];
     bg_fallback();
@@ -1230,9 +1249,12 @@ static void draw_pause(void)
     if (a_nb >= 0) for (float yy = 22; yy < 220; yy += 10) r_rect(px - 8, yy, 2, 6, 0xff5a2e0cu);
     else panel(px, py, 222, 160);
     draw_missions_panel(px + 6, py + 4, 210);
-    foot_btn(-60, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
-    foot_play(50, TR("SEGUIR", "RESUME"), 22, "X / START");
+    if (pause) {
+        foot_btn(-60, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
+        foot_play(50, TR("SEGUIR", "RESUME"), 22, "X / START");
+    } else foot_btn(0, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
 }
+static void draw_pause(void) { challenges_page(1); }
 
 /* ------------------------------------------------------------ trofeos (TrophyHelper) */
 static void draw_trophies(void)
