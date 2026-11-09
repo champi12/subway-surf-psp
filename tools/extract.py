@@ -649,6 +649,11 @@ def tex_rgba(t):
     return img
 
 
+# texturas mas pequenas que las demas: la del inspector y el perro (enemies) a 256 (64 KB con paleta) cabe en la VRAM
+# junto a las del escenario; el inspector ocupa como mucho un tercio de la pantalla. La misma en Halloween y Navidad
+SMALL_TEX = {'enemies': 256}
+
+
 def export_textures(ex, maxsize=512, hq=()):
     out = bytearray(b'SST1')
     out += struct.pack('<I', len(ex.textures))
@@ -667,7 +672,8 @@ def export_textures(ex, maxsize=512, hq=()):
         w, h = img.size
         nw = 1 << max(0, (w - 1).bit_length())
         nh = 1 << max(0, (h - 1).bit_length())
-        while nw > maxsize or nh > maxsize:     # misma escala en los dos ejes
+        lim = min(maxsize, SMALL_TEX.get(t.m_Name if t is not None else gen_name, maxsize))
+        while nw > lim or nh > lim:     # misma escala en los dos ejes
             nw, nh = max(1, nw // 2), max(1, nh // 2)
         nw, nh = max(nw, 16), max(nh, 8)
         if (nw, nh) != (w, h):

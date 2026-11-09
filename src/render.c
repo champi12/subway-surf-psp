@@ -103,6 +103,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #ifndef MIN_PX
 #define MIN_PX 2.0f             /* radio en pantalla por debajo del cual un trozo lejano no se dibuja */
 #endif
+#ifndef MIN_EFF_PX
+#define MIN_EFF_PX 5.0f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo */
+#endif
 #ifndef SEAM_GROW_PX
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
@@ -142,7 +145,7 @@ static void *vram_alloc(int bytes)
  * carrera. Antes solo entraban las de 16 bits, por orden de carga: los trenes y "main" (que en la 1.5.2 solo usan la
  * sombra, efectos y el cielo) llenaban la VRAM y las de paleta del escenario (vias, paredes, objetos) se leian de la
  * RAM. Cada una entra solo si deja sitio a las de delante que aun no se han cargado */
-static const char *const vram_prio[] = {"environment", "props", "trains", "main", "train_start"};
+static const char *const vram_prio[] = {"environment", "props", "trains", "main", "enemies", "train_start"};
 #define NVRAM_PRIO ((int)(sizeof(vram_prio) / sizeof(vram_prio[0])))
 static int vram_rank(const char *name)
 {
@@ -1230,6 +1233,18 @@ static int list_full(int reserve)
     return 1;
 }
 
+/* Lo que la niebla ya casi tapa no se dibuja: tamano en pantalla (radio en pixeles) por lo que deja ver la niebla
+ * (1 hasta r_fog_start, 0 en r_fog_end). Con la distancia del original (niebla de 200 a 700) lo que habia entre 560 y
+ * 700 subia el GE de ~22000 a ~33000 vertices en los tramos con muchos vagones y monedas (20 FPS en la consola);
+ * de eso, casi todo eran trozos que se ven con un 10-30 % de su color */
+static int fog_hidden(float r, float d)
+{
+    if (d <= r_fog_start) return r * pix_x < MIN_PX * d;
+    float k = (r_fog_end - d) / (r_fog_end - r_fog_start);
+    if (k <= 0.0f) return 1;
+    return r * pix_x * (k < 1.0f ? k : 1.0f) < MIN_EFF_PX * d;
+}
+
 static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, float amul)
 {
     if (list_full(LIST_RESERVE)) return;
@@ -1268,7 +1283,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         float pr = pt->radius * sc;
         /* trozos que a lo lejos ocupan menos de MIN_PX pixeles (ya casi del color de la niebla): ni se mandan al GE,
          * que es el que no llegaba a 33 ms en los tramos cargados */
-        if (vis == 1 && !sky && pr * pix_x < MIN_PX * d0) continue;
+        if (vis == 1 && !sky && fog_hidden(pr, d0)) continue;
         if (vis == 1 && HW_OK) {
             /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
              * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
@@ -1374,8 +1389,9 @@ void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
             M34 mv;
             m34_mul(&mv, &r_view, w);
             V3 pc = m34_point(&mv, pt->center);
-            int vis = sphere_visible_v(pc, pt->radius * v3len(m34_col(w, 0)));
-            if (!vis) continue;
+            float rr = pt->radius * v3len(m34_col(w, 0));
+            int vis = sphere_visible_v(pc, rr);
+            if (!vis || (vis == 1 && fog_hidden(rr, pc.z))) continue;
             if (vis == 2) { clip[nclip++] = i + k; continue; }
             transform_fast(ov + nv, pt->verts, pt->nv, &mv, kx, ky);
             for (int j = 0; j < pt->ni; j++) ix[ni + j] = (uint16_t)(pt->idx[j] + nv);
