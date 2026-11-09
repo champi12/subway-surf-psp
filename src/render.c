@@ -50,6 +50,7 @@ float r_near = 2.0f, r_far = 1000.0f;
 #define FOG_END 700.0f
 #endif
 float r_fog_start = 200.0f, r_fog_end = FOG_END;
+unsigned int r_sky_tint = 0xffffffffu;   /* color que multiplica el cielo (blanco: sin tinte) */
 /* Distancia de dibujo adaptativa (30 FPS fijos): r_load_ms es lo que tardo de verdad el ultimo fotograma, desde que se
  * mando su lista al GE hasta que terminaron el GE y la CPU del siguiente (lo que mas tarde). Si se acerca a 33 ms se
  * acerca un poco la niebla (menos via, menos dibujos, menos vertices: baja la CPU y el GE a la vez) y, con margen, se
@@ -606,6 +607,7 @@ static int bind_material(int mi, float amul)
         float c[4] = {m->color[0] * amul, m->color[1] * amul, m->color[2] * amul, m->color[3]};
         col = col_abgr(c, 1.0f);
     }
+    if (m->sky && r_sky_tint != 0xffffffffu) col = r_sky_tint;   /* tema de Navidad: el cielo hacia el morado */
     if (col != cur_color) { sceGuColor(col); cur_color = col; }
     /* uv' = uv * escala + desplazamiento (v ya viene invertida: v' = v*sv + 1 - sv - ov) */
     float st[4] = {m->st[0], m->st[1], m->st[2] + (mi < 256 ? r_mat_uoff[mi] : 0), 1.0f - m->st[1] - m->st[3]};

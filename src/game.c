@@ -1530,6 +1530,7 @@ static void daily_word_check(void)
     scene_set_daily_letter(daily_next_letter());
 }
 
+static int save_pending;   /* algo de la carrera por guardar (las letras): se guarda al acabar o al pausar */
 static void daily_letter_picked(char letter)
 {
     const char *w = daily_word();
@@ -1566,7 +1567,9 @@ static void daily_letter_picked(char letter)
         ginfo.message = NULL;
         dlog("PALABRA DEL DIA completada: %s (racha %d)", w, dw_streak);
     }
-    game_save();
+    /* guardar en plena carrera eran ~60 ms de Memory Stick (un tiron en cada letra): se guarda al acabar la carrera
+     * (game_save del fin de partida) o al pausar */
+    save_pending = 1;
 }
 
 static void notify_pickup(int node)
@@ -1932,6 +1935,9 @@ void game_theme_check(int boot)
     theme_xmas = xm;
     data_theme_set(on ? 1 : xm ? 2 : 0);
     r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
+    /* el cielo de Navidad del original es el mismo cielo con el ambiente morado: se tine hacia el color de su niebla
+     * (la malla de cielo del tema no trae textura propia y salia negro) */
+    r_sky_tint = xm ? 0xfff8a8c4u : 0xffffffffu;
     r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
     if (boot && xm) dlog("TEMA de Navidad activo (fecha de la consola)");
     if (boot) {
@@ -3285,6 +3291,7 @@ void game_input(unsigned in)
         if (!ginfo.paused) {
             ginfo.paused = 1;
             snd_pause_all(1);
+            if (save_pending) { save_pending = 0; game_save(); }   /* en la pausa el tiron no se nota */
             music_pause(1);
         } else if (ginfo.countdown <= 0) ginfo.countdown = 3.0f;   /* "Starting in" 3, 2, 1 */
         return;
@@ -3589,7 +3596,13 @@ void game_draw(void)
             /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda de la libreta (el marcador va a la derecha).
              * La camara, por detras como la de la carrera, mirando al personaje que se gira hacia ella */
             V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));
-            V3 f = v3(0, 0, 1), rt = v3(1, 0, 0);
+            /* la camara delante de hacia donde mira el personaje (el eje z del modelo): al atraparle el inspector la
+             * animacion le gira y con la camara fija salia de espaldas */
+            V3 face = m34_col(&nrt[n_avatar].world, 2);
+            face.y = 0;
+            if (v3len(face) < 1e-4f) face = v3(0, 0, -1);
+            face = v3norm(face);
+            V3 f = v3scale(face, -1.0f), rt = v3norm(v3cross(v3(0, 1, 0), f));
             V3 tgt = v3add(chest, v3scale(rt, CHARS_CAM_X));
             r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
@@ -3755,6 +3768,7 @@ int game_cloud_tex(void)
 #define SAVE_MAGIC 0x53535033   /* v3: + fichas por personaje (v2 sin ellas se sigue leyendo) */
 void game_save(void)
 {
+    save_pending = 0;
     FILE *f = fopen("save.dat", "wb");
     if (!f) return;
     int d[32] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,

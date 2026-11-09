@@ -2303,6 +2303,10 @@ def export_xmas(sc15, outdir, ex, hq):
                 mo = sc15.resolve_ptr(c['obj'], mp)
                 nm = mo.read().m_Name if mo is not None else ''
                 base = nm[len('xmas_'):] if nm.startswith('xmas_') else nm
+                # el cielo del tema no trae textura (usa el material de la escena): en la PSP salia negro. Se deja
+                # el cielo normal y el juego lo tine con el color de la niebla de Navidad
+                if base == 'skyPlane':
+                    continue
                 if base in names and nm != base and mo not in meshes:
                     meshes.append(mo)
     hm = SimpleNamespace(meshes=meshes, mesh_world=[False] * len(meshes))
