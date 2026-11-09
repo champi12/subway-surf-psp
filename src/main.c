@@ -191,6 +191,15 @@ int main(int argc, char **argv)
         float dt = (t0 - last) / 1000000.0f;
         last = t0;
         if (dt <= 0 || dt > 0.25f) dt = 1.0f / 30.0f;
+        /* cada fotograma se ve en pantalla un numero exacto de refrescos de 59.94 Hz (2 = 33.4 ms, 30 FPS). El reloj
+         * del sistema lo mide con +-1 ms de ruido (el sonido y las cargas en segundo plano se ejecutan justo despues
+         * del VBlank), que salia como "29 FPS" sin perder ningun fotograma y hacia que el movimiento diera saltitos.
+         * Se redondea al numero de refrescos mas cercano: un fotograma perdido de verdad (50 ms) sigue contando */
+        {
+            const float vb = 1001.0f / 60000.0f;
+            int n = (int)(dt / vb + 0.5f);
+            if (n >= 1 && n <= 7) dt = n * vb;
+        }
 #ifdef AT_DT
         dt = AT_DT;   /* prueba: FPS fijos (p. ej. -DAT_DT=0.0666667f son 15 FPS) */
 #endif

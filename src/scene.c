@@ -10,6 +10,7 @@
 #include "render.h"
 #include "spawn.h"
 #include "devlog.h"
+#include <pspkernel.h>
 
 NodeRT *nrt;
 
@@ -898,26 +899,111 @@ static void perform_selection(int n, int *visit, int *nv)
 
 static int cmp_objs_z(const void *a, const void *b) { return cmp_z_nodes(a, b); }
 
-static void lay_chunk(int ci)
+/* Colocar un tramo (TrackChunk.Activate) recorre su arbol entero varias veces: en la consola costaba 35-65 ms de CPU de
+ * golpe (en el emulador no se ve: no cuenta las esperas a la memoria) y ese fotograma se perdia (bajon a 20 FPS justo
+ * al aparecer un tramo). El tramo nuevo empieza ~1500 unidades por delante y solo se dibuja hasta 700: hay segundos de
+ * margen. Se prepara por partes, unos 2 ms por fotograma, y solo entra en la lista de tramos activos (dibujo y
+ * colisiones) cuando esta terminado. Los del principio de la carrera y del jetpack se colocan enteros, como antes */
+#ifndef LAY_BUDGET_US
+#define LAY_BUDGET_US 2000u
+#endif
+#define LAY_NEAR 900.0f          /* un tramo que empieza a menos de esto se termina en el acto */
+static struct { int ci, stage, cur, obj; float z0; unsigned int us; int frames; } lay_job = {-1, 0, -1, 0, 0, 0, 0};
+
+static void lay_node_world(int n)
 {
+    NodeRT *r = &nrt[n];
+    M34 local;
+    m34_trs(&local, r->lpos, r->lrot, r->lscl);
+    int p = gd.nodes[n].parent;
+    if (p >= 0) m34_mul(&r->world, &nrt[p].world, &local);
+    else r->world = local;
+}
+
+static int time_up(unsigned int t_end) { return (int)(sceKernelGetSystemTimeLow() - t_end) >= 0; }
+
+/* lo mismo que scene_update_world(root), en preorden y sin pila: se puede cortar y seguir en otro fotograma */
+static int upd_step(int root, unsigned int t_end)
+{
+    int cur = lay_job.cur < 0 ? root : lay_job.cur, k = 0;
+    while (cur >= 0) {
+        lay_node_world(cur);
+        int nx = gd.nodes[cur].first_child;
+        if (nx < 0) {
+            int c = cur;
+            while (c != root && gd.nodes[c].next_sibling < 0) c = gd.nodes[c].parent;
+            nx = c == root ? -1 : gd.nodes[c].next_sibling;
+        }
+        cur = nx;
+        if (cur >= 0 && ++k >= 16) { k = 0; if (time_up(t_end)) break; }
+    }
+    lay_job.cur = cur;
+    return cur < 0;
+}
+
+/* avanza el tramo a medio colocar hasta t_end (0: hasta terminarlo) */
+static void lay_step(unsigned int t_end)
+{
+    if (lay_job.ci < 0) return;
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    if (!t_end) t_end = t0 + 0x40000000u;
+    Chunk *c = &chunks[lay_job.ci];
+    int n = c->node;
+    for (;;) {
+        if (lay_job.stage == 0 || lay_job.stage == 2 || lay_job.stage == 5) {
+            if (!upd_step(n, t_end)) break;
+            lay_job.cur = -1;
+            lay_job.stage++;
+        } else if (lay_job.stage == 1) {
+            recursive_selection(n, 1);
+            lay_job.stage++;
+        } else if (lay_job.stage == 3) {
+            qsort(c->objs, c->nobjs, sizeof(int), cmp_objs_z);
+            lay_job.obj = 0;
+            lay_job.stage++;
+        } else if (lay_job.stage == 4) {
+            while (lay_job.obj < c->nobjs) {
+                int o = c->objs[lay_job.obj++];
+                if (nrt[o].active) obj_activate(o);
+                if ((lay_job.obj & 7) == 0 && time_up(t_end)) break;
+            }
+            if (lay_job.obj < c->nobjs) break;
+            lay_job.stage++;
+        } else {
+            /* terminado: entra en la lista de tramos activos */
+            int ci = lay_job.ci;
+            lay_job.ci = -1;
+            lay_job.us += sceKernelGetSystemTimeLow() - t0;
+            if (track_nactive < MAX_ACTIVE_CHUNKS) track_active[track_nactive++] = ci;
+            else dlog("AVISO demasiados tramos activos (%d): el tramo %s no tendra colisiones", MAX_ACTIVE_CHUNKS, gd.strings[gd.nodes[n].name]);
+            dlog("TRAMO %s z=%d (%d.%d ms en %d fotogramas)", gd.strings[gd.nodes[n].name], (int)(lay_job.z0 + c->zSize),
+                 (int)(lay_job.us / 1000), (int)(lay_job.us / 100 % 10), lay_job.frames + 1);
+            scene_on_chunk_laid(ci);
+            return;
+        }
+        if (time_up(t_end)) break;
+    }
+    lay_job.us += sceKernelGetSystemTimeLow() - t0;
+    lay_job.frames++;
+}
+
+static void lay_finish(void) { lay_step(0); }
+
+static void lay_chunk_ex(int ci, int now)
+{
+    lay_finish();
     Chunk *c = &chunks[ci];
     int n = c->node;
     nrt[n].lpos = v3(0, 0, track_chunk_z);
     /* el padre de los tramos esta en el origen: la posicion local es la del mundo */
+    lay_job.ci = ci; lay_job.stage = 0; lay_job.cur = -1; lay_job.obj = 0;
+    lay_job.z0 = track_chunk_z; lay_job.us = 0; lay_job.frames = 0;
     track_chunk_z += c->zSize;
-    if (track_nactive < MAX_ACTIVE_CHUNKS) track_active[track_nactive++] = ci;
-    else dlog("AVISO demasiados tramos activos (%d): el tramo %s no tendra colisiones", MAX_ACTIVE_CHUNKS, gd.strings[gd.nodes[n].name]);
-    dlog("TRAMO %s z=%.0f", gd.strings[gd.nodes[n].name], (double)track_chunk_z);
     restore_hidden(c);
-    scene_update_world(n);
-    recursive_selection(n, 1);
-    scene_update_world(n);
-    qsort(c->objs, c->nobjs, sizeof(int), cmp_objs_z);
-    for (int i = 0; i < c->nobjs; i++)
-        if (nrt[c->objs[i]].active) obj_activate(c->objs[i]);
-    scene_update_world(n);
-    scene_on_chunk_laid(ci);
+    if (now) lay_finish();
 }
+
+static void lay_chunk(int ci) { lay_chunk_ex(ci, 1); }
 
 static void cleanup(float charZ)
 {
@@ -934,6 +1020,7 @@ static void cleanup(float charZ)
 
 static int is_active_chunk(int ci)
 {
+    if (lay_job.ci == ci) return 1;
     for (int i = 0; i < track_nactive; i++) if (track_active[i] == ci) return 1;
     return 0;
 }
@@ -949,6 +1036,11 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
 {
     if (nrandom <= 0) return;
     float lim = charZ + ahead;
+    /* el que se esta preparando: un poco cada fotograma, entero si ya se acerca (o en el jetpack) */
+    if (lay_job.ci >= 0) {
+        if (jetpack || lay_job.z0 < charZ + LAY_NEAR) lay_finish();
+        else lay_step(sceKernelGetSystemTimeLow() + LAY_BUDGET_US);
+    }
     if (track_chunk_z < lim) cleanup(charZ);
     int jet = 0, guard = 0;
     while (track_chunk_z < lim && guard++ < 32) {
@@ -975,7 +1067,10 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
             while (ci >= 0 && is_active_chunk(ci) && tries < 1000) { ci = coll_random(); tries++; }
         }
         if (ci < 0) break;
-        lay_chunk(ci);
+        /* lejos (fuera de la vista): por partes en los fotogramas siguientes */
+        int far_ = !jetpack && track_chunk_z >= charZ + LAY_NEAR;
+        lay_chunk_ex(ci, !far_);
+        if (far_) lay_step(sceKernelGetSystemTimeLow() + LAY_BUDGET_US);
     }
 }
 
@@ -990,11 +1085,13 @@ float track_lay_jetpack_chunks(float charZ, float flyLength)
 
 void track_deactivate_all(void)
 {
+    lay_finish();
     for (int i = 0; i < track_nactive; i++) chunk_deactivate(track_active[i]);
 }
 
 void track_restart(void)
 {
+    lay_finish();
     scene_randhold_init();
     for (int i = 0; i < nchunks; i++) {
         nrt[chunks[i].node].lpos.y = -1000.0f;
