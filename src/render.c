@@ -1342,6 +1342,62 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
     if (sky) { sceGuEnable(GU_CULL_FACE); sceGuEnable(GU_DEPTH_TEST); }
 }
 
+/* Muchas copias de una malla pequena de un solo trozo (las monedas y sus brillos): la VFPU las transforma todas, con la
+ * curvatura, en un solo bloque y el GE las dibuja con una sola llamada. Antes cada copia era una llamada completa
+ * (visibilidad, huesos de la curvatura, material...) y en los tramos con muchas monedas eran 100-200 llamadas: 4-8 ms
+ * de CPU en la consola, la causa de los bajones a 20 FPS. Las que hay que recortar (pegadas a la camara) van aparte */
+void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
+{
+    if (mi < 0 || mi >= gd.nmeshes || n <= 0) return;
+    Mesh *me = &gd.meshes[mi];
+    if (me->nparts != 1 || me->skinned) {
+        for (int i = 0; i < n; i++) r_draw_mesh(mi, &worlds[i], &mat, 1, amul);
+        return;
+    }
+    const MeshPart *pt = &me->parts[0];
+    float kx = -0.0005f / P00, ky = -0.0003f / P11;
+    if (mat >= 0 && mat < gd.nmats) { kx = gd.mats[mat].distort[0] / P00; ky = gd.mats[mat].distort[1] / P11; }
+    int per = pt->nv > 0 ? 65000 / pt->nv : 0;
+    if (per > 96) per = 96;
+    if (per <= 0) return;
+    static int clip[96];
+    for (int i = 0; i < n; i += per) {
+        int cnt = n - i < per ? n - i : per;
+        if (list_full(LIST_RESERVE)) return;
+        int vbytes = cnt * pt->nv * (int)sizeof(OV), ibytes = cnt * pt->ni * 2;
+        if (vpos + vbytes + 64 > VRING_BYTES || ipos + ibytes + 64 > IRING_BYTES) { r_mem.dropped++; return; }
+        OV *ov = (OV *)(vring + vpos);
+        uint16_t *ix = (uint16_t *)(iring + ipos);
+        int nv = 0, ni = 0, nclip = 0;
+        for (int k = 0; k < cnt; k++) {
+            const M34 *w = &worlds[i + k];
+            M34 mv;
+            m34_mul(&mv, &r_view, w);
+            V3 pc = m34_point(&mv, pt->center);
+            int vis = sphere_visible_v(pc, pt->radius * v3len(m34_col(w, 0)));
+            if (!vis) continue;
+            if (vis == 2) { clip[nclip++] = i + k; continue; }
+            transform_fast(ov + nv, pt->verts, pt->nv, &mv, kx, ky);
+            for (int j = 0; j < pt->ni; j++) ix[ni + j] = (uint16_t)(pt->idx[j] + nv);
+            nv += pt->nv;
+            ni += pt->ni;
+        }
+        vpos += (nv * (int)sizeof(OV) + 63) & ~63;
+        ipos += (ni * 2 + 63) & ~63;
+        if (ni > 0) {
+            model_identity();
+            set_mip_ok(0);
+            lod_for(0);
+            bind_material(mat, amul);
+            sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D, ni, ix, ov);
+            r_stat_draws++;
+            r_stat_verts += nv;
+            r_stat_tris += ni / 3;
+        }
+        for (int k = 0; k < nclip; k++) draw_mesh_now(mi, &worlds[clip[k]], &mat, 1, amul);
+    }
+}
+
 void r_draw_mesh(int mi, const M34 *world, const int *mats, int nmats, float amul)
 {
     if (mi < 0 || mi >= gd.nmeshes) return;
@@ -1420,6 +1476,39 @@ void r_draw_underlay(float x0, float x1, float y, float z0, float z1, unsigned i
 void r_flush_transparent(void)
 {
     model_identity();
+    /* los aditivos (brillos de las monedas y de los power-ups) no necesitan orden: suman luz. Los de la misma malla,
+     * material e intensidad (en 8 escalones) van juntos en una sola llamada */
+    {
+        static M34 w[96];
+        int keep = 0;
+        for (int i = 0; i < ndefer; i++) {
+            Deferred *d = &defer[i];
+            int m = d->nmats > 0 ? d->mats[0] : -1;
+            if (d->nmats != 1 || m < 0 || m >= gd.nmats || gd.mats[m].blend != BLEND_ADD || gd.meshes[d->mesh].nparts != 1) {
+                defer[keep++] = *d;
+                continue;
+            }
+            d->amul = (float)((int)(d->amul * 8.0f + 0.5f)) / 8.0f;
+            if (d->amul <= 0) { d->mesh = -1; continue; }
+            defer[keep++] = *d;
+        }
+        ndefer = keep;
+        for (int i = 0; i < ndefer; i++) {
+            Deferred *d = &defer[i];
+            int m = d->nmats == 1 ? d->mats[0] : -1;
+            if (d->mesh < 0 || m < 0 || m >= gd.nmats || gd.mats[m].blend != BLEND_ADD || gd.meshes[d->mesh].nparts != 1) continue;
+            int n = 0, mesh = d->mesh;
+            float a = d->amul;
+            for (int j = i; j < ndefer && n < 96; j++) {
+                Deferred *e = &defer[j];
+                if (e->mesh == mesh && e->nmats == 1 && e->mats[0] == m && e->amul == a) { w[n++] = e->world; e->mesh = -1; }
+            }
+            r_draw_mesh_batch(mesh, m, w, n, a);
+        }
+        keep = 0;
+        for (int i = 0; i < ndefer; i++) if (defer[i].mesh >= 0) defer[keep++] = defer[i];
+        ndefer = keep;
+    }
     qsort(defer, ndefer, sizeof(Deferred), cmp_defer);
     for (int i = 0; i < ndefer; i++)
         draw_mesh_now(defer[i].mesh, &defer[i].world, defer[i].mats, defer[i].nmats, defer[i].amul);

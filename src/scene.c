@@ -290,16 +290,17 @@ void coins_draw(void)
     int mats[4] = {(int)m[3], -1, -1, -1};
     int gmats[4] = {g ? (int)g[3] : -1, -1, -1, -1};
     V3 cam = r_cam_pos;
+    /* todas las monedas en una sola llamada al GE (r_draw_mesh_batch) */
+    static M34 cw[MAX_COINS];
+    int ncw = 0;
     for (int i = 0; i < MAX_COINS; i++) {
         CoinRT *c = &coins[i];
         if (!c->active || !c->visible) continue;
         if (c->pos.z < cam.z - 10.0f || c->pos.z > cam.z + r_fog_end) continue;
         /* PickupRotate: rotacion en Y = tiempo*180 + z*0.9 */
         float ang = game_time * 180.0f + c->rot_z * 0.9f;
-        M34 w;
         V3 p = v3add(c->pos, c->pivot);
-        m34_trs(&w, p, qeuler(0, ang, 0), v3(1, 1, 1));
-        r_draw_mesh(m[0], &w, mats, 1, 1.0f);
+        m34_trs(&cw[ncw++], p, qeuler(0, ang, 0), v3(1, 1, 1));
         if (g) {
             /* Glow/Plane: un plano levantado de cara a la camara (-90 grados en x), 3.3 por delante de la moneda y sin
              * girar con ella. Antes salia tumbado (sin su rotacion) y se veia como un cuadro con el borde dorado.
@@ -313,6 +314,7 @@ void coins_draw(void)
             }
         }
     }
+    r_draw_mesh_batch((int)m[0], mats[0], cw, ncw, 1.0f);
 }
 
 /* ------------------------------------------------------------ MovingTrain / MovingCoin */

@@ -27,6 +27,7 @@ void r_set_camera(V3 pos, V3 target, float fov_deg);
 void r_set_camera_matrix(const M34 *cam_world, float fov_deg);
 /* dibuja una malla con su matriz de mundo; mats[] por submalla (-1 = no dibujar) */
 void r_draw_mesh(int mesh, const M34 *world, const int *mats, int nmats, float alpha_mul);
+void r_draw_mesh_batch(int mesh, int mat, const M34 *worlds, int n, float alpha_mul);   /* muchas copias pequenas */
 /* malla con piel: bones[] son las matrices finales (mundo * bindpose) */
 void r_draw_skinned(int mesh, const M34 *bones, int nbones, const int *mats, int nmats);
 /* sombra/plano proyectado en el suelo (quad) */
