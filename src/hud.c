@@ -1146,8 +1146,9 @@ static void draw_gameover(void)
     char buf[64];
     bg_fallback();
     coin_box(SCR_W - 8, 15);
-    /* marcador: "* Score *", la pizarra con los puntos y las monedas, y el record */
-    float cx = 128, cy = 112;
+    /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda (lo dibuja el 3D) y a la derecha el marcador:
+     * "* Score *", la pizarra con los puntos y las monedas, y el record */
+    float cx = 350, cy = 104;
     float stw = labw(1, 30, TR("Puntos", "Score")) * 0.5f + U(14);
     spr_c("icon_star", cx - stw, cy - U(72), U(20), U(19), C_SCORE);
     spr_c("icon_star", cx + stw, cy - U(72), U(20), U(19), C_SCORE);
@@ -1161,10 +1162,6 @@ static void draw_gameover(void)
     labc(0, cx + U(6), cy + U(4), 20, C_WHITE, 1, 1, buf);
     snprintf(buf, sizeof(buf), TR("Récord: %d", "Best: %d"), ginfo.highscore);
     labfit(0, cx, cy + U(40), 15, U(150), C_WHITE, 1, 1, buf);
-    /* a la derecha (donde la 1.4 tiene la clasificacion de amigos): las misiones */
-    float px = 248, py = 30;
-    panel(px, py, 222, 160);
-    draw_missions_panel(px + 6, py + 4, 210);
     foot_btn(-132, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
     foot_btn(-46, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
     foot_play(74, TR("JUGAR", "PLAY"), 28, "X");
@@ -1214,22 +1211,24 @@ static void draw_pause(void)
             labc(0, rx + U(6), ry + U(26), 15, C_WHITE, 1, 1, buf);
         } else spr_c("icon_bigSuperMysteryBox", rx, ry, U(66), U(62), C_WHITE);
         snprintf(buf, sizeof(buf), TR("Día %d", "Day %d"), daily_day_next());
-        labc(0, rx, ry - U(48), 15, C_WHITE, 1, 1, buf);
+        labc(0, rx, ry - U(48), 15, a_nb >= 0 ? C_NAVY : C_WHITE, 1, a_nb < 0, buf);
     }
     if (daily_word_complete()) {
-        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Siguiente desafío en", "Next challenge in"));
+        lab(0, x, lby + 34, 17, a_nb >= 0 ? C_NAVY : C_WHITE, 0, a_nb < 0, TR("Siguiente desafío en", "Next challenge in"));
         fmt_time(buf, sizeof(buf), day_seconds_left(), 0);
-        lab(1, x, lby + 54, 26, C_WHITE, 0, 1, buf);
+        lab(1, x, lby + 54, 26, a_nb >= 0 ? C_NAVY : C_WHITE, 0, a_nb < 0, buf);
     } else {
-        lab(0, x, lby + 34, 17, C_WHITE, 0, 1, TR("Recoge las letras", "Collect Letters"));
+        lab(0, x, lby + 34, 17, a_nb >= 0 ? C_NAVY : C_WHITE, 0, a_nb < 0, TR("Recoge las letras", "Collect Letters"));
         char t[24];
         fmt_time(t, sizeof(t), day_seconds_left(), 0);
         snprintf(buf, sizeof(buf), TR("Tiempo: %s", "Time: %s"), t);
-        lab(0, x, lby + 56, 17, C_WHITE, 0, 1, buf);
+        lab(0, x, lby + 56, 17, a_nb >= 0 ? C_NAVY : C_WHITE, 0, a_nb < 0, buf);
     }
-    /* derecha: misiones */
+    /* derecha: misiones, directamente sobre la libreta (PauseUI de la 1.5.2), separadas del desafio diario por la
+     * linea discontinua (en vertical: en la PSP van en dos columnas) */
     float px = 248, py = 12;
-    panel(px, py, 222, 160);
+    if (a_nb >= 0) for (float yy = 22; yy < 220; yy += 10) r_rect(px - 8, yy, 2, 6, 0xff5a2e0cu);
+    else panel(px, py, 222, 160);
     draw_missions_panel(px + 6, py + 4, 210);
     foot_btn(-60, "button_fill_menuBack", "icon_house_menu", 32, 32, TR("Inicio", "Home"), "O");
     foot_play(50, TR("SEGUIR", "RESUME"), 22, "X / START");

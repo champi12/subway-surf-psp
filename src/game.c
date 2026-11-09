@@ -179,6 +179,7 @@ static void jet_clouds_update(void)
 /* ------------------------------------------------------------ estado */
 static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
+static void char_pose(int i);
 static CharCtrl cc;
 static V3 cc_center0; static float cc_height0;
 static V3 col_center0; static float col_height0, col_height, col_radius = 3.0f; static V3 col_center;
@@ -1934,6 +1935,7 @@ void game_theme_check(int boot)
 
 static void game_top_menu(void)
 {
+    char_pose(-1);   /* el del fin de partida, de pie mirando a la camara: vuelve a pintar */
     game_theme_check(0);
     daily_word_check();
     change_state(GS_MENU);
@@ -2423,6 +2425,13 @@ static void die_tick(float dt)
         game_save();
         change_state(GS_GAMEOVER);
         ginfo.state = GS_GAMEOVER;
+        /* de pie en el fin de partida, como en la 1.5.2, sin los objetos de los power-ups de la carrera (el iman se
+         * le quedaba en la mano) */
+        set_node_active(n_meshMagnet, 0);
+        set_node_active(n_meshSneakers, 0);
+        set_node_active(n_meshJetpack, 0);
+        set_node_active(n_meshHoverboard, 0);
+        char_pose(ginfo.character);
     }
 }
 
@@ -3550,6 +3559,15 @@ void game_draw(void)
             V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));   /* el esqueleto: la animacion lo mueve */
             V3 f = v3norm(v3sub(chest, cp)), rt = v3norm(v3cross(v3(0, 1, 0), f));
             V3 tgt = v3sub(chest, v3scale(rt, CHARS_CAM_X));
+            r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
+            scene_draw_subtree(n_character);
+            r_flush_transparent();
+        } else if (state == GS_GAMEOVER && char_posing) {
+            /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda de la libreta (el marcador va a la derecha).
+             * La camara, por detras como la de la carrera, mirando al personaje que se gira hacia ella */
+            V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));
+            V3 f = v3(0, 0, 1), rt = v3(1, 0, 0);
+            V3 tgt = v3add(chest, v3scale(rt, CHARS_CAM_X));
             r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
             r_flush_transparent();
