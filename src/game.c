@@ -2527,11 +2527,25 @@ static void tut_message(const char *txt)
     ginfo.message_t = game_time;
 }
 
+/* el nodo con la malla de la flecha del tutorial (material tutorial_arrow), o -1 */
+static int tut_arrow_find(void)
+{
+    static int found = -2;
+    if (found != -2) return found;
+    found = -1;
+    for (int n = 0; n < gd.nnodes && found < 0; n++) {
+        const uint32_t *m = node_comp(n, C_MESH, NULL);
+        if (m && m[3] < (uint32_t)gd.nmats && !strcmp(gd.mats[m[3]].name, "tutorial_arrow")) found = n;
+    }
+    dlog("Flecha del tutorial: nodo %d", found);
+    return found;
+}
+
 /* TutorialEvent.OnTriggerExit: textos del original con los botones de la PSP */
 static void tutorial_event(const uint32_t *t)
 {
 #ifdef AUTOTEST
-    dlog("TUTORIAL evento texto%d flecha%d dir %.0f fin%d a %d m", t[0], t[2], u2f(t[4]), t[6], ginfo.meters);
+    dlog("TUTORIAL evento texto%d flecha%d (nodo %d) dir %.0f fin%d a %d m", t[0], t[2], (int)t[3], u2f(t[4]), t[6], ginfo.meters);
 #endif
     if (t[0]) {
         const char *txt = (int)t[1] >= 0 ? gd.strings[t[1]] : "";
@@ -2540,9 +2554,10 @@ static void tutorial_event(const uint32_t *t)
         else if (strstr(txt, "Fresh")) tut_message(TR("¡Buenos movimientos!", "Fresh Moves!"));
         else tut_message(txt);
     }
-    if (t[2] && (int)t[3] >= 0) {
-        /* ShowArrow: la flecha 3D delante de la camara, y el boton de la PSP debajo */
-        n_tut_arrow = t[3];
+    if (t[2]) {
+        /* ShowArrow: la flecha 3D delante de la camara, y el boton de la PSP debajo. En el mundo de la 1.5.2 el evento
+         * no trae enlazada la flecha (-1): se busca en la escena por su material, y el texto sale aunque no la haya */
+        n_tut_arrow = (int)t[3] >= 0 ? (int)t[3] : tut_arrow_find();
         tut_arrow_dir = u2f(t[4]);
         tut_arrow_time = u2f(t[5]) > 0.05f ? u2f(t[5]) : 1.0f;
         tut_arrow_t0 = game_time;

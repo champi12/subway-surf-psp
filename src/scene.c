@@ -1148,9 +1148,10 @@ void track_remove_obstacles(float maxZ)
         for (int ch = gd.nodes[c->node].first_child; ch >= 0; ch = gd.nodes[ch].next_sibling)
             deactivate_obstacles_rec(c, ch, maxZ);
     }
-    /* las monedas que colgaban de obstaculos escondidos tambien desaparecen */
+    /* las monedas que colgaban de obstaculos escondidos tambien desaparecen: todas las del obstaculo, no solo las de
+     * antes de maxZ (en un vagon largo las de atras se quedaban flotando donde estaba y el iman las seguia atrayendo) */
     for (int i = 0; i < MAX_COINS; i++)
-        if (coins[i].active && coins[i].owner >= 0 && coins[i].pos.z < maxZ) {
+        if (coins[i].active && coins[i].owner >= 0) {
             int o = coins[i].owner, hid = 0;
             for (int p = o; p >= 0; p = gd.nodes[p].parent) if (nrt[p].hidden) { hid = 1; break; }
             if (hid) coins[i].active = 0;

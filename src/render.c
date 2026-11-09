@@ -104,7 +104,8 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define MIN_PX 2.0f             /* radio en pantalla por debajo del cual un trozo lejano no se dibuja */
 #endif
 #ifndef MIN_EFF_PX
-#define MIN_EFF_PX 5.0f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo */
+#define MIN_EFF_PX 1.5f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo: solo lo
+                                      * que la niebla tapa casi entero (con 5 las monedas salian a 200 de distancia) */
 #endif
 #ifndef SEAM_GROW_PX
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
@@ -1389,9 +1390,9 @@ void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
             M34 mv;
             m34_mul(&mv, &r_view, w);
             V3 pc = m34_point(&mv, pt->center);
-            float rr = pt->radius * v3len(m34_col(w, 0));
-            int vis = sphere_visible_v(pc, rr);
-            if (!vis || (vis == 1 && fog_hidden(rr, pc.z))) continue;
+            /* las monedas se ven hasta el final de la niebla, como en el original: en lote cuestan poco */
+            int vis = sphere_visible_v(pc, pt->radius * v3len(m34_col(w, 0)));
+            if (!vis) continue;
             if (vis == 2) { clip[nclip++] = i + k; continue; }
             transform_fast(ov + nv, pt->verts, pt->nv, &mv, kx, ky);
             for (int j = 0; j < pt->ni; j++) ix[ni + j] = (uint16_t)(pt->idx[j] + nv);
