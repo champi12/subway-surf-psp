@@ -1284,7 +1284,8 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         float pr = pt->radius * sc;
         /* trozos que a lo lejos ocupan menos de MIN_PX pixeles (ya casi del color de la niebla): ni se mandan al GE,
          * que es el que no llegaba a 33 ms en los tramos cargados */
-        if (vis == 1 && !sky && fog_hidden(pr, d0)) continue;
+        /* los objetos pequenos (monedas de los trenes en marcha, power-ups) no: su brillo va aparte y se quedaba solo */
+        if (vis == 1 && !sky && pr > 6.0f && fog_hidden(pr, d0)) continue;
         if (vis == 1 && HW_OK) {
             /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
              * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
@@ -1362,6 +1363,74 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
  * curvatura, en un solo bloque y el GE las dibuja con una sola llamada. Antes cada copia era una llamada completa
  * (visibilidad, huesos de la curvatura, material...) y en los tramos con muchas monedas eran 100-200 llamadas: 4-8 ms
  * de CPU en la consola, la causa de los bajones a 20 FPS. Las que hay que recortar (pegadas a la camara) van aparte */
+/* Version ligera de una malla con forma de moneda para verla de lejos (a 3-6 pixeles): solo las dos caras (sin el
+ * canto) y con la mitad de lados, hecha al vuelo de la propia malla (abanico desde el centro de cada cara con uno de
+ * cada dos vertices del borde, con sus mismas coordenadas de textura). 82 vertices -> ~22. Sin forma de moneda: no */
+#define COIN_LOD_D 150.0f
+typedef struct { int mesh; MeshPart pt; } CoinLod;
+static CoinLod coin_lod = {-2};
+static const MeshPart *coin_lod_get(int mi)
+{
+    if (coin_lod.mesh == mi) return coin_lod.pt.nv ? &coin_lod.pt : NULL;
+    if (coin_lod.mesh != -2) return NULL;           /* solo se hace para una malla (la moneda) */
+    coin_lod.mesh = mi;
+    const Mesh *me = &gd.meshes[mi];
+    if (me->nparts != 1 || me->skinned) return NULL;
+    const MeshPart *src = &me->parts[0];
+    static MVert lv[2 * 24];
+    static uint16_t li[2 * 23 * 3];
+    int nv = 0, ni = 0;
+    for (int side = -1; side <= 1; side += 2) {
+        /* vertices de los triangulos de esta cara (normal casi en z) */
+        int used[256], nu = 0;
+        for (int t = 0; t + 2 < src->ni && nu < 250; t += 3) {
+            const MVert *a = &src->verts[src->idx[t]], *b = &src->verts[src->idx[t + 1]], *c = &src->verts[src->idx[t + 2]];
+            float ux = b->x - a->x, uy = b->y - a->y, uz = b->z - a->z, vx = c->x - a->x, vy = c->y - a->y, vz = c->z - a->z;
+            float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+            float l = sqrtf(nx * nx + ny * ny + nz * nz);
+            if (l < 1e-6f || nz * side < 0.9f * l) continue;
+            for (int k = 0; k < 3; k++) {
+                int id = src->idx[t + k], dup = 0;
+                for (int j = 0; j < nu && !dup; j++) dup = used[j] == id;
+                if (!dup) used[nu++] = id;
+            }
+        }
+        if (nu < 8 || nu > 48) { coin_lod.pt.nv = 0; return NULL; }
+        /* el centro: el mas cercano al eje; el borde, ordenado por angulo */
+        int ci = 0;
+        for (int j = 1; j < nu; j++) {
+            const MVert *a = &src->verts[used[j]], *b = &src->verts[used[ci]];
+            if (a->x * a->x + a->y * a->y < b->x * b->x + b->y * b->y) ci = j;
+        }
+        int ctr = used[ci];
+        int ring[48], nr = 0;
+        for (int j = 0; j < nu; j++) if (j != ci) ring[nr++] = used[j];
+        for (int i = 1; i < nr; i++)
+            for (int j = i; j > 0; j--) {
+                const MVert *a = &src->verts[ring[j]], *b = &src->verts[ring[j - 1]];
+                if (atan2f(a->y, a->x) < atan2f(b->y, b->x)) { int t = ring[j]; ring[j] = ring[j - 1]; ring[j - 1] = t; }
+                else break;
+            }
+        int base = nv;
+        lv[nv++] = src->verts[ctr];
+        int nk = 0;
+        for (int j = 0; j < nr; j += 2) { lv[nv++] = src->verts[ring[j]]; nk++; }
+        for (int k = 0; k < nk; k++) {
+            uint16_t a = (uint16_t)(base + 1 + k), b = (uint16_t)(base + 1 + (k + 1) % nk);
+            /* el mismo sentido que la cara original (normal hacia side) */
+            if (side > 0) { li[ni++] = (uint16_t)base; li[ni++] = a; li[ni++] = b; }
+            else { li[ni++] = (uint16_t)base; li[ni++] = b; li[ni++] = a; }
+        }
+    }
+    coin_lod.pt = *src;
+    coin_lod.pt.verts = lv;
+    coin_lod.pt.idx = li;
+    coin_lod.pt.nv = nv;
+    coin_lod.pt.ni = ni;
+    dlog("Moneda lejana: %d vertices y %d triangulos (la normal %d y %d)", nv, ni / 3, src->nv, src->ni / 3);
+    return &coin_lod.pt;
+}
+
 void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
 {
     if (mi < 0 || mi >= gd.nmeshes || n <= 0) return;
@@ -1371,6 +1440,8 @@ void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
         return;
     }
     const MeshPart *pt = &me->parts[0];
+    /* la version ligera solo para las monedas opacas (los brillos aditivos son planos de 4 vertices) */
+    const MeshPart *lod = mat >= 0 && mat < gd.nmats && gd.mats[mat].blend == BLEND_OPAQUE ? coin_lod_get(mi) : NULL;
     float kx = -0.0005f / P00, ky = -0.0003f / P11;
     if (mat >= 0 && mat < gd.nmats) { kx = gd.mats[mat].distort[0] / P00; ky = gd.mats[mat].distort[1] / P11; }
     int per = pt->nv > 0 ? 65000 / pt->nv : 0;
@@ -1394,10 +1465,12 @@ void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
             int vis = sphere_visible_v(pc, pt->radius * v3len(m34_col(w, 0)));
             if (!vis) continue;
             if (vis == 2) { clip[nclip++] = i + k; continue; }
-            transform_fast(ov + nv, pt->verts, pt->nv, &mv, kx, ky);
-            for (int j = 0; j < pt->ni; j++) ix[ni + j] = (uint16_t)(pt->idx[j] + nv);
-            nv += pt->nv;
-            ni += pt->ni;
+            const MeshPart *use = pt;
+            if (pc.z > COIN_LOD_D && lod) use = lod;
+            transform_fast(ov + nv, use->verts, use->nv, &mv, kx, ky);
+            for (int j = 0; j < use->ni; j++) ix[ni + j] = (uint16_t)(use->idx[j] + nv);
+            nv += use->nv;
+            ni += use->ni;
         }
         vpos += (nv * (int)sizeof(OV) + 63) & ~63;
         ipos += (ni * 2 + 63) & ~63;
