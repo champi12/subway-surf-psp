@@ -710,9 +710,25 @@ static void big_button(float cx, float by, const char *fill)
 
 static void draw_halloween_popup(void);
 
+/* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
+ * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
+extern int theme_xmas;
+static void draw_menu_snow(void)
+{
+    if (!theme_xmas) return;
+    for (int i = 0; i < 40; i++) {
+        unsigned int h = (unsigned int)i * 2654435761u;
+        float sp = 18.0f + (h % 23), sz = 3.0f + (h >> 8) % 4, x0 = (float)((h >> 12) % SCR_W);
+        float y = fmodf((float)((h >> 4) % SCR_H) + ginfo.time * sp, (float)SCR_H + 10.0f) - 5.0f;
+        float x = x0 + sinf(ginfo.time * 0.8f + i) * 10.0f;
+        spr_c("background_superglow", x, y, sz * 2.5f, sz * 2.5f, 0xd0ffffffu);
+    }
+}
+
 static void draw_menu(void)
 {
     char buf[48];
+    draw_menu_snow();
     /* arriba a la izquierda: Misiones (triangulo) y la palabra del dia */
     top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triángulo", "triangle"));
     top_button(U(144), U(26), U(110), daily_word_complete() ? TR("¡Palabra hecha!", "Word: done!") : TR("Palabra del día", "Daily Challenge"), NULL);
