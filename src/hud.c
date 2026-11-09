@@ -725,6 +725,33 @@ static void draw_menu(void)
     float a = 0.55f + 0.45f * sinf(ginfo.time * 4.0f);
     lab(1, SCR_W * 0.5f, SCR_H - U(132), 20, ((unsigned)(a * 255) << 24) | 0xffffff, 1, 1,
         TR("Pulsa X para jugar", "Press X to play"));
+    /* FrontUI de la 1.5.2: abajo FRIENDS (morado), ME (verde) y SHOP (azul), cada uno con su fondo y su icono grande
+     * (front_fill_* y front_icon_* de la hoja de la libreta). En la PSP no hay amigos en linea: FRIENDS abre los
+     * trofeos y records (cuadrado), ME los personajes y tablas (L) y SHOP la tienda (R) */
+    if (a_nb == -2) a_nb = ui_atlas("Notebook15");
+    if (a_nb >= 0 && find_sprite(a_nb, "front_icon_me")) {
+        static const struct { const char *fill, *icon, *key; float x, w; } fb[3] = {
+            {"front_fill_purple", "front_icon_friends", "[]", 0.0f, 0.38f},
+            {"front_fill_green", "front_icon_me", "L", 0.38f, 0.26f},
+            {"front_fill_blue", "front_icon_shop", "R", 0.64f, 0.36f},
+        };
+        float y1 = SCR_H - 4, h = 52, x0 = 8, W = SCR_W - 16;
+        for (int i = 0; i < 3; i++) {
+            float bx = x0 + W * fb[i].x + 3, bw = W * fb[i].w - 6;
+            ui_sliced(a_nb, fb[i].fill, bx, y1 - h, bw, h, 1.0f, C_WHITE);
+            ui_sliced(a_ui, "button_generic_2_outline", bx - 3, y1 - h - 3, bw + 6, h + 6, UIS, C_OUTLINE);
+            USprite *ic = find_sprite(a_nb, fb[i].icon);
+            if (ic) {
+                float ih = h + 16, iw = ih * ic->ow / ic->oh;
+                if (iw > bw) { iw = bw; ih = iw * ic->oh / ic->ow; }
+                ui_sprite_wh(a_nb, fb[i].icon, bx + (bw - iw) * 0.5f, y1 - ih, iw, ih, C_WHITE);
+            }
+            lab(0, bx + 6, y1 - h + 2, 14, C_WHITE, 0, 1, fb[i].key);
+        }
+        if (ginfo.missions_open) draw_missions_popup();
+        if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
+        return;
+    }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
     float sx = SCR_W - U(83), by = SCR_H - U(5);
     big_button(sx, by, "button_fill_menuShop");
