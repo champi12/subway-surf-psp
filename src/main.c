@@ -311,6 +311,11 @@ int main(int argc, char **argv)
 #ifdef AT_SMOKE
         { extern void game_debug_board_crash(void); if (frame_no == 960) game_debug_board_crash(); }   /* humo */
 #endif
+#elif defined(AT_ELF)
+        /* prueba de Navidad: abre personajes y va al ultimo (con AT_XMAS, Elf Tricky) */
+        if (frame_no == 30) pr |= PSP_CTRL_CROSS;    /* cierra el aviso del evento */
+        if (frame_no == 50) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 80) pr |= PSP_CTRL_LEFT;
 #elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;

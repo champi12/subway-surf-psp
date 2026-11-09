@@ -1913,11 +1913,14 @@ int halloween_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
+    return halloween_season() || xmas_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
-    if (!halloween_season() || console_date(&t) < 0) return 0;
-    int days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;     /* dias enteros despues de hoy */
+    if (console_date(&t) < 0) return 0;
+    int days;                                                  /* dias enteros despues de hoy */
+    if (halloween_season()) days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;
+    else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 2 : 2 - t.day;   /* hasta el 2 de enero */
+    else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
 }
