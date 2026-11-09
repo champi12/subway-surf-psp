@@ -1037,6 +1037,71 @@ def build_psp_atlas(sc, sc14):
     return sheet, sprites
 
 
+NOTEBOOK_SPRITES = (('GenericAtlas', 'newbackground'), ('GenericAtlas', 'metal_spiral_lo'), ('GenericAtlas', 'menu_decal8'),
+                    ('LowResAtlas', 'front_fill_blue'), ('LowResAtlas', 'front_fill_green'),
+                    ('LowResAtlas', 'front_fill_purple'), ('LowResAtlas', 'front_icon_friends'),
+                    ('LowResAtlas', 'front_icon_me'), ('LowResAtlas', 'front_icon_shop'),
+                    ('LowResAtlas', 'button_fill_menuMe'), ('LowResAtlas', 'icon_boards'), ('LowResAtlas', 'icon_xmas'))
+
+
+def build_notebook_atlas(sc15):
+    """Interfaz de la 1.5.2: la hoja de libreta (newbackground, espiral y dibujo de fondo, del GenericAtlas) y los
+    botones nuevos de la portada (FRIENDS / ME / SHOP), en una hoja de 512x256. Devuelve (imagen, sprites) o None."""
+    srcs = {}
+    items = []
+    for at, n in NOTEBOOK_SPRITES:
+        if at not in srcs:
+            srcs[at] = read_atlas(sc15, at)
+        im, sp = srcs[at]
+        if im is None or n not in sp:
+            continue
+        o = sp[n]['outer']
+        w, h = int(round(o['width'])), int(round(o['height']))
+        if n == 'menu_decal8':
+            # el dibujo gris de fondo se ve grande y semitransparente: al 60 % no se nota y cabe todo en 512x256
+            cut = im.crop((int(o['x']), int(o['y']), int(o['x']) + w, int(o['y']) + h))
+            w, h = int(w * 0.6), int(h * 0.6)
+            im = cut.resize((w, h), Image.LANCZOS)
+            box = {'x': 0, 'y': 0, 'width': w, 'height': h}
+            items.append((n, im, {'outer': box, 'inner': dict(box)}, w, h))
+            continue
+        items.append((n, im, sp[n], w, h))
+    if not items:
+        return None
+    W, H = 512, 256
+    items.sort(key=lambda it: (-it[4], -it[3]))
+    x = y = shelf = 0
+    place = {}
+    for n, im, sp, w, h in items:
+        if x + w > W:
+            x, y, shelf = 0, y + shelf + 2, 0
+        if y + h > H:
+            print('  AVISO: la libreta de la 1.5.2 no cabe en 512x256')
+            return None
+        place[n] = (x, y)
+        x += w + 2
+        shelf = max(shelf, h)
+    sheet = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    sprites = []
+    for n, im, sp, w, h in items:
+        o, i = sp['outer'], sp['inner']
+        px, py = place[n]
+        sheet.paste(im.crop((int(o['x']), int(o['y']), int(o['x']) + w, int(o['y']) + h)), (px, py))
+        dx, dy = px - o['x'], py - o['y']
+        sprites.append({'name': n, 'outer': {'x': px, 'y': py, 'width': w, 'height': h},
+                        'inner': {'x': i['x'] + dx, 'y': i['y'] + dy, 'width': i['width'], 'height': i['height']}})
+    print('  interfaz de la 1.5.2: %d sprites (libreta y portada) en 512x256' % len(items))
+    return sheet, sprites
+
+
+def find_texture(sc, name):
+    for f in sc.files.values():
+        for o in f.objects.values():
+            if o.type.name == 'Texture2D' and o.read().m_Name == name:
+                return o.read().image
+    return None
+
+
 def ui_backgrounds(sc14):
     """Fondo desenfocado de las pantallas de la 1.4 (BackgroundHelper): normal y Halloween, recortados a apaisado."""
     for f in sc14.files.values():
@@ -1435,7 +1500,7 @@ def fix_glow_material(ex, mi):
           (round((u1 - u0) * W), round((v1 - v0) * H), src.read().m_Name))
 
 
-def export_ui(sc, ex, sc14=None, boards=None):
+def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
     fonts = []
@@ -1502,6 +1567,15 @@ def export_ui(sc, ex, sc14=None, boards=None):
             atlases.append({'name': 'BoardThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 128, 'pixel': 1.0,
                             'sprites': boards.thumbs[1], 'key': ('gen', 'BoardThumbs')})
             ex.textures.append(('generada', 'ui_boards', boards.thumbs[0], True))
+        nb = build_notebook_atlas(sc15) if sc15 is not None else None
+        if nb:
+            atlases.append({'name': 'Notebook15', 'tex': len(ex.textures), 'w': 512, 'h': 256, 'pixel': 1.0,
+                            'sprites': nb[1], 'key': ('gen', 'Notebook15')})
+            ex.textures.append(('generada', 'ui_notebook', nb[0], True))
+        mb = find_texture(sc15, 'mysterybox_bg') if sc15 is not None else None
+        if mb is not None:
+            # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256
+            ex.textures.append(('generada', 'ui_mbox_bg', mb.convert('RGB').resize((256, 256), Image.LANCZOS)))
         bg = ui_backgrounds(sc14)
         if bg:
             ex.textures.append(('generada', 'ui_bg', bg[0]))
@@ -2071,7 +2145,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         boards = export_boards(sc15, ex, names10)
     print('Exportando interfaz...')
     # los otros mundos (data/w15) tienen su propio ui.bin: tambien llevan las miniaturas de las tablas
-    ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui)
+    ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui,
+                   sc15 if sc15 is not None else (level_sc if level_sc is not sc else None))
     print('Exportando mallas...')
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)

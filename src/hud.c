@@ -452,6 +452,25 @@ static void foot_btn(float nx, const char *fill, const char *icon, float iw, flo
     lab(0, cx, cy + U(30), 14, C_WHITE, 1, 1, t);
 }
 
+/* botones verdes de la seccion "ME" de la 1.5.2 (personajes, tablas, trofeos): button_fill_menuMe de la hoja de la
+ * libreta; sin el APK de la 1.5.2, el azul de la 1.4 */
+static int a_nb = -2;
+static void foot_btn_me(float nx, const char *icon, float iw, float ih, const char *title, const char *key)
+{
+    float cx = SCR_W * 0.5f + U(nx), cy = FOOT_Y;
+    if (a_nb >= 0 && find_sprite(a_nb, "button_fill_menuMe")) {
+        ui_sliced(a_nb, "button_fill_menuMe", cx - U(31), cy - U(22), U(60), U(46), UIS, C_WHITE);
+        ui_sliced(a_ui, "button_generic_2_outline", cx - U(34), cy - U(25), U(72), U(56), UIS, C_OUTLINE);
+        if (!strcmp(icon, "icon_boards")) ui_sprite_wh(a_nb, icon, cx - U(iw) * 0.5f, cy - U(ih) * 0.5f, U(iw), U(ih), C_WHITE);
+        else spr_c(icon, cx, cy, U(iw), U(ih), C_WHITE);
+        char t[48];
+        if (key) snprintf(t, sizeof(t), "%s (%s)", title, key); else snprintf(t, sizeof(t), "%s", title);
+        lab(0, cx, cy + U(30), 14, C_WHITE, 1, 1, t);
+        return;
+    }
+    foot_btn(nx, "button_fill_menuShop", icon, iw, ih, title, key);
+}
+
 /* boton verde ancho del pie ("PLAY", "RESUME") con las dos estrellas */
 static void foot_play(float nx, const char *text, float px, const char *key)
 {
@@ -493,10 +512,42 @@ static int bg_screen(void)
     return ginfo.state == GS_SHOP || ginfo.state == GS_CHARS || ginfo.state == GS_GAMEOVER || ginfo.state == GS_TROPHIES ||
            ginfo.state == GS_BOARDS;
 }
+/* NotebookPanel2 de la 1.5.2: hoja de libreta (newbackground, 9-slice), el dibujo gris de fondo (menu_decal8) y la
+ * espiral metalica arriba (metal_spiral_lo repetida). Son ~40 sprites 2D de una hoja de 512x256 (128 KB, solo en los menus): no se nota
+ * en el rendimiento. Sin el APK de la 1.5.2 se queda el fondo de la 1.4 */
+static int nb_loaded;
+#define NB_X0 8.0f
+#define NB_Y0 6.0f
+#define NB_X1 472.0f
+#define NB_Y1 232.0f
+static int notebook_panel(void)
+{
+    if (a_nb == -2) a_nb = ui_atlas("Notebook15");
+    if (a_nb < 0 || !find_sprite(a_nb, "newbackground")) return 0;
+    nb_loaded = 1;
+    ui_sliced(a_nb, "newbackground", NB_X0, NB_Y0 + 6, NB_X1 - NB_X0, NB_Y1 - NB_Y0 - 6, 1.0f, C_WHITE);
+    USprite *d = find_sprite(a_nb, "menu_decal8");
+    if (d) {
+        float h = (NB_Y1 - NB_Y0) * 0.92f, w = h * d->ow / d->oh;
+        ui_sprite_wh(a_nb, "menu_decal8", (NB_X0 + NB_X1 - w) * 0.5f, NB_Y0 + 12, w, h, 0x80ffffffu);
+    }
+    USprite *sp = find_sprite(a_nb, "metal_spiral_lo");
+    if (sp) {
+        float h = 20, w = h * sp->ow / sp->oh, step = w * 1.75f;
+        for (float x = NB_X0 + 14; x + w < NB_X1 - 10; x += step) ui_sprite_wh(a_nb, "metal_spiral_lo", x, NB_Y0 - 4, w, h, C_WHITE);
+    }
+    return 1;
+}
+static void nb_release(void)
+{
+    if (nb_loaded && !bg_screen()) { r_tex_unload(atl[a_nb].tex); nb_loaded = 0; }
+}
+static void notebook_bg(void);
 int hud_background(void)
 {
     if (bg_tex == -2) bg_tex = data_tex_find("ui_bg");
     if (bg_tex < 0 || !bg_screen()) return 0;
+    r_background_extra = notebook_bg;   /* la hoja de libreta, debajo del personaje 3D */
     r_background(bg_tex);   /* tambien la deja cargada (una sola: la normal o la de Halloween, 64 KB) */
     bg_loaded = 1;
     return 1;
@@ -506,8 +557,10 @@ static void bg_release(void)
 {
     if (bg_loaded && !bg_screen()) { r_tex_unload(bg_tex); bg_loaded = 0; }
 }
+static void notebook_bg(void) { notebook_panel(); }
 static void bg_fallback(void)
 {
+    if (a_nb >= 0 && bg_tex >= 0) return;   /* la libreta ya va con el fondo (notebook_bg) */
     if (bg_tex < 0) r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);   /* sin el APK de la 1.4: oscurecer el escenario */
 }
 
@@ -764,7 +817,7 @@ static void draw_shop(void)
     /* pie: Menu, Mejoras (esta), Personajes */
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), NULL);
-    foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L/R");
+    foot_btn_me(100, "icon_characters", 39, 28, TR("Personajes", "Characters"), "L/R");
     if (ginfo.reward[0] && ginfo.time - ginfo.reward_t < 2.5f) hud_slide_icon(TR("Has conseguido", "You got"), ginfo.reward, ginfo.reward_icon), ginfo.reward[0] = 0;
 }
 
@@ -865,7 +918,7 @@ static void draw_boards(void)
     spr_c("button_arrow_left", cx - 2.5f * step - 4, cy, 14, 20, C_WHITE);
     spr_c("button_arrow_right", cx + 2.5f * step + 4, cy, 14, 20, C_WHITE);
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
-    foot_btn(0, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), "L");
+    foot_btn_me(0, "icon_characters", 39, 28, TR("Personajes", "Characters"), "L");
     foot_btn(100, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
 }
 static void bthumbs_release(void)
@@ -935,10 +988,11 @@ static void draw_chars(void)
     foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
     if (board_count() > 0) {
         foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L");
-        foot_btn(100, "button_fill_menuShop", "icon_hoverboard", 32, 20, TR("Tablas", "Boards"), "R");
+        foot_btn_me(100, (a_nb >= 0 && find_sprite(a_nb, "icon_boards")) ? "icon_boards" : "icon_hoverboard", 33, 31,
+                    TR("Tablas", "Boards"), "R");
     } else {
         foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
-        foot_btn(100, "button_fill_menuShop", "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
+        foot_btn_me(100, "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
     }
 }
 
@@ -973,10 +1027,23 @@ static float ease_cos(float f) { f = f < 0 ? 0 : f > 1 ? 1 : f; return 0.5f - 0.
 
 /* MysteryBoxHandler._ShowReward: la tapa se levanta (clip "up"), la caja se va hacia abajo (0,7 s), el premio
  * crece desde la caja (2 s) dando vueltas que se frenan (4 s), el brillo aparece a los 0,5 s y el texto a 1,8 s */
+/* MysteryBoxPopup de la 1.5.2: remolino de colores a pantalla completa detras de la caja (mysterybox_bg, 256x256
+ * 5650 = 128 KB; solo mientras se abren cajas) */
+static int mbox_bg = -2, mbox_loaded;
+static void mbox_bg_release(int showing)
+{
+    if (mbox_loaded && !showing) { r_tex_unload(mbox_bg); mbox_loaded = 0; }
+}
 static void draw_box_popup(int sup)
 {
     char buf[48];
     float bx = SCR_W * 0.5f, cy = 112;
+    if (mbox_bg == -2) mbox_bg = data_tex_find("ui_mbox_bg");
+    if (mbox_bg >= 0) {
+        /* girando despacio, como el fondo del original: se dibuja algo mas grande que la pantalla */
+        r_sprite(mbox_bg, 0, 0, SCR_W, SCR_H, 0.06f, 0.2f, 0.94f, 0.8f, C_WHITE);
+        mbox_loaded = 1;
+    }
     const char *box = sup ? "box_super" : "box_mystery", *box_open = sup ? "box_super_open" : "box_mystery_open";
     const char *old = sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox";
     float gl = sup ? 1.0f : 0.7f;
@@ -1059,10 +1126,11 @@ static void draw_gameover(void)
     foot_play(74, TR("JUGAR", "PLAY"), 28, "X");
     /* cajas misteriosas de la carrera (MysteryBoxPopup): se abren una a una con X */
     if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
-        r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);
+        if (mbox_bg == -2) mbox_bg = data_tex_find("ui_mbox_bg");
+        if (mbox_bg < 0) r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);   /* sin el APK de la 1.5.2 */
         /* super caja (SuperMysteryBoxEffect): la plateada con mas brillo; se abren antes que las normales */
         draw_box_popup(ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0);
-    }
+    } else mbox_bg_release(0);
 }
 
 /* ------------------------------------------------------------ pausa (PauseUI de la 1.4) */
@@ -1181,6 +1249,7 @@ void hud_draw(void)
     hud_fonts();
     r_begin_2d();
     bg_release();
+    nb_release();
     if (a_thumbs == -2) a_thumbs = ui_atlas("CharThumbs");
     if (a_rewards == -2) a_rewards = ui_atlas("RewardIcons");
     thumbs_release();
