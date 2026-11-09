@@ -121,9 +121,14 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
 static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de la proyeccion) */
-/* prueba en la consola (devlog, SELECT + L): las lineas de la 1.5.2 solo salen en la PSP de verdad, el emulador no las
- * reproduce. 0 normal, 1 junta del recorte mas ancha, 2 sin mipmaps, 3 curvatura exacta siempre, 4 las tres */
+/* Mipmaps: en la consola, dejar que el GE elija el nivel (GU_TEXTURE_AUTO) llenaba las texturas del escenario de lineas
+ * negras y blancas (bordes de las piezas del atlas), sobre todo con el de Navidad; sin mipmaps salian bien pero el GE no
+ * llegaba (35 ms) y la distancia de dibujo bajaba mucho. En el emulador cualquier nivel fijo se ve bien: el nivel lo
+ * elige la CPU para cada trozo segun su distancia (GU_TEXTURE_CONST), cerca el 0 y de lejos los reducidos.
+ * Prueba en la consola (devlog, SELECT + L): 0 nivel por distancia, 1 automatico del GE (el de antes), 2 sin mipmaps,
+ * 3 nivel por distancia mas nitido */
 int r_dbg_mode;
+static int part_lod;
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 
@@ -490,10 +495,29 @@ static void tex_filter(void)
      * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
      * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
     int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
-    int use = cur_mips && mip_ok && r_dbg_mode != 2 && r_dbg_mode != 4;
+    int use = cur_mips && mip_ok && r_dbg_mode != 2;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
-    if (cur_mips) sceGuTexLevelMode(use ? GU_TEXTURE_AUTO : GU_TEXTURE_CONST, 0.0f);
+#ifdef AT_MIPLEVEL
+    /* prueba: el emulador no elige los niveles reducidos como la consola; asi se ve uno concreto */
+    if (cur_mips) sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)AT_MIPLEVEL : 0.0f);
+#else
+    if (cur_mips) {
+        if (use && r_dbg_mode == 1) sceGuTexLevelMode(GU_TEXTURE_AUTO, 0.0f);
+        else sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
+    }
+#endif
     sceGuTexFilter(min, mag);
+}
+
+/* nivel de mipmap de un trozo a la distancia d (de la camara, en unidades): ~12 texeles del atlas por unidad, y con el
+ * campo de vision de la PSP ~514/d pixeles por unidad: un texel por pixel a d ~ 40. Cada nivel, el doble de lejos */
+static void lod_for(float d)
+{
+    float d1 = r_dbg_mode == 3 ? 200.0f : 100.0f;
+    int l = d < d1 ? 0 : d < d1 * 2 ? 1 : d < d1 * 4 ? 2 : 3;
+    if (l == part_lod) return;
+    part_lod = l;
+    if (cur_tex >= 0 && cur_mips) tex_filter();
 }
 
 /* mipmaps solo para la geometria grande (via, edificios, trenes), que es la que se pierde a lo lejos */
@@ -911,7 +935,7 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
                 float px = (sx - cx) * pix_x, py = (sy - cy) * pix_y;   /* en pixeles */
                 float l2 = px * px + py * py;
                 if (l2 < 1e-4f) continue;
-                float g = (r_dbg_mode == 1 || r_dbg_mode == 4 ? 2.5f : SEAM_GROW_PX) / sqrtf(l2);
+                float g = SEAM_GROW_PX / sqrtf(l2);
                 in[k].x += px * g / pix_x * in[k].d;
                 in[k].y += py * g / pix_y * in[k].d;
             }
@@ -1237,8 +1261,9 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             /* cerca de la camara tambien las piezas pequenas van con la curvatura exacta: el tunel de la 1.5.2 son
              * muchas piezas sueltas y con la aproximacion lineal quedaban rendijas de menos de un pixel entre una y otra
              * (puntos blancos en las paredes en la consola). De lejos la diferencia no llega a un pixel */
-            if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D && r_dbg_mode != 3 && r_dbg_mode != 4) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
+            if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
             else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
+            lod_for(d0 - pr);
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
             r_stat_draws++;
@@ -1254,6 +1279,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
              * cercano y descarta lo que se sale de la banda de guarda; eso lo tapa la version recortada de abajo */
             model_identity();
             if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
+            lod_for(0);   /* cerca (se recorta): el nivel 0 */
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
             r_stat_draws++;
@@ -1272,6 +1298,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             vpos += (bytes + 63) & ~63;
             r_stat_verts += pt->nv;
             if (mi < 512) r_mesh_verts[mi] += pt->nv;
+            lod_for(0);   /* cerca (se recorta): el nivel 0 */
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
                            pt->ni, pt->idx, ov);
@@ -1288,6 +1315,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         batch_tris(&b, pt->idx, pt->ni, ge_drawn);
         PT_ADD(1, tc0);
         if (b.ni > 0) {
+            lod_for(0);   /* cerca (se recorta): el nivel 0 */
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
                            b.ni, b.idx, b.verts);
@@ -1440,6 +1468,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
                 if (mat < 0) continue;
                 for (int j = 0; j < sb->nb; j++) sceGuBoneMatrix(j, &gbone[sb->bones[j] < nb ? sb->bones[j] : 0]);
                 bones_zero = 0;
+                lod_for(0);
                 bind_material(mat, 1.0f);
                 sceGuDrawArray(GU_TRIANGLES, GU_WEIGHTS(sb->nb) | GU_WEIGHT_32BITF | GU_TEXTURE_32BITF | GU_VERTEX_32BITF |
                                GU_INDEX_16BIT | GU_TRANSFORM_3D, sb->ni, sb->idx, sb->verts);
@@ -1486,6 +1515,7 @@ void r_draw_skinned(int mi, const M34 *bones, int nbones, const int *mats, int n
         r_stat_skin_cpu += pt->nv;
         batch_tris(&b, pt->idx, pt->ni, 0);
         if (b.ni > 0) {
+            lod_for(0);
             bind_material(mat, 1.0f);
             sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D,
                            b.ni, b.idx, b.verts);

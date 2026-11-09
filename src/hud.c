@@ -270,8 +270,13 @@ static void ui_sliced(int ai, const char *name, float x, float y, float w, float
     for (int j = 0; j < 3; j++)
         for (int i = 0; i < 3; i++) {
             if (xs[i + 1] <= xs[i] || ys[j + 1] <= ys[j]) continue;
-            r_sprite(a->tex, xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j], us[i] / a->w, vs[j] / a->h,
-                     us[i + 1] / a->w, vs[j + 1] / a->h, col);
+            /* medio texel hacia dentro: estirado, el filtro bilineal de la consola leia el sprite de al lado del atlas
+             * (una linea oscura en el recuadro del multiplicador). Los trozos de 1 texel, por su centro */
+            float u0 = us[i], u1 = us[i + 1], v0 = vs[j], v1 = vs[j + 1];
+            if (u1 - u0 > 1.0f) { u0 += 0.5f; u1 -= 0.5f; } else u0 = u1 = (u0 + u1) * 0.5f;
+            if (v1 - v0 > 1.0f) { v0 += 0.5f; v1 -= 0.5f; } else v0 = v1 = (v0 + v1) * 0.5f;
+            r_sprite(a->tex, xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j], u0 / a->w, v0 / a->h,
+                     u1 / a->w, v1 / a->h, col);
         }
 }
 

@@ -103,6 +103,50 @@ static void load_exhandler(void)
 extern void game_load(void);
 unsigned int heap_used_kb(void) { struct mallinfo mi = mallinfo(); return mi.uordblks / 1024; }
 
+#if DEVLOG
+/* captura de la pantalla que se esta viendo a un BMP de 480x272 (24 bits) en la carpeta del juego, para mandar fotos
+ * de lo que se ve en la consola sin camara */
+static int shot_pending;
+static void save_screenshot(void)
+{
+    static int num = -1;
+    char fn[32];
+    if (num < 0) {   /* el primer numero libre */
+        for (num = 1; num < 1000; num++) {
+            snprintf(fn, sizeof(fn), "captura_%03d.bmp", num);
+            FILE *t = fopen(fn, "rb");
+            if (!t) break;
+            fclose(t);
+        }
+    }
+    r_present_last();
+    void *top; int bw, fmt;
+    sceDisplayGetFrameBuf(&top, &bw, &fmt, PSP_DISPLAY_SETBUF_NEXTFRAME);
+    snprintf(fn, sizeof(fn), "captura_%03d.bmp", num++);
+    FILE *f = fopen(fn, "wb");
+    if (!f) { dlog("CAPTURA no se pudo crear %s", fn); return; }
+    unsigned int sz = 54 + SCR_W * SCR_H * 3;
+    unsigned char h[54] = {'B', 'M'};
+    h[2] = sz; h[3] = sz >> 8; h[4] = sz >> 16; h[10] = 54; h[14] = 40;
+    h[18] = SCR_W & 255; h[19] = SCR_W >> 8; h[22] = SCR_H & 255; h[23] = SCR_H >> 8; h[26] = 1; h[28] = 24;
+    fwrite(h, 1, 54, f);
+    static unsigned char row[SCR_W * 3];
+    const unsigned short *src = (const unsigned short *)((unsigned)top | 0x40000000);
+    for (int y = SCR_H - 1; y >= 0; y--) {          /* el BMP va de abajo arriba */
+        for (int x = 0; x < SCR_W; x++) {
+            unsigned c = src[y * bw + x];
+            row[x * 3 + 0] = ((c >> 11) & 31) << 3;  /* 565 de la PSP: rojo en los bits bajos */
+            row[x * 3 + 1] = ((c >> 5) & 63) << 2;
+            row[x * 3 + 2] = (c & 31) << 3;
+        }
+        fwrite(row, 1, sizeof(row), f);
+    }
+    fclose(f);
+    dlog("CAPTURA %s", fn);
+    hud_slide("Captura guardada", fn);
+}
+#endif
+
 int main(int argc, char **argv)
 {
     unsigned int fcr31 = fpu_get_fcr31();
@@ -225,15 +269,20 @@ int main(int argc, char **argv)
 #if DEVLOG
         /* SELECT + L: modo de dibujo de prueba (lineas que solo salen en la consola) */
         if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_LTRIGGER)) {
-            static const char *const nm[5] = {"normal", "junta del recorte x3", "sin mipmaps", "curvatura exacta",
-                                              "las tres juntas"};
-            r_dbg_mode = (r_dbg_mode + 1) % 5;
+            static const char *const nm[4] = {"mipmap por distancia", "mipmap automatico (antes)", "sin mipmaps",
+                                              "mipmap por distancia, mas nitido"};
+            r_dbg_mode = (r_dbg_mode + 1) % 4;
             pr &= ~PSP_CTRL_LTRIGGER;
             dlog("PRUEBA DE DIBUJO modo %d: %s", r_dbg_mode, nm[r_dbg_mode]);
             char t[48];
             snprintf(t, sizeof(t), "Modo de dibujo %d", r_dbg_mode);
             hud_slide(t, nm[r_dbg_mode]);
         }
+        /* SELECT + R: captura de pantalla (captura_NNN.bmp en la carpeta del juego) */
+        if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_RTRIGGER)) { shot_pending = 1; pr &= ~PSP_CTRL_RTRIGGER; }
+#if defined(AUTOTEST) && defined(AT_SHOTBMP)
+        if (frame_no == 400) shot_pending = 1;   /* prueba de la captura */
+#endif
 #endif
 #ifdef AUTOTEST
         /* juego automatico para probar en el emulador sin mandos */
@@ -473,6 +522,9 @@ int main(int argc, char **argv)
         if (frame_no % 300 == 0) { FILE *f = fopen("perf.log", "a"); if (f) { fprintf(f, "   pico CPU %.2f ms\n", cpu_max); fclose(f); } }
 #endif
         gpu_ms = gpu_ms * 0.9f + r_wait_ms * 0.1f;
+#if DEVLOG
+        if (shot_pending) { shot_pending = 0; save_screenshot(); }
+#endif
 #ifdef AUTOTEST
 #ifndef AT_SHOT
 #define AT_SHOT 150

@@ -15,7 +15,7 @@ void r_begin_frame(unsigned int clear_abgr);
 void r_end_frame(void);
 void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capturas) */
 extern float r_wait_ms;
-extern int r_dbg_mode;      /* prueba de dibujo en la consola (devlog): 0-4 */
+extern int r_dbg_mode;      /* prueba de mipmaps en la consola (devlog, SELECT + L): 0-3 */
 extern float r_load_ms, r_dist_scale;
 void r_dist_hint(float scale);
 int r_project(V3 world, float *sx, float *sy);
