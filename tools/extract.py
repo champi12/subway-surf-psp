@@ -501,7 +501,9 @@ def make_parts(V, UV, subs, skin, world):
 # Versiones ligeras del escenario para verlo de lejos (ya en la niebla): solo otra lista de triangulos sobre los mismos
 # vertices del trozo (no ocupan casi nada). Los vertices de la misma celda de (cell) unidades se juntan en uno de ellos
 # (uno original: la textura no cambia) sin abrir grietas (lod_indices) y se quitan los triangulos que quedan sin area. El GE procesa cada indice: menos triangulos, menos trabajo, que es lo que no llegaba a 33 ms
-LOD_LEVELS = ((8.0, 24.0), (16.0, 12.0))
+# Desactivado: en la consola los tuneles se veian con huecos. Ninguna malla lleva versiones ligeras (el juego dibuja
+# siempre la normal, como antes, en todos los mundos)
+LOD_LEVELS = ()
 
 
 def lod_indices(P, UVl, idx, cell, uvq):

@@ -120,6 +120,9 @@ static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de 
  * llegaba (35 ms) y la distancia de dibujo bajaba mucho. El nivel lo elige la CPU para cada trozo segun su distancia
  * (GU_TEXTURE_CONST): cerca el 0 y de lejos los reducidos. Probado en la consola: sin lineas y a 30 FPS */
 static int part_lod;
+/* optimizaciones agresivas (recorte en la niebla, monedas lejanas ligeras, sin bilineal a lo lejos): solo en el mapa de
+ * la 1.5.2. El clasico (1.0/1.4) se dibuja como antes de ellas, que es como funcionaba bien */
+int r_light;
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
 
@@ -514,7 +517,7 @@ static void tex_filter(void)
     int use = cur_mips && mip_ok;
     /* de lejos (nivel 2 o mas, a partir de 200: ya en la niebla) sin filtro bilineal: el GE lee 1 texel por pixel en
      * vez de 4 y no se nota a ese tamano. Era el GE el que pasaba de 33 ms en los tramos mas cargados */
-    int mag = filt_nearest || (use && part_lod >= 2) ? GU_NEAREST : GU_LINEAR;
+    int mag = filt_nearest || (r_light && use && part_lod >= 2) ? GU_NEAREST : GU_LINEAR;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
 #ifdef AT_MIPLEVEL
     /* prueba: el emulador no elige los niveles reducidos como la consola; asi se ve uno concreto */
@@ -1249,6 +1252,9 @@ static int fog_hidden(float r, float d)
     if (d <= r_fog_start) return r * pix_x < MIN_PX * d;
     float k = (r_fog_end - d) / (r_fog_end - r_fog_start);
     if (k <= 0.0f) return 1;
+    /* solo lo que la niebla tapa casi entero (mas del 90 %): una pieza grande de tunel que desaparecia antes dejaba ver
+     * el cielo por el hueco */
+    if (k > 0.1f) return 0;
     return r * pix_x * (k < 1.0f ? k : 1.0f) < MIN_EFF_PX * d;
 }
 
@@ -1291,7 +1297,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         /* trozos que a lo lejos ocupan menos de MIN_PX pixeles (ya casi del color de la niebla): ni se mandan al GE,
          * que es el que no llegaba a 33 ms en los tramos cargados */
         /* los objetos pequenos (monedas de los trenes en marcha, power-ups) no: su brillo va aparte y se quedaba solo */
-        if (vis == 1 && !sky && pr > 6.0f && fog_hidden(pr, d0)) continue;
+        if (r_light && vis == 1 && !sky && pr > 6.0f && fog_hidden(pr, d0)) continue;
         if (vis == 1 && HW_OK) {
             /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
              * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
@@ -1308,8 +1314,8 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
                 const uint16_t *ix = pt->idx;
                 int ni = pt->ni;
                 float dn = d0 - pr;
-                if (dn > LOD2_D && pt->lod_ni[1] > 0) { ix = pt->lod_idx[1]; ni = pt->lod_ni[1]; }
-                else if (dn > LOD1_D && pt->lod_ni[0] > 0) { ix = pt->lod_idx[0]; ni = pt->lod_ni[0]; }
+                /* desactivado (huecos en los tuneles en la consola): siempre la malla normal */
+                (void)dn;
                 sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, ni, ix, pt->verts);
                 r_stat_draws++;
                 r_stat_hw += pt->nv;
@@ -1455,7 +1461,7 @@ void r_draw_mesh_batch(int mi, int mat, const M34 *worlds, int n, float amul)
     }
     const MeshPart *pt = &me->parts[0];
     /* la version ligera solo para las monedas opacas (los brillos aditivos son planos de 4 vertices) */
-    const MeshPart *lod = mat >= 0 && mat < gd.nmats && gd.mats[mat].blend == BLEND_OPAQUE ? coin_lod_get(mi) : NULL;
+    const MeshPart *lod = r_light && mat >= 0 && mat < gd.nmats && gd.mats[mat].blend == BLEND_OPAQUE ? coin_lod_get(mi) : NULL;
     float kx = -0.0005f / P00, ky = -0.0003f / P11;
     if (mat >= 0 && mat < gd.nmats) { kx = gd.mats[mat].distort[0] / P00; ky = gd.mats[mat].distort[1] / P11; }
     int per = pt->nv > 0 ? 65000 / pt->nv : 0;

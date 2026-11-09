@@ -179,6 +179,7 @@ int main(int argc, char **argv)
         if (f >= 0) sceIoClose(f);
         if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
+        { extern int r_light; r_light = !strcmp(wdir, "data/w15"); }
         dlog("Mundo: %s", has15 && !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif

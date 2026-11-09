@@ -58,6 +58,7 @@ extern V3 r_cam_pos;
 extern float r_near, r_far, r_fov;
 extern float r_fog_start, r_fog_end;
 extern unsigned int r_sky_tint;   /* tinte del cielo */
+extern int r_light;               /* 1 = optimizaciones agresivas (solo el mapa de la 1.5.2) */
 extern int r_sky_flat;            /* cielo liso del color de la niebla (Navidad) */
 extern unsigned int r_fog_color;     /* ABGR */
 extern unsigned int r_clear_color;   /* ABGR; color de fondo (solo asoma por las juntas) */
