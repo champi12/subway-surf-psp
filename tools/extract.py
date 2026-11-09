@@ -1126,7 +1126,9 @@ def export_board_crash_fx(sc15):
                     for _, tx in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
                         tt = sc15.resolve(mat.assets_file, tx['m_Texture']['m_FileID'], tx['m_Texture']['m_PathID'])
                         if tt is not None:
-                            tex = tt.read().image
+                            # formato 2 (ARGB4444 que en realidad es RGBA4444, como jetpackSmoke): con la imagen
+                            # directa de UnityPy los canales salen cambiados y se pierde la transparencia (cuadrados)
+                            tex = tex_rgba(tt.read())
                             break
             I = t['InitialModule']
 

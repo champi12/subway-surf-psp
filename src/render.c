@@ -113,6 +113,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 /* banda de guarda en NDC: el GE admite coordenadas de pantalla de 0 a 4096 (+-2048 px desde el centro, es decir
  * +-8,5 NDC en horizontal y +-15 en vertical); con 6 queda margen y mas trozos van por el camino rapido */
 #define GUARD 6.0f
+#ifndef APPROX_MIN_D
+#define APPROX_MIN_D 160.0f     /* piezas pequenas mas cerca que esto: curvatura exacta (sin rendijas) */
+#endif
 #ifndef SEAM_GROW_PX
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
@@ -1226,7 +1229,10 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
              * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
             model_identity();
-            if (me->nparts == 1 && pr <= 20.0f) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
+            /* cerca de la camara tambien las piezas pequenas van con la curvatura exacta: el tunel de la 1.5.2 son
+             * muchas piezas sueltas y con la aproximacion lineal quedaban rendijas de menos de un pixel entre una y otra
+             * (puntos blancos en las paredes en la consola). De lejos la diferencia no llega a un pixel */
+            if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
             else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
             bind_material(mat, amul);
             sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);

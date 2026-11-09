@@ -2377,6 +2377,9 @@ static void game_die(void)
         guard_reset_catch_up();
         ch.stumble = 0;
         guard_restart(0);
+        /* guard_restart borraba la orden de esconderse de guard_reset_catch_up: si la tabla se rompia mientras el
+         * inspector perseguia, se quedaba visible al fondo para siempre. Se va y se esconde como tras un tropiezo */
+        if (gu.showing) { gu.hide_pending = 1; gu.hide_at = game_time + GUARD_RESET * 2.0f; }
         mods[MOD_HOVERBOARD].stop = STOP_STOP;
         pw_on[PT_HOVERBOARD] = 0; pw_left[PT_HOVERBOARD] = 0;
         return;
