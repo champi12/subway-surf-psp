@@ -100,6 +100,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #ifndef APPROX_MIN_D
 #define APPROX_MIN_D 160.0f     /* piezas pequenas mas cerca que esto: curvatura exacta (sin rendijas) */
 #endif
+#ifndef MIN_PX
+#define MIN_PX 2.0f             /* radio en pantalla por debajo del cual un trozo lejano no se dibuja */
+#endif
 #ifndef SEAM_GROW_PX
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
@@ -122,15 +125,39 @@ static void *vram_tex_ptr[64];
 static unsigned char *tex_failed;
 RMem r_mem;
 
+static unsigned int vram_off;
+static int vram_free_bytes(void) { return 0x200000 - (int)((vram_off ? vram_off : 0xCC000) + 15 & ~15u); }
 static void *vram_alloc(int bytes)
 {
-    static unsigned int off = 0;
+    unsigned int off = vram_off;
     if (!off) off = 0xCC000;
     off = (off + 15) & ~15;
     if (off + bytes > 0x200000) return NULL;
     void *p = (void *)(0x04000000 + off);
-    off += bytes;
+    vram_off = off + bytes;
     return p;
+}
+
+/* Que texturas van a la VRAM (el GE las lee mucho mas deprisa que de la RAM): por orden de lo que mas se dibuja en la
+ * carrera. Antes solo entraban las de 16 bits, por orden de carga: los trenes y "main" (que en la 1.5.2 solo usan la
+ * sombra, efectos y el cielo) llenaban la VRAM y las de paleta del escenario (vias, paredes, objetos) se leian de la
+ * RAM. Cada una entra solo si deja sitio a las de delante que aun no se han cargado */
+static const char *const vram_prio[] = {"environment", "props", "trains", "train_start", "main"};
+#define NVRAM_PRIO ((int)(sizeof(vram_prio) / sizeof(vram_prio[0])))
+static int vram_rank(const char *name)
+{
+    for (int i = 0; i < NVRAM_PRIO; i++) if (!strcmp(name, vram_prio[i])) return i;
+    return -1;
+}
+/* bytes que hay que dejar libres para las de delante de rank (rank < 0: todas las de la lista) sin cargar */
+static int vram_reserve(int rank, int self)
+{
+    int r = 0, n = rank < 0 ? NVRAM_PRIO : rank;
+    for (int i = 0; i < n; i++) {
+        int ti = data_tex_find(vram_prio[i]);
+        if (ti >= 0 && ti != self && !gd.tex[ti].loaded) r += (int)gd.tex[ti].databytes;
+    }
+    return r;
 }
 
 /* ---- mipmaps ----
@@ -320,8 +347,9 @@ static int tex_ensure(int t)
     mips_build(t, tx->data);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
     /* las texturas de 16 bits del escenario van a la VRAM si caben (solo las de los modelos 3D: la letra de la
      * interfaz se carga antes, en la pantalla de carga, y si no dejaria fuera a la de los trenes) */
-    if (tx->fmt != TEX_T8 && t < 64 && tex_3d[t]) {
-        void *v = vram_alloc(tx->databytes);
+    int rank = vram_rank(tx->name);
+    if (t < 64 && tex_3d[t] && (rank >= 0 || tx->fmt != TEX_T8)) {
+        void *v = vram_free_bytes() - (int)tx->databytes >= vram_reserve(rank, t) ? vram_alloc(tx->databytes) : NULL;
         if (v) {
             memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
             free(tx->data);
@@ -393,7 +421,8 @@ static int loader_thread(SceSize args, void *argp)
 static int async_ok(int t)
 {
     const Texture *tx = &gd.tex[t];
-    return !(tx->fmt != TEX_T8 && t < 64 && tex_3d[t]);   /* las de 16 bits del escenario van a la VRAM */
+    /* las que pueden ir a la VRAM (las del escenario) siguen el camino normal */
+    return !(t < 64 && tex_3d[t] && (tx->fmt != TEX_T8 || vram_rank(tx->name) >= 0));
 }
 
 static int ld_mipbytes;
@@ -1237,6 +1266,9 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
         if (!vis) continue;
         float d0 = vis == 1 ? pc.z : 0;
         float pr = pt->radius * sc;
+        /* trozos que a lo lejos ocupan menos de MIN_PX pixeles (ya casi del color de la niebla): ni se mandan al GE,
+         * que es el que no llegaba a 33 ms en los tramos cargados */
+        if (vis == 1 && !sky && pr * pix_x < MIN_PX * d0) continue;
         if (vis == 1 && HW_OK) {
             /* lo transforma el GE (sin trabajo de CPU): curvatura exacta con los pesos de cada vertice; los objetos
              * pequenos de un solo trozo usan la aproximacion lineal (no tienen juntas con otros trozos) */
