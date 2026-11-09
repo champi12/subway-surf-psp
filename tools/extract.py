@@ -499,21 +499,39 @@ def make_parts(V, UV, subs, skin, world):
 
 
 # Versiones ligeras del escenario para verlo de lejos (ya en la niebla): solo otra lista de triangulos sobre los mismos
-# vertices del trozo (no ocupan casi nada). Los vertices que caen en la misma celda de (cell) unidades y en la misma
-# zona del atlas (1/uvq) se juntan en uno de ellos (uno original: la textura no cambia) y se quitan los triangulos que
-# quedan sin area. El GE procesa cada indice: menos triangulos, menos trabajo, que es lo que no llegaba a 33 ms
+# vertices del trozo (no ocupan casi nada). Los vertices de la misma celda de (cell) unidades se juntan en uno de ellos
+# (uno original: la textura no cambia) sin abrir grietas (lod_indices) y se quitan los triangulos que quedan sin area. El GE procesa cada indice: menos triangulos, menos trabajo, que es lo que no llegaba a 33 ms
 LOD_LEVELS = ((8.0, 24.0), (16.0, 12.0))
 
 
 def lod_indices(P, UVl, idx, cell, uvq):
-    key = np.concatenate([np.floor(np.asarray(P, np.float64) / cell), np.floor(UVl * uvq)], 1).astype(np.int64)
-    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    rep = first[np.asarray(inv).ravel()]
+    """Sin grietas: una posicion solo se junta con la de referencia de su celda (la del vertice de menor indice) si en
+    todas las zonas del atlas que la usan existe tambien un vertice en la posicion de referencia. Asi los dos lados de
+    una costura de textura (vertices repetidos en la misma posicion) se mueven siempre al mismo punto. Antes, cada zona
+    elegia su propio punto y se abrian huecos (se veia el cielo en los tuneles)."""
+    from collections import defaultdict
+    P = np.asarray(P, np.float64)
+    n = len(P)
+    pk = [tuple(x) for x in np.floor(P / cell).astype(np.int64)]
+    gk = [tuple(x) for x in np.floor(np.asarray(UVl, np.float64) * uvq).astype(np.int64)]
+    pos = [tuple(x) for x in np.round(P, 3)]
+    cells = defaultdict(dict)                 # celda -> posicion -> {zona del atlas: vertice}
+    for i in range(n):
+        cells[pk[i]].setdefault(pos[i], {}).setdefault(gk[i], i)
+    rep = np.arange(n)
+    for c, positions in cells.items():
+        A = min(positions, key=lambda q: min(positions[q].values()))
+        ga = positions[A]
+        for q, groups in positions.items():
+            if q == A or not set(groups) <= set(ga):
+                continue
+            positions[q] = {g: ga[g] for g in groups}
+    for i in range(n):
+        rep[i] = cells[pk[i]][pos[i]][gk[i]]
     T = rep[np.asarray(idx, np.int64).reshape(-1, 3)]
     ok = (T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])
     T = T[ok]
     if len(T):
-        # sin triangulos repetidos (con el mismo sentido)
         _, keep = np.unique(np.sort(T, 1), axis=0, return_index=True)
         T = T[np.sort(keep)]
     return [int(x) for x in T.ravel()]
