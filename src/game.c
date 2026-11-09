@@ -2968,7 +2968,10 @@ static void boards_input(unsigned in, int confirm)
         }
     }
     if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); board_preview_end(); open_chars(); }
-    else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); board_preview_end(); open_shop(); }
+    else if (in & IN_SQUARE) {   /* Trofeos, en el pie de la seccion ME */
+        snd_play(sfx_tap, 1, 1, 0); board_preview_end();
+        ginfo.trophy_sel = 0; change_state(GS_TROPHIES); ginfo.state = GS_TROPHIES;
+    }
     else if (in & (IN_CIRCLE | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         board_preview_end();
@@ -3017,13 +3020,13 @@ static void chars_input(unsigned in, int confirm)
             else hud_slide(TR("Consigue sus fichas en las", "Get the tokens from"), TR("cajas misteriosas", "Mystery Boxes"));
         }
     }
-    if (in & (IN_L | IN_R)) {
-        /* L y R pasan de una pestana del pie a otra: Mejoras < Personajes > Tablas (sin tablas, las dos a Mejoras) */
+    if (((in & IN_R) && gd_nboards > 0) || (in & IN_SQUARE)) {
+        /* pie de la seccion ME de la 1.5.2: R a Tablas, cuadrado a Trofeos */
         snd_play(sfx_tap, 1, 1, 0);
         char_show_model(ginfo.character);
         char_pose(-1);
-        if ((in & IN_R) && gd_nboards > 0) open_boards();
-        else open_shop();
+        if (in & IN_SQUARE) { ginfo.trophy_sel = 0; change_state(GS_TROPHIES); ginfo.state = GS_TROPHIES; }
+        else open_boards();
     } else if (in & (IN_CIRCLE | IN_START)) {
         snd_play(sfx_tap, 1, 1, 0);
         change_state(GS_MENU); ginfo.state = GS_MENU;
@@ -3276,7 +3279,6 @@ void game_input(unsigned in)
         else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
         else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
-        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.trophy_sel = 0; change_state(GS_TROPHIES); ginfo.state = GS_TROPHIES; }
         break;
     case GS_CHARS:
         chars_input(in, confirm);

@@ -712,31 +712,27 @@ static void draw_menu(void)
             cx += labw(1, 20, ch) + 4;
         }
     }
-    /* arriba a la derecha: hoverboards y trofeos (cuadrado) */
+    /* arriba a la derecha: hoverboards (los trofeos estan en la seccion ME, como en la 1.5.2) */
     float hx = SCR_W - U(79), hy = U(26);
     top_button(hx, hy, U(44), NULL, NULL);
     ui_sprite_wh(a_ui, "icon_hoverboard", hx - U(16), hy - U(13), U(32), U(20), C_WHITE);
     snprintf(buf, sizeof(buf), "%d", ginfo.hoverboards);
     labc(0, hx + U(16), hy + U(8), 14, C_WHITE, 2, 1, buf);
-    float tx = SCR_W - U(28);
-    top_button(tx, hy, U(44), NULL, TR("cuadrado", "square"));
-    spr_c("icon_trophies", tx, hy, U(29), U(29), C_WHITE);
     /* "Tap to play" que late */
     float a = 0.55f + 0.45f * sinf(ginfo.time * 4.0f);
     lab(1, SCR_W * 0.5f, SCR_H - U(132), 20, ((unsigned)(a * 255) << 24) | 0xffffff, 1, 1,
         TR("Pulsa X para jugar", "Press X to play"));
-    /* FrontUI de la 1.5.2: abajo FRIENDS (morado), ME (verde) y SHOP (azul), cada uno con su fondo y su icono grande
-     * (front_fill_* y front_icon_* de la hoja de la libreta). En la PSP no hay amigos en linea: FRIENDS abre los
-     * trofeos y records (cuadrado), ME los personajes y tablas (L) y SHOP la tienda (R) */
+    /* FrontUI de la 1.5.2: abajo ME (verde: personajes, tablas y trofeos, L) y SHOP (azul: la tienda, R), cada uno con
+     * su fondo y su icono grande (front_fill_* y front_icon_* de la hoja de la libreta) */
     if (a_nb == -2) a_nb = ui_atlas("Notebook15");
     if (a_nb >= 0 && find_sprite(a_nb, "front_icon_me")) {
-        static const struct { const char *fill, *icon, *key; float x, w; } fb[3] = {
-            {"front_fill_purple", "front_icon_friends", "[]", 0.0f, 0.38f},
+        /* FRIENDS (amigos en linea) no existe en la PSP: solo ME y SHOP, en su sitio de la derecha */
+        static const struct { const char *fill, *icon, *key; float x, w; } fb[2] = {
             {"front_fill_green", "front_icon_me", "L", 0.38f, 0.26f},
             {"front_fill_blue", "front_icon_shop", "R", 0.64f, 0.36f},
         };
         float y1 = SCR_H - 4, h = 52, x0 = 8, W = SCR_W - 16;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 2; i++) {
             float bx = x0 + W * fb[i].x + 3, bw = W * fb[i].w - 6;
             ui_sliced(a_nb, fb[i].fill, bx, y1 - h, bw, h, 1.0f, C_WHITE);
             ui_sliced(a_ui, "button_generic_2_outline", bx - 3, y1 - h - 3, bw + 6, h + 6, UIS, C_OUTLINE);
@@ -964,9 +960,12 @@ static void draw_boards(void)
     }
     spr_c("button_arrow_left", cx - 2.5f * step - 4, cy, 14, 20, C_WHITE);
     spr_c("button_arrow_right", cx + 2.5f * step + 4, cy, 14, 20, C_WHITE);
-    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
-    foot_btn_me(0, "icon_characters", 39, 28, TR("Personajes", "Characters"), "L");
-    foot_btn(100, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "R");
+    /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos */
+    foot_btn(-150, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
+    foot_btn_me(-50, "icon_characters", 39, 28, TR("Personajes", "Characters"), "L");
+    foot_btn_me(50, (a_nb >= 0 && find_sprite(a_nb, "icon_boards")) ? "icon_boards" : "icon_hoverboard", 33, 31,
+                TR("Tablas", "Boards"), NULL);
+    foot_btn_me(150, "icon_trophies", 29, 29, TR("Trofeos", "Trophies"), "[]");
 }
 static void bthumbs_release(void)
 {
@@ -1032,15 +1031,13 @@ static void draw_chars(void)
         lab(0, 8, 178, 14, C_WHITE, 0, 1, "<");
         lab(0, SCR_W - 8, 178, 14, C_WHITE, 2, 1, ">");
     }
-    foot_btn(-100, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
-    if (board_count() > 0) {
-        foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L");
-        foot_btn_me(100, (a_nb >= 0 && find_sprite(a_nb, "icon_boards")) ? "icon_boards" : "icon_hoverboard", 33, 31,
+    /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos (los trofeos van aqui, no en la portada) */
+    foot_btn(-150, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");
+    foot_btn_me(-50, "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
+    if (board_count() > 0)
+        foot_btn_me(50, (a_nb >= 0 && find_sprite(a_nb, "icon_boards")) ? "icon_boards" : "icon_hoverboard", 33, 31,
                     TR("Tablas", "Boards"), "R");
-    } else {
-        foot_btn(0, "button_fill_menuShop", "icon_upgrades", 29, 26, TR("Mejoras", "Boosts"), "L/R");
-        foot_btn_me(100, "icon_characters", 39, 28, TR("Personajes", "Characters"), NULL);
-    }
+    foot_btn_me(150, "icon_trophies", 29, 29, TR("Trofeos", "Trophies"), "[]");
 }
 
 /* las cajas y lo que sale de ellas: los modelos 3D de la 1.4 (MysteryBoxHandler) que el conversor dibuja una vez,
