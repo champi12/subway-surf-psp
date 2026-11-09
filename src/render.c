@@ -358,9 +358,11 @@ static int tex_ensure(int t)
     mips_build(t, tx->data);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
     /* las texturas de 16 bits del escenario van a la VRAM si caben (solo las de los modelos 3D: la letra de la
      * interfaz se carga antes, en la pantalla de carga, y si no dejaria fuera a la de los trenes) */
-    int rank = vram_rank(tx->name);
+    /* mapa clasico: como antes (las de 16 bits, por orden de carga) */
+    int rank = r_light ? vram_rank(tx->name) : -1;
     if (t < 64 && tex_3d[t] && (rank >= 0 || tx->fmt != TEX_T8)) {
-        void *v = vram_free_bytes() - (int)tx->databytes >= vram_reserve(rank, t) ? vram_alloc(tx->databytes) : NULL;
+        void *v = !r_light ? vram_alloc(tx->databytes) :
+                  vram_free_bytes() - (int)tx->databytes >= vram_reserve(rank, t) ? vram_alloc(tx->databytes) : NULL;
         if (v) {
             memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
             free(tx->data);
@@ -433,7 +435,7 @@ static int async_ok(int t)
 {
     const Texture *tx = &gd.tex[t];
     /* las que pueden ir a la VRAM (las del escenario) siguen el camino normal */
-    return !(t < 64 && tex_3d[t] && (tx->fmt != TEX_T8 || vram_rank(tx->name) >= 0));
+    return !(t < 64 && tex_3d[t] && (tx->fmt != TEX_T8 || (r_light && vram_rank(tx->name) >= 0)));
 }
 
 static int ld_mipbytes;
@@ -524,7 +526,9 @@ static void tex_filter(void)
     if (cur_mips) sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)AT_MIPLEVEL : 0.0f);
 #else
     if (cur_mips) {
-        sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
+        /* mapa clasico: el GE elige el nivel, como antes (alli no salian lineas) */
+        if (!r_light) sceGuTexLevelMode(use ? GU_TEXTURE_AUTO : GU_TEXTURE_CONST, 0.0f);
+        else sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
     }
 #endif
     sceGuTexFilter(min, mag);
@@ -1587,8 +1591,8 @@ void r_flush_transparent(void)
 {
     model_identity();
     /* los aditivos (brillos de las monedas y de los power-ups) no necesitan orden: suman luz. Los de la misma malla,
-     * material e intensidad (en 8 escalones) van juntos en una sola llamada */
-    {
+     * material e intensidad (en 8 escalones) van juntos en una sola llamada (solo el mapa de la 1.5.2) */
+    if (r_light) {
         static M34 w[96];
         int keep = 0;
         for (int i = 0; i < ndefer; i++) {

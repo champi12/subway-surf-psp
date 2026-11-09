@@ -314,7 +314,9 @@ void coins_draw(void)
             }
         }
     }
-    r_draw_mesh_batch((int)m[0], mats[0], cw, ncw, 1.0f);
+    /* todas en una llamada solo en el mapa de la 1.5.2; en el clasico una a una, como antes */
+    if (r_light) r_draw_mesh_batch((int)m[0], mats[0], cw, ncw, 1.0f);
+    else for (int i = 0; i < ncw; i++) r_draw_mesh((int)m[0], &cw[i], mats, 1, 1.0f);
 }
 
 /* ------------------------------------------------------------ MovingTrain / MovingCoin */
@@ -1070,7 +1072,8 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
         }
         if (ci < 0) break;
         /* lejos (fuera de la vista): por partes en los fotogramas siguientes */
-        int far_ = !jetpack && track_chunk_z >= charZ + LAY_NEAR;
+        /* (solo el mapa de la 1.5.2: el clasico coloca cada tramo entero en el acto, como antes) */
+        int far_ = r_light && !jetpack && track_chunk_z >= charZ + LAY_NEAR;
         lay_chunk_ex(ci, !far_);
         if (far_) {
             lay_step(sceKernelGetSystemTimeLow() + LAY_BUDGET_US);

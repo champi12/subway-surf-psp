@@ -700,6 +700,7 @@ def tex_rgba(t):
 # texturas mas pequenas que las demas: la del inspector y el perro (enemies) a 256 (64 KB con paleta) cabe en la VRAM
 # junto a las del escenario; el inspector ocupa como mucho un tercio de la pantalla. La misma en Halloween y Navidad
 SMALL_TEX = {'enemies': 256}
+SMALL_TEX_ON = False   # solo en el mapa de la 1.5.2 (el clasico como antes)
 
 
 def export_textures(ex, maxsize=512, hq=()):
@@ -720,7 +721,7 @@ def export_textures(ex, maxsize=512, hq=()):
         w, h = img.size
         nw = 1 << max(0, (w - 1).bit_length())
         nh = 1 << max(0, (h - 1).bit_length())
-        lim = min(maxsize, SMALL_TEX.get(t.m_Name if t is not None else gen_name, maxsize))
+        lim = min(maxsize, (SMALL_TEX if SMALL_TEX_ON else {}).get(t.m_Name if t is not None else gen_name, maxsize))
         while nw > lim or nh > lim:     # misma escala en los dos ejes
             nw, nh = max(1, nw // 2), max(1, nh // 2)
         nw, nh = max(nw, 16), max(nh, 8)
@@ -2522,9 +2523,12 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     print('  %d mallas, %d vertices, %d triangulos' % (len(stats), tv, tt))
     fix_coin_glow(ex)
     print('Exportando texturas...')
-    # trains y main con paleta (8 bits) como environment y props: 256 KB en vez de 512, y asi caben las cuatro en la
-    # VRAM (el GE las lee mucho mas deprisa que de la RAM). Error medio de color 3,8/255 (con 16 bits 1,8)
-    hq = ('FontAtlas',)
+    # mapa de la 1.5.2: trains y main con paleta (8 bits) como environment y props: 256 KB en vez de 512, y asi caben
+    # las cuatro en la VRAM (el GE las lee mucho mas deprisa que de la RAM). Error medio de color 3,8/255 (con 16 bits
+    # 1,8). El clasico (1.0/1.4) como antes: trains y main de 16 bits y enemies a su tamano
+    global SMALL_TEX_ON
+    SMALL_TEX_ON = not classic
+    hq = ('main', 'trains', 'FontAtlas') if classic else ('FontAtlas',)
     tex = export_textures(ex, hq=hq)
     print('Exportando animaciones...')
     anim = export_anims(ex)
