@@ -104,7 +104,7 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define MIN_PX 2.0f             /* radio en pantalla por debajo del cual un trozo lejano no se dibuja */
 #endif
 #ifndef MIN_EFF_PX
-#define MIN_EFF_PX 1.5f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo: solo lo
+#define MIN_EFF_PX 2.5f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo: solo lo
                                       * que la niebla tapa casi entero (con 5 las monedas salian a 200 de distancia) */
 #endif
 #ifndef SEAM_GROW_PX
@@ -507,8 +507,10 @@ static void tex_filter(void)
     /* con mipmaps el GE elige el nivel segun la distancia (GU_TEXTURE_AUTO); los objetos pequenos (monedas,
      * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
      * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
-    int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
     int use = cur_mips && mip_ok;
+    /* de lejos (nivel 2 o mas, a partir de 200: ya en la niebla) sin filtro bilineal: el GE lee 1 texel por pixel en
+     * vez de 4 y no se nota a ese tamano. Era el GE el que pasaba de 33 ms en los tramos mas cargados */
+    int mag = filt_nearest || (use && part_lod >= 2) ? GU_NEAREST : GU_LINEAR;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
 #ifdef AT_MIPLEVEL
     /* prueba: el emulador no elige los niveles reducidos como la consola; asi se ve uno concreto */
