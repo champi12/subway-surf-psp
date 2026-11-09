@@ -103,10 +103,10 @@ static void load_exhandler(void)
 extern void game_load(void);
 unsigned int heap_used_kb(void) { struct mallinfo mi = mallinfo(); return mi.uordblks / 1024; }
 
+static int shot_pending;   /* captura pedida (SELECT + R, devlog): este fotograma se dibuja sin el medidor */
 #if DEVLOG
 /* captura de la pantalla que se esta viendo a un BMP de 480x272 (24 bits) en la carpeta del juego, para mandar fotos
  * de lo que se ve en la consola sin camara */
-static int shot_pending;
 static void save_screenshot(void)
 {
     static int num = -1;
@@ -278,7 +278,7 @@ int main(int argc, char **argv)
             snprintf(t, sizeof(t), "Modo de dibujo %d", r_dbg_mode);
             hud_slide(t, nm[r_dbg_mode]);
         }
-        /* SELECT + R: captura de pantalla (captura_NNN.bmp en la carpeta del juego) */
+        /* SELECT + R: captura de pantalla (captura_NNN.bmp en la carpeta del juego), sin el medidor */
         if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_RTRIGGER)) { shot_pending = 1; pr &= ~PSP_CTRL_RTRIGGER; }
 #if defined(AUTOTEST) && defined(AT_SHOTBMP)
         if (frame_no == 400) shot_pending = 1;   /* prueba de la captura */
@@ -503,7 +503,8 @@ int main(int argc, char **argv)
         hud_draw();
         dbg_sect_ms[7] = (sceKernelGetSystemTimeLow() - th0) / 1000.0f;
         unsigned int t1 = sceKernelGetSystemTimeLow();
-        if (show_perf) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
+        /* el fotograma de la captura sale sin el medidor del devlog (se ve el juego entero) */
+        if (show_perf && !shot_pending) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();
         r_tex_async_poll();   /* texturas leidas en segundo plano */
         cpu_ms = cpu_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
