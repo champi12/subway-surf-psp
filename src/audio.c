@@ -86,9 +86,17 @@ int snd_play(int id, float vol, float pitch, int loop)
     int best = -1;
     for (int i = 0; i < MAX_VOICES; i++) if (!voices[i].active) { best = i; break; }
     if (best < 0) {
-        uint32_t far = 0;
-        for (int i = 0; i < MAX_VOICES; i++)
-            if (!voices[i].loop && voices[i].pos >= far) { far = voices[i].pos; best = i; }
+        /* todas ocupadas: se quita la que menos tiempo le queda (casi ha terminado, no se nota). Antes se quitaba la
+         * que mas llevaba sonando, que es justo la larga del principio de la carrera (Hr_intro_gameStart, 3,5 s): con
+         * las monedas y los pasos se cortaba antes del silbato del inspector (sale a los 1,6 s) y solo se oia el perro */
+        uint32_t least = 0xffffffffu;
+        for (int i = 0; i < MAX_VOICES; i++) {
+            const Voice *o = &voices[i];
+            if (o->loop || !o->step) continue;
+            uint32_t end = o->n << 16, pos = o->pos;
+            uint32_t left = pos < end ? (end - pos) / o->step : 0;   /* muestras de salida que le quedan */
+            if (left < least) { least = left; best = i; }
+        }
         if (best < 0) return -1;
     }
     Voice *v = &voices[best];

@@ -1962,6 +1962,9 @@ static void game_start_run(void)
     track_lay_chunks(0, track_ahead_distance(), 0);
     anim_crossfade(&anim_cam, "startPan", 0.2f);
     anim_crossfade(&anim_char, "introRun", 0.2f);
+    /* el principio de la carrera es lo mas pesado (entorno del menu, inspector y perro y toda la via por delante):
+     * se empieza con algo menos de distancia en vez de esperar a que la medida la recorte tras los primeros tirones */
+    r_dist_hint(0.8f);
     change_state(GS_INTRO);
     ginfo.state = GS_INTRO;
 }
@@ -3445,8 +3448,24 @@ void game_draw(void)
     }
     /* cronometro por bloques para el devlog (pocas lecturas del reloj por fotograma) */
     unsigned int tsec = sceKernelGetSystemTimeLow(), tnow;
+#ifdef AT_STAT1
+    /* prueba: triangulos, dibujos y vertices del GE de cada bloque */
+    static int st_t[8], st_d[8], st_v[8], st_n;
+    int pt = 0, pd = 0, pv = 0;
+#define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow, \
+                 st_t[i] += r_stat_tris - pt, st_d[i] += r_stat_draws - pd, st_v[i] += r_stat_hw - pv, \
+                 pt = r_stat_tris, pd = r_stat_draws, pv = r_stat_hw, DBG_PHASE(main, sect_phase[i]))
+    if (++st_n == 30) {
+        dlog("BLOQUES tri/dib/vertGE: cielo %d/%d/%d via %d/%d/%d menu %d/%d/%d monedas %d/%d/%d pers %d/%d/%d efx %d/%d/%d",
+             st_t[1] / 30, st_d[1] / 30, st_v[1] / 30, st_t[2] / 30, st_d[2] / 30, st_v[2] / 30, st_t[3] / 30, st_d[3] / 30,
+             st_v[3] / 30, st_t[4] / 30, st_d[4] / 30, st_v[4] / 30, st_t[5] / 30, st_d[5] / 30, st_v[5] / 30,
+             st_t[6] / 30, st_d[6] / 30, st_v[6] / 30);
+        memset(st_t, 0, sizeof(st_t)); memset(st_d, 0, sizeof(st_d)); memset(st_v, 0, sizeof(st_v)); st_n = 0;
+    }
+#else
 #define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow, \
                  DBG_PHASE(main, sect_phase[i]))
+#endif
     static const char *const sect_phase[7] = {"game_draw: cielo", "game_draw: via", "game_draw: entorno del menu",
                                               "game_draw: monedas", "game_draw: personajes (Jake, inspector, perro)",
                                               "game_draw: efectos y transparentes", "game_draw: fin"};

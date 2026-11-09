@@ -317,7 +317,7 @@ void dlog_init(void)
          dbg_bat_temp, dbg_plugged ? "si" : "no");
     dlog("RAM: monton de C %u KB (lo que la consola le deja al juego para datos)", dbg_mem.heap_total / 1024);
     dlog("RAM: libre fuera del monton %u KB (bloque mayor %u KB)", dbg_mem.sys_free / 1024, dbg_mem.sys_max_block / 1024);
-    dlog("Leyenda de STAT: fps media/min | cpu media/max ms | ge = espera al GE + VBlank | vert/tri/draw maximos "
+    dlog("Leyenda de STAT: fps media/min | cpu media/max ms | ge = espera al GE + VBlank | carga = fotograma real media/max (CPU o GE, lo que mas tarde; > 33 ms baja a 20 FPS), dist = distancia de dibujo minima | vert/tri/draw maximos "
          "| heap usado/total | vram usada/2048 KB | lista GE, vertices e indices: %% usado (pico) | perd = dibujos perdidos");
     dlog_flush();
 }
@@ -335,6 +335,7 @@ static struct {
     float sum_ms, max_ms, sum_cpu, max_cpu, sum_wait, sum_upd, sum_phys, sum_draw;
     int sum_vcpu, sum_vhw, sum_vskin, sum_seam;
     float sum_sect[8];
+    float sum_load, max_load, min_dist;
     unsigned long long t0;
 } win;
 static int last_state = -1;
@@ -346,11 +347,11 @@ static void stat_line(void)
     if (win.frames <= 0 || secs <= 0) return;
     MemInfo *m = &dbg_mem;
     const RMem *r = &r_mem;
-    dlog("STAT fps %.1f/%.1f | cpu %.1f/%.1f ms | ge %.1f ms | vert %d tri %d draw %d clip %d | "
+    dlog("STAT fps %.1f/%.1f | cpu %.1f/%.1f ms | ge %.1f ms | carga %.1f/%.1f ms dist %.0f%% | vert %d tri %d draw %d clip %d | "
          "heap %u/%u KB (pico %u) sis %u KB | vram %u/2048 KB (tex %u KB, %d) | ram tex %u KB (%d) | "
          "lista %d%% (%d%%) vert %d%% (%d%%) ind %d%% (%d%%) perd %d | %s %d m | %d MHz bat %d%% %d C",
          win.frames / secs, win.max_ms > 0 ? 1000.0f / win.max_ms : 0, win.sum_cpu / win.frames, win.max_cpu,
-         win.sum_wait / win.frames, win.verts, win.tris, win.draws, win.clip,
+         win.sum_wait / win.frames, win.sum_load / win.frames, win.max_load, win.min_dist * 100, win.verts, win.tris, win.draws, win.clip,
          m->heap_used / 1024, m->heap_total / 1024, m->heap_peak / 1024, m->sys_free / 1024,
          (unsigned)(r->vram_fb + r->vram_tex) / 1024, (unsigned)r->vram_tex / 1024, r->vram_tex_n,
          (unsigned)r->ram_tex / 1024, r->ram_tex_n,
@@ -413,6 +414,9 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     for (int k = 0; k < 8; k++) win.sum_sect[k] += dbg_sect_ms[k];
     if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
     win.sum_wait += wait_ms;
+    win.sum_load += r_load_ms;
+    if (r_load_ms > win.max_load) win.max_load = r_load_ms;
+    if (win.min_dist <= 0 || r_dist_scale < win.min_dist) win.min_dist = r_dist_scale;
     if (r_stat_verts > win.verts) win.verts = r_stat_verts;
     if (r_stat_tris > win.tris) win.tris = r_stat_tris;
     if (r_stat_draws > win.draws) win.draws = r_stat_draws;
@@ -444,7 +448,11 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     static unsigned long long last_flush;
     unsigned long long now = sceKernelGetSystemTimeWide();
     if (now - last_flush >= 1000000ULL) { last_flush = now; dlog_flush(); }
+#ifdef AT_STAT1
+    if ((now - win.t0) >= 1000000ULL) {      /* prueba: una linea por segundo */
+#else
     if ((now - win.t0) >= 5000000ULL) {
+#endif
         stat_line();
         if (dbg_hitches && win.hitch_lines >= 5) dlog("(mas tirones en este intervalo; total %d)", dbg_hitches);
         memset(&win, 0, sizeof(win));

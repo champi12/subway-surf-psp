@@ -15,6 +15,9 @@ void r_begin_frame(unsigned int clear_abgr);
 void r_end_frame(void);
 void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capturas) */
 extern float r_wait_ms;
+extern float r_load_ms, r_dist_scale;
+void r_dist_hint(float scale);   /* tramo pesado a punto de empezar: como mucho esa distancia (luego se recupera) */
+/* r_load_ms: fotograma real (CPU o GE, lo que mas tarde) y distancia adaptativa */
 void r_set_camera(V3 pos, V3 target, float fov_deg);
 void r_set_camera_matrix(const M34 *cam_world, float fov_deg);
 /* dibuja una malla con su matriz de mundo; mats[] por submalla (-1 = no dibujar) */

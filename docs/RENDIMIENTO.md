@@ -298,3 +298,19 @@ Por orden de impacto (nada de esto cambia la jugabilidad):
 1. Bajar la distancia de dibujo (`r_far` en `src/render.c`; el original usa 1000).
 2. Simplificar los edificios lejanos (el conversor puede generar versiones con menos polígonos).
 3. Reducir el número de llamadas de dibujo juntando bloques pequeños del escenario.
+
+## 9. 30 FPS fijos: distancia de dibujo adaptativa
+
+En la consola, los tirones a 20 FPS del principio de la carrera (y de algunos ambientes de la 1.5.2) los causaba el
+**GE**, no la CPU: la CPU acababa en ~26 ms y el GE pasaba de 33 ms con ~32.000 vértices por fotograma (todo el
+escenario va con 4 huesos por vértice, que es como se hace la curvatura del mundo). Al empezar se suman el entorno del
+menú, el inspector y el perro.
+
+`src/render.c` mide en cada fotograma lo que tarda de verdad (`carga` en el registro: desde que se manda la lista al GE
+hasta que terminan el GE y la CPU, lo que más tarde). Si dos fotogramas seguidos pasan de 30 ms, acerca la niebla un
+4 % (un 10 % si ya se pasó de 33 ms), hasta un mínimo del 60 % (420 en lugar de 700). Con margen (menos de 26 ms
+durante 20 fotogramas) la devuelve poco a poco. Los picos de más de 100 ms son cargas de la Memory Stick y no cuentan.
+Al empezar cada carrera se parte del 80 %, porque es el tramo más pesado. A 60 % la vía baja de ~7.000 a ~4.300
+triángulos y los vértices del GE un ~30 %; visualmente solo se nota algo más de niebla al fondo.
+
+En el registro: `STAT ... carga media/max ms dist N%` y una línea `DISTANCIA` cada vez que recorta.

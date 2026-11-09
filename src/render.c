@@ -50,6 +50,41 @@ float r_near = 2.0f, r_far = 1000.0f;
 #define FOG_END 700.0f
 #endif
 float r_fog_start = 200.0f, r_fog_end = FOG_END;
+/* Distancia de dibujo adaptativa (30 FPS fijos): r_load_ms es lo que tardo de verdad el ultimo fotograma, desde que se
+ * mando su lista al GE hasta que terminaron el GE y la CPU del siguiente (lo que mas tarde). Si se acerca a 33 ms se
+ * acerca un poco la niebla (menos via, menos dibujos, menos vertices: baja la CPU y el GE a la vez) y, con margen, se
+ * devuelve poco a poco. Asi los tramos pesados (el principio de la carrera con el entorno del menu, el inspector y el
+ * perro; algunos ambientes de la 1.5.2) no bajan a 20 FPS; en los ligeros se ve hasta 700 como el original */
+float r_load_ms, r_dist_scale = 1.0f;
+#define DIST_MIN 0.6f
+void r_dist_hint(float scale) { if (r_dist_scale > scale) r_dist_scale = scale; }
+static void dist_adapt(float load)
+{
+    static int calm, over;
+    static float prev;
+    /* un fotograma suelto lento (leer una textura, escribir el registro) no cuenta: solo dos seguidos. Y los de mas de
+     * 100 ms son cargas (de la Memory Stick, de un tramo nuevo), no de dibujar: acortar la vista no los arregla */
+    if (load > 100.0f) { over = 0; prev = 0; return; }
+    over = load > 30.0f ? over + 1 : 0;
+    if (over >= 2) {   /* pasado o al limite */
+        r_dist_scale -= load > 33.0f ? 0.10f : 0.04f;
+        calm = 0;
+#if DEVLOG
+        static int nlog;
+        if (nlog < 40 && r_dist_scale >= DIST_MIN) { nlog++; dlog("DISTANCIA %.0f%% (fotogramas de %.1f y %.1f ms)", r_dist_scale * 100, prev, load); }
+#endif
+    }
+    else if (load < 26.0f) { if (++calm >= 20) { r_dist_scale += 0.02f; calm = 10; } }
+    else calm = 0;
+    if (r_dist_scale < DIST_MIN) r_dist_scale = DIST_MIN;
+    if (r_dist_scale > 1.0f) r_dist_scale = 1.0f;
+#ifdef AT_DIST
+    r_dist_scale = AT_DIST;   /* prueba: distancia fija */
+#endif
+    r_fog_end = FOG_END * r_dist_scale;
+    r_fog_start = 200.0f * r_dist_scale;
+    prev = load;
+}
 unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
 /* color de borrado: el cielo tapa todo el fondo, asi que solo asoma por las juntas de un pixel entre dos tramos de via
  * (precision del GE); con el color de la niebla (casi blanco) se veian lineas blancas en el suelo, con el del suelo no */
@@ -518,6 +553,11 @@ void r_end_frame(void)
     /* espera a que el GE termine el fotograma anterior y lo muestra en el siguiente VBlank */
     DBG_PHASE(main, "r_end_frame: esperando a que el GE termine (sceGuSync)");
     if (ge_busy) sceGuSync(0, 0);
+    static unsigned int t_kick;
+    if (t_kick) {
+        r_load_ms = (sceKernelGetSystemTimeLow() - t_kick) / 1000.0f;
+        dist_adapt(r_load_ms);
+    }
     DBG_PHASE(main, "r_end_frame: esperando el VBlank");
     /* 30 FPS fijos como el original (Unity en movil): cada fotograma dura al menos R_VBLANKS refrescos de 60 Hz.
      * Asi el ritmo es estable en la consola en vez de saltar entre 60, 30 y 20. */
@@ -536,6 +576,7 @@ void r_end_frame(void)
     sceGuStart(GU_DIRECT, kick_list[frame_par]);
     sceGuCallList(dlist);
     sceGuFinish();
+    t_kick = sceKernelGetSystemTimeLow();
     ge_busy = 1;
     frame_par ^= 1;
 }
