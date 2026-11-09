@@ -1176,11 +1176,9 @@ static void draw_box_popup(int sup)
     }
     const char *box = sup ? "box_super" : "box_mystery", *box_open = sup ? "box_super_open" : "box_mystery_open";
     const char *old = sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox";
-    float gl = sup ? 1.0f : 0.7f;
     if (sup) labc(1, bx, 26, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
     if (!ginfo.reward[0]) {
         /* esperando: la caja flota arriba y abajo (BoxIdleAnimCoroutine) */
-        spr_c("background_superglow", bx, cy, 150 * gl + 40, 150 * gl + 40, sup ? 0x70ffffffu : 0x40ffffffu);
         if (!box_frame(sup, 0, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f))
             reward_spr(box, old, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f, 1, 1, C_WHITE);
         labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
@@ -1189,30 +1187,26 @@ static void draw_box_popup(int sup)
         return;
     }
     float t = ginfo.time - ginfo.reward_t;
-    /* el brillo de detras del premio: de negro a blanco en 1,5 s desde los 0,5 s */
-    float g = (t - 0.5f) / 1.5f;
-    if (g > 0) {
-        if (g > 1) g = 1;
-        unsigned a = (unsigned)((sup ? 0x90 : 0x60) * g);
-        spr_c("background_superglow", bx, cy - 4, 190 * gl, 190 * gl, (a << 24) | 0xffffffu);
-    }
-    /* la caja: cerrada un instante, abierta despues, y se va hacia abajo */
-    if (t < 1.2f) {
-        float y = cy + (t > 0.46f ? ease_cos((t - 0.46f) / 0.7f) * 200 : 0);
-        int f = (int)(t / 0.46f * 3.0f + 0.5f);   /* la tapa subiendo: 0, 0,15, 0,30 y 0,46 s */
+    /* MysteryBoxPopup._ShowReward de la 1.5.2: la tapa sube (clip "up") y a la mitad (T0) el premio sale creciendo
+     * (2 s), la caja se va hacia abajo (0,7 s), el premio gira 1500 grados frenando (4 s) y a los 1,8 s sale el texto
+     * (igual para la caja normal y la super) */
+    const float T0 = 0.46f;
+    /* la caja: la tapa subiendo hasta T0 y luego fuera de la pantalla hacia abajo (MoveGameObject, 0,7 s) */
+    if (t < T0 + 0.7f) {
+        float y = cy + (t > T0 ? ease_cos((t - T0) / 0.7f) * 200 : 0);
+        int f = (int)(t / T0 * 3.0f + 0.5f);
         if (!box_frame(sup, f, bx, y)) reward_spr(t < 0.12f ? box : box_open, old, bx, y, 1, 1, C_WHITE);
     }
-    /* el premio: aparece cuando la tapa esta arriba, crece de 1/4 a su tamano y gira frenando */
-    if (t >= 0.3f && ginfo.reward_icon) {
-        float f = (t - 0.3f) / 2.0f, k = 0.25f + 0.75f * ease_cos(f);
-        float y = cy - 4 + (1 - ease_cos((t - 0.3f) / 0.6f)) * 24;
-        float r = (t - 0.3f) / 4.0f;
-        if (r > 1) r = 1;
-        float ang = (1 - (1 - r) * (1 - r)) * 4.0f * 3.14159265f;      /* 2 vueltas que se van frenando */
+    /* el premio: crece de 1/4 a su tamano en 2 s y gira 1500 grados en 4 s, frenando */
+    if (t >= T0 && ginfo.reward_icon) {
+        float k = 0.25f + 0.75f * ease_cos((t - T0) / 2.0f);
+        float fr = (t - T0) / 4.0f;
+        if (fr > 1) fr = 1;
+        float ang = 26.179939f * (cosf(4.712389f + fr * 1.5707963f) * 0.5f + 0.5f);     /* 1500 grados */
         float wk = cosf(ang);
         if (wk > -0.1f && wk < 0.1f) wk = wk < 0 ? -0.1f : 0.1f;       /* de canto: una raya, no desaparece */
-        if (!reward_spin(ginfo.reward_icon, bx, y, k, ang, C_WHITE))
-            reward_spr(ginfo.reward_icon, ginfo.reward_icon, bx, y, k, wk, C_WHITE);
+        if (!reward_spin(ginfo.reward_icon, bx, cy - 4, k, ang, C_WHITE))
+            reward_spr(ginfo.reward_icon, ginfo.reward_icon, bx, cy - 4, k, wk, C_WHITE);
     }
     if (t >= REWARD_REVEAL) {
         unsigned a = t < REWARD_REVEAL + 0.2f ? (unsigned)(255 * (t - REWARD_REVEAL) / 0.2f) : 255;

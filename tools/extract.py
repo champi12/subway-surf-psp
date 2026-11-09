@@ -1557,11 +1557,11 @@ def render_reward_spins(sc14):
     return out
 
 
-BOX_FRAME_TIMES, BOX_FRAME_PX = (0.0, 0.15, 0.30, 0.46), 112
+BOX_FRAME_TIMES, BOX_FRAME_PX = (0.0, 0.15, 0.30, 0.46), 88
 
 
 def render_box_frames(sc14):
-    """Las dos cajas (normal y super) mas grandes (112 px) y con la tapa abriendose en 4 pasos: el clip "up" de su
+    """Las dos cajas (normal y super) a su tamano de siempre (88 px) con la tapa abriendose en 4 pasos: el clip "up" de su
     Animation (MysteryBoxHandler) muestreado de 0 a 0,46 s, la misma escala en todos (la caja no salta). Hoja de
     512x256 (128 KB en T8) que solo se carga mientras se abren cajas. Devuelve (imagen, sprites) o None"""
     fl = obj = None

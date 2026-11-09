@@ -35,7 +35,7 @@ typedef struct {
     int sboxes_pending, sboxes_opened;   /* super cajas misteriosas (1.4) */
     int reward_super;             /* el ultimo premio era de una super caja */
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
-#define REWARD_REVEAL 1.8f        /* segundos de la animacion de abrir la caja hasta que sale el texto */
+#define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
 enum { POPUP_NONE, POPUP_HALLOWEEN };
 
