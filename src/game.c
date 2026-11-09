@@ -142,7 +142,7 @@ static void sounds_init(void)
     ci(&snd_catch, "Hr_Guard_catchPlayer", 0.9f, 1.0f, 0.5f, 0.5f);
     /* el original lo pone al 25 % (KeyFrameAudio de la camara), pero en la PSP, con la musica encima y el resto de
      * efectos al 70-100 %, el silbato del inspector (sale a los 1,6 s) no se oia: solo el perro */
-    ci(&snd_startpan, "Hr_intro_gameStart", 1.0f, 1.0f, 0.7f, 0.7f);
+    ci(&snd_startpan, "Hr_intro_gameStart", 1.0f, 1.0f, 0.25f, 0.25f);
     sfx_guardloop = sfx_find("Hr_Guard_proximityLoop");
     sfx_trainpass = sfx_find("Hr_trainPass");
     sfx_magnetloop = sfx_find("Hr_magnet_mainLOOP");
@@ -347,6 +347,7 @@ static int play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); ret
 static int board_sel = -1, board_owned;       /* fila de boards.bin; bit i: comprada */
 static int board_applied = -2, board_applied_full, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
 static uint32_t *hb_mesh_comp, hb_mesh0, hb_mat0;
+static int board_previewing, prev_mesh[16], nprev_mesh;   /* pantalla de tablas: mallas de las vistas previas */
 
 static int board_default(void)
 {
@@ -396,11 +397,14 @@ static void board_apply_mode(int i, int full)
     board_applied = i;
     board_applied_full = full;
     const BoardDef *d = &gd_boards[i];
-    /* animaciones: fuera las de la tabla anterior, dentro las de esta */
+    /* animaciones: fuera las de la tabla anterior, dentro las de esta. En la pantalla de tablas las vistas previas se
+     * van sumando (solo la de correr de cada una): pasar de una a otra no vuelve a leer de la Memory Stick */
     if (board_base_states < 0) board_base_states = anim_char.nstates;
     anim_stop_all(&anim_char);
-    anim_trim_states(&anim_char, board_base_states);
-    data_board_clips_free();
+    if (!(board_previewing && !full)) {
+        anim_trim_states(&anim_char, board_base_states);
+        data_board_clips_free();
+    }
     const BoardDef *src = board_anim_src(i);
     const char *names[BOARD_MAX_CLIPS];
     int n = 0;
@@ -415,7 +419,11 @@ static void board_apply_mode(int i, int full)
     /* malla y material */
     board_find_mesh_comp();
     if (hb_mesh_comp) {
-        if (board_mesh_cur >= 0) { r_wait_idle(); data_mesh_release(board_mesh_cur); board_mesh_cur = -1; }
+        if (board_mesh_cur >= 0) {
+            if (board_previewing && !full && nprev_mesh < 16) prev_mesh[nprev_mesh++] = board_mesh_cur;   /* se queda */
+            else { r_wait_idle(); data_mesh_release(board_mesh_cur); }
+            board_mesh_cur = -1;
+        }
         hb_mesh_comp[0] = hb_mesh0; hb_mesh_comp[3] = hb_mat0;
         int m = d->mesh[0] ? data_mesh_find(d->mesh) : -1;
         if (m >= 0 && board_mat == -2) {
@@ -1962,6 +1970,13 @@ static void game_start_run(void)
     stage_menu_sequence();
     guard_show(1);
     guard_play_intro();
+    /* el AudioSource de FollowingGuard suena solo al activarse los enemigos (playOnAwake, a guardProximityLoopVolume):
+     * el silbato y el perro de la persecucion al empezar. Luego ResetCatchUp lo apaga poco a poco. Antes solo sonaba
+     * tras un tropiezo (CatchUp) */
+    if (sfx_guardloop >= 0) {
+        h_guardloop = snd_play(sfx_guardloop, GUARD_VOLUME, rnd_rangef(0.9f, 1.05f), 1);
+        gu.vol = GUARD_VOLUME;
+    }
     currentLevelSpeed = Speed(0);
     start_time = game_time;
     character_restart();
@@ -2875,7 +2890,15 @@ static void board_preview(int row)
 static void board_preview_end(void)
 {
     set_node_active(n_meshHoverboard, 0);
+    board_previewing = 0;
+    board_applied_full = 0;   /* que se vuelva a poner entera aunque sea la misma */
+    board_applied = -2;
     board_apply(board_sel);
+    if (nprev_mesh) {
+        r_wait_idle();
+        for (int k = 0; k < nprev_mesh; k++) data_mesh_release(prev_mesh[k]);
+        nprev_mesh = 0;
+    }
     nrt[n_sprayCan].rend = 1;
     nrt[n_avatar].lrot = qident();
     anim_play(&anim_char, "idlePaint");
@@ -2885,6 +2908,11 @@ static void open_boards(void)
     if (gd_nboards <= 0) return;
     ginfo.board_sel = board_sel;
     char_show_model(ginfo.character);
+    /* todas las vistas previas de una vez al entrar (una espera al abrir la pantalla en vez de un tiron de 50-130 ms
+     * cada vez que se pasa a otra tabla) */
+    board_previewing = 1;
+    board_applied = -2;
+    for (int k = 0; k < gd_nboards; k++) board_apply_mode(k, 0);
     board_preview(board_sel);
     change_state(GS_BOARDS); ginfo.state = GS_BOARDS;
 }
