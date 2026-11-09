@@ -2468,7 +2468,9 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     print('  %d mallas, %d vertices, %d triangulos' % (len(stats), tv, tt))
     fix_coin_glow(ex)
     print('Exportando texturas...')
-    hq = ('main', 'trains', 'FontAtlas')
+    # trains y main con paleta (8 bits) como environment y props: 256 KB en vez de 512, y asi caben las cuatro en la
+    # VRAM (el GE las lee mucho mas deprisa que de la RAM). Error medio de color 3,8/255 (con 16 bits 1,8)
+    hq = ('FontAtlas',)
     tex = export_textures(ex, hq=hq)
     print('Exportando animaciones...')
     anim = export_anims(ex)

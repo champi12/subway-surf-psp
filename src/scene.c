@@ -1072,7 +1072,12 @@ void track_lay_chunks(float charZ, float ahead, int jetpack)
         /* lejos (fuera de la vista): por partes en los fotogramas siguientes */
         int far_ = !jetpack && track_chunk_z >= charZ + LAY_NEAR;
         lay_chunk_ex(ci, !far_);
-        if (far_) lay_step(sceKernelGetSystemTimeLow() + LAY_BUDGET_US);
+        if (far_) {
+            lay_step(sceKernelGetSystemTimeLow() + LAY_BUDGET_US);
+            /* uno lejano por fotograma: al empezar la carrera se colocaban de golpe todos hasta 1500 por delante (el
+             * primer fotograma tardaba 60-100 ms en la consola); los siguientes se preparan en los proximos */
+            break;
+        }
     }
 }
 

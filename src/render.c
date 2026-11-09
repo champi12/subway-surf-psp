@@ -142,7 +142,7 @@ static void *vram_alloc(int bytes)
  * carrera. Antes solo entraban las de 16 bits, por orden de carga: los trenes y "main" (que en la 1.5.2 solo usan la
  * sombra, efectos y el cielo) llenaban la VRAM y las de paleta del escenario (vias, paredes, objetos) se leian de la
  * RAM. Cada una entra solo si deja sitio a las de delante que aun no se han cargado */
-static const char *const vram_prio[] = {"environment", "props", "trains", "train_start", "main"};
+static const char *const vram_prio[] = {"environment", "props", "trains", "main", "train_start"};
 #define NVRAM_PRIO ((int)(sizeof(vram_prio) / sizeof(vram_prio[0])))
 static int vram_rank(const char *name)
 {
