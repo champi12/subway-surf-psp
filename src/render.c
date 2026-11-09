@@ -107,6 +107,10 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define MIN_EFF_PX 2.5f            /* tamano efectivo (radio en pixeles por lo que deja ver la niebla) minimo: solo lo
                                       * que la niebla tapa casi entero (con 5 las monedas salian a 200 de distancia) */
 #endif
+#ifndef LOD1_D
+#define LOD1_D 300.0f           /* a partir de aqui (borde mas cercano del trozo) la version ligera del escenario */
+#define LOD2_D 450.0f           /* y la mas ligera */
+#endif
 #ifndef SEAM_GROW_PX
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
@@ -1299,10 +1303,18 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
             lod_for(d0 - pr);
             bind_material(mat, amul);
-            sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, pt->ni, pt->idx, pt->verts);
-            r_stat_draws++;
-            r_stat_hw += pt->nv;
-            r_stat_tris += pt->ni / 3;
+            /* de lejos (ya en la niebla) la version ligera: los mismos vertices con menos triangulos */
+            {
+                const uint16_t *ix = pt->idx;
+                int ni = pt->ni;
+                float dn = d0 - pr;
+                if (dn > LOD2_D && pt->lod_ni[1] > 0) { ix = pt->lod_idx[1]; ni = pt->lod_ni[1]; }
+                else if (dn > LOD1_D && pt->lod_ni[0] > 0) { ix = pt->lod_idx[0]; ni = pt->lod_ni[0]; }
+                sceGuDrawArray(GU_TRIANGLES, MESH_VTYPE, ni, ix, pt->verts);
+                r_stat_draws++;
+                r_stat_hw += pt->nv;
+                r_stat_tris += ni / 3;
+            }
             continue;
         }
         int ge_drawn = 0;

@@ -498,6 +498,27 @@ def make_parts(V, UV, subs, skin, world):
     return parts
 
 
+# Versiones ligeras del escenario para verlo de lejos (ya en la niebla): solo otra lista de triangulos sobre los mismos
+# vertices del trozo (no ocupan casi nada). Los vertices que caen en la misma celda de (cell) unidades y en la misma
+# zona del atlas (1/uvq) se juntan en uno de ellos (uno original: la textura no cambia) y se quitan los triangulos que
+# quedan sin area. El GE procesa cada indice: menos triangulos, menos trabajo, que es lo que no llegaba a 33 ms
+LOD_LEVELS = ((8.0, 24.0), (16.0, 12.0))
+
+
+def lod_indices(P, UVl, idx, cell, uvq):
+    key = np.concatenate([np.floor(np.asarray(P, np.float64) / cell), np.floor(UVl * uvq)], 1).astype(np.int64)
+    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    rep = first[np.asarray(inv).ravel()]
+    T = rep[np.asarray(idx, np.int64).reshape(-1, 3)]
+    ok = (T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])
+    T = T[ok]
+    if len(T):
+        # sin triangulos repetidos (con el mismo sentido)
+        _, keep = np.unique(np.sort(T, 1), axis=0, return_index=True)
+        T = T[np.sort(keep)]
+    return [int(x) for x in T.ravel()]
+
+
 def export_meshes(ex):
     out = bytearray(b'SSM3')
     out += struct.pack('<I', len(ex.meshes))
@@ -528,7 +549,8 @@ def export_meshes(ex):
         names_ = getattr(ex, 'mesh_names', None)
         nm = (names_[mi] if names_ else d.m_Name).encode()[:31]
         body += struct.pack('<B', len(nm)) + nm.ljust(31, b'\0')
-        body += struct.pack('<HHBBH', len(parts), len(subs), 1 if skin else 0, 0, 0)
+        nlod = len(LOD_LEVELS) if world and not skin else 0
+        body += struct.pack('<HHBBH', len(parts), len(subs), 1 if skin else 0, nlod, 0)
         body += struct.pack('<4f6f', ctr[0], ctr[1], ctr[2], rad, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2])
         # pesos para la curvatura exacta en el GE (skinning con 4 "huesos"): 1 y la posicion normalizada a la caja
         # del modelo (0..1 -> 0..32768). Los vertices repetidos en varios trozos tienen los mismos pesos: sin juntas.
@@ -550,6 +572,12 @@ def export_meshes(ex):
                 bw, bi = h.m_BoneWeights, h.m_BoneIndices
                 for i in order:
                     body += struct.pack('<4f4B', *[float(x) for x in bw[i]], *[int(x) for x in bi[i]])
+            for cell, uvq in (LOD_LEVELS if nlod else ()):
+                li = lod_indices(P, np.array([UV[i] for i in order], np.float64), idx, cell, uvq)
+                body += struct.pack('<I', len(li))
+                body += struct.pack('<%dH' % len(li), *li)
+                if len(li) % 2:
+                    body += b'\0\0'
             tv += len(order)
         if skin:
             bp = d.m_BindPose

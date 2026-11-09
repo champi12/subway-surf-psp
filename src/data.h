@@ -57,6 +57,8 @@ typedef struct {
     MVert *verts;
     uint16_t *idx;
     MSkin *skin;
+    int lod_ni[2];         /* versiones ligeras para verlo de lejos: otros triangulos sobre los mismos vertices */
+    uint16_t *lod_idx[2];
 } MeshPart;
 
 typedef struct {

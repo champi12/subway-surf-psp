@@ -128,6 +128,7 @@ static void parse_mesh(uint8_t *p, Mesh *m)
         uint16_t np, nsub;
         memcpy(&np, p, 2); memcpy(&nsub, p + 2, 2);
         m->skinned = p[4];
+        int nlod = p[5] > 2 ? 2 : p[5];
         p += 8;
         float h[10];
         memcpy(h, p, 40); p += 40;
@@ -148,6 +149,13 @@ static void parse_mesh(uint8_t *p, Mesh *m)
             p += ni * 2;
             if (ni & 1) p += 2;
             if (m->skinned) { pt->skin = (MSkin *)p; p += nv * sizeof(MSkin); }
+            for (int l = 0; l < nlod; l++) {
+                uint32_t li = rd32(p); p += 4;
+                pt->lod_ni[l] = (int)li;
+                pt->lod_idx[l] = (uint16_t *)p;
+                p += li * 2;
+                if (li & 1) p += 2;
+            }
         }
         if (m->skinned) {
             m->nbatches = rd32(p); p += 4;
