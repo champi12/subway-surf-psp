@@ -37,7 +37,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS };
 
 typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
 extern const ShopItem shop_items[];

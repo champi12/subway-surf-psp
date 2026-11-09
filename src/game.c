@@ -1922,6 +1922,24 @@ static void halloween_popup_check(void)
     game_save();
 }
 
+/* ChangelogThemePopup (1.5.2): ChangeLogStarter lo pone en cola al llegar a la portada si la temporada es la de
+ * Navidad. Aqui, la primera vez que se abre el menu en cada temporada (la de diciembre y el 1-2 de enero cuentan
+ * como la misma) */
+static int xm_popup_year;            /* ano - 2000 de la temporada en que ya se enseno */
+static void xmas_popup_check(void)
+{
+    if (!theme_xmas || ginfo.popup) return;
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (console_date(&t) >= 0) y = t.year - 2000 - (t.month == 1);
+#endif
+    if (xm_popup_year == y) return;
+    xm_popup_year = y;
+    ginfo.popup = POPUP_XMAS;
+    game_save();
+}
+
 /* boot: al arrancar, antes de cargar ninguna textura (no hace falta volver a leer nada) */
 void game_theme_check(int boot)
 {
@@ -1933,6 +1951,7 @@ void game_theme_check(int boot)
     if (on == theme_halloween && xm == theme_xmas && !boot) return;
     theme_halloween = on;
     theme_xmas = xm;
+    r_wait_idle();       /* el GE no debe estar dibujando con las mallas o texturas que se cambian */
     data_theme_set(on ? 1 : xm ? 2 : 0);
     r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
     /* el cielo de Navidad del original es el mismo cielo con el ambiente morado: se tine hacia el color de su niebla
@@ -3392,7 +3411,7 @@ static int extra_cols[8];
 
 void game_update(float dt)
 {
-    if (state == GS_MENU) halloween_popup_check();
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -3777,7 +3796,7 @@ void game_save(void)
                  mission_progress[0], mission_progress[1], mission_progress[2], ginfo.character};
     for (int i = 0; i < TK_COUNT; i++) d[20 + i] = char_tokens[i];
     d[30] = trophies_mask;
-    d[31] = owned14 | (hw_popup_year & 0xff) << 16;
+    d[31] = owned14 | (hw_popup_year & 0xff) << 16 | (unsigned)(xm_popup_year & 0xff) << 24;
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     fwrite(d, sizeof(d), 1, f);
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
@@ -3813,7 +3832,7 @@ void game_load(void)
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    if (!v2 && n >= 32) { owned14 = d[31] & 0xff; hw_popup_year = (d[31] >> 16) & 0xff; }
+    if (!v2 && n >= 32) { owned14 = d[31] & 0xff; hw_popup_year = (d[31] >> 16) & 0xff; xm_popup_year = ((unsigned)d[31] >> 24) & 0xff; }
     if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }

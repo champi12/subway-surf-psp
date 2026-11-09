@@ -525,7 +525,8 @@ def export_meshes(ex):
         world = ex.mesh_world[mi] and rad > CLUSTER * 0.75
         parts = make_parts(V, UV, subs, skin, world)
         offs.append(len(body))
-        nm = d.m_Name.encode()[:31]
+        names_ = getattr(ex, 'mesh_names', None)
+        nm = (names_[mi] if names_ else d.m_Name).encode()[:31]
         body += struct.pack('<B', len(nm)) + nm.ljust(31, b'\0')
         body += struct.pack('<HHBBH', len(parts), len(subs), 1 if skin else 0, 0, 0)
         body += struct.pack('<4f6f', ctr[0], ctr[1], ctr[2], rad, mn[0], mn[1], mn[2], mx[0], mx[1], mx[2])
@@ -2284,10 +2285,13 @@ def export_xmas(sc15, outdir, ex, hq):
         out = np.where(diff[:, :, None], a.astype(np.uint8), h)
         print('  Navidad: textura %-12s %.1f %% de pixeles se quedan como estaban' % (name, diff.mean() * 100))
         gen.append(('gen', name, Image.fromarray(out, 'RGBA'), name not in hq))
-    meshes = []
-    names = {m.read().m_Name for m in ex.meshes}
+    meshes, mworld, mnames = [], [], []
+    names = {}
+    for i, m in enumerate(ex.meshes):
+        names.setdefault(m.read().m_Name, ex.mesh_world[i])
     a = by_theme['xmas']
-    for p in a['environmentModels'] + a['characterModels']:
+    for kind in ('environmentModels', 'characterModels'):
+      for p in a[kind]:
         go = sc15.resolve_ptr(tobj, p)
         if go is None:
             continue
@@ -2302,14 +2306,27 @@ def export_xmas(sc15, outdir, ex, hq):
                     continue
                 mo = sc15.resolve_ptr(c['obj'], mp)
                 nm = mo.read().m_Name if mo is not None else ''
-                base = nm[len('xmas_'):] if nm.startswith('xmas_') else nm
+                if not nm.startswith('xmas_') or mo in meshes:
+                    continue
+                base = nm[len('xmas_'):]
                 # el cielo del tema no trae textura (usa el material de la escena): en la PSP salia negro. Se deja
                 # el cielo normal y el juego lo tine con el color de la niebla de Navidad
                 if base == 'skyPlane':
                     continue
-                if base in names and nm != base and mo not in meshes:
-                    meshes.append(mo)
-    hm = SimpleNamespace(meshes=meshes, mesh_world=[False] * len(meshes))
+                # el escenario de la 1.5.2 se llama "normal_X" y su version de Navidad "xmas_X" (tuneles, estacion,
+                # carreteras, bordes del barranco, puente, edificios...): con otras coordenadas de textura, hechas
+                # para el atlas de Navidad. Sin ellas el escenario normal leia el atlas nuevo en sitios que cambiaron
+                # (lineas negras y blancas en el barranco, el puente, las paredes rojas y el suelo). Se guardan con el
+                # nombre de su pareja (el juego las empareja por nombre) y como escenario si ella lo es (subdivididas
+                # igual)
+                tgt = 'normal_' + base if 'normal_' + base in names else base
+                if tgt not in names:
+                    print('  AVISO: Navidad: la malla %s no tiene pareja en el mundo' % nm)
+                    continue
+                meshes.append(mo)
+                mworld.append(bool(names[tgt]))
+                mnames.append(tgt)
+    hm = SimpleNamespace(meshes=meshes, mesh_world=mworld, mesh_names=mnames)
     mbin, stats = export_meshes(hm)
     tbin = export_textures(SimpleNamespace(textures=gen), hq=hq)
     for fn, b in (('xm_tex.bin', tbin), ('xm_mesh.bin', mbin)):

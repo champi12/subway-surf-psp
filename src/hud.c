@@ -709,6 +709,7 @@ static void big_button(float cx, float by, const char *fill)
 }
 
 static void draw_halloween_popup(void);
+static void draw_xmas_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -779,6 +780,7 @@ static void draw_menu(void)
         }
         if (ginfo.missions_open) draw_missions_popup();
         if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
+        if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -794,6 +796,38 @@ static void draw_menu(void)
     lab(1, cx - U(66), by - U(86), 20, C_WHITE, 0, 1, "L");
     if (ginfo.missions_open) draw_missions_popup();
     if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
+    if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
+}
+
+/* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
+ * de la temporada. Misma disposicion que el de Halloween: bocadillo con el titulo, tres lineas y el boton */
+static void draw_xmas_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_XRED = 0xff2a2ad8u;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_XRED);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_XRED);
+    if (a_nb >= 0 && find_sprite(a_nb, "icon_xmas")) ui_sprite_wh(a_nb, "icon_xmas", bx + U(34), by - U(84), U(48), U(48), C_WHITE);
+    labc(1, bx, by - U(32), 24, C_WHITE, 1, 1, TR("¡Felices", "Happy"));
+    labfit(1, bx, by, 30, U(150), C_WHITE, 1, 1, TR("fiestas", "Holidays"));
+    labc(1, bx, by + U(32), 24, C_WHITE, 1, 1, TR("a todos!", "Everyone!"));
+    static const char *const lines[3][4] = {
+        {"¡Consigue a Elf Tricky!", "Get Elf Tricky!", "Solo en Personajes por tiempo LIMITADO", "In Characters for a LIMITED time only"},
+        {"¡La ciudad se llena de NIEVE!", "The city is covered in SNOW!", "Vías, trenes y guardia de Navidad", "Holiday tracks, trains and inspector"},
+        {"¡Hasta el 2 de enero!", "Until January 2!", "Después vuelve el aspecto de siempre", "Then the usual look comes back"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
 }
 
 /* HalloweenThemePopup: "Happy Halloween Everyone!" la primera vez de cada temporada */

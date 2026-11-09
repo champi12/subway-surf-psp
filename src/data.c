@@ -179,12 +179,75 @@ static void parse_mesh(uint8_t *p, Mesh *m)
     }
 }
 
+/* Cada malla de mesh.bin va en su propio bloque de memoria (no todo el archivo en uno): las del escenario con version
+ * de Navidad se cambian leyendo la otra version de su archivo encima, sin tener nunca las dos en memoria (son ~2.9 MB
+ * y el monton de la consola es de 18 MB). Como las texturas de los temas */
+static uint32_t *mesh_foff, *mesh_flen;     /* posicion y tamano de cada malla en mesh.bin */
+static void **mesh_blk;                     /* bloque de memoria de cada malla de mesh.bin */
+static int mesh_nfile;                      /* cuantas son de mesh.bin (despues se anaden las de la 1.4) */
+
+/* posiciones y tamanos de las mallas de un archivo SSM3 abierto; devuelve cuantas hay (o -1) */
+static int ssm3_index(FILE *f, uint32_t **off, uint32_t **len)
+{
+    uint8_t h[8];
+    fseek(f, 0, SEEK_END);
+    uint32_t fsize = (uint32_t)ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (fread(h, 1, 8, f) != 8 || memcmp(h, "SSM3", 4)) return -1;
+    int n = rd32(h + 4);
+    *off = malloc(4 * (n ? n : 1));
+    *len = malloc(4 * (n ? n : 1));
+    if (!*off || !*len || (int)fread(*off, 4, n, f) != n) return -1;
+    for (int i = 0; i < n; i++) {
+        uint32_t end = fsize;
+        for (int k = 0; k < n; k++)
+            if ((*off)[k] > (*off)[i] && (*off)[k] < end) end = (*off)[k];
+        (*len)[i] = end - (*off)[i];
+    }
+    return n;
+}
+
+/* lee una malla (off, len) de f en un bloque nuevo con la misma alineacion que tenia en el archivo */
+static void *mesh_read(FILE *f, uint32_t off, uint32_t len, Mesh *m)
+{
+    uint8_t *blk = memalign(64, len + (off & 63) + 16);
+    if (!blk) return NULL;
+    if (fseek(f, off, SEEK_SET) || fread(blk + (off & 63), 1, len, f) != len) { free(blk); return NULL; }
+    memset(m, 0, sizeof(*m));
+    parse_mesh(blk + (off & 63), m);
+    return blk;
+}
+
+static void mesh_free(Mesh *m)
+{
+    free(m->parts); free(m->batches); free(m->bind);
+    memset(m, 0, sizeof(*m));
+}
+
 static int load_meshes(void)
 {
-    uint8_t *b = load_file("mesh.bin", NULL);
-    if (!b) return -1;
-    if (memcmp(b, "SSM3", 4)) { snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
-    gd.meshes = parse_meshes(b, &gd.nmeshes);
+    char path[256];
+    snprintf(path, sizeof(path), "%s/mesh.bin", basedir);
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    FILE *f = fopen(path, "rb");
+    if (!f) { snprintf(errbuf, sizeof(errbuf), "No se encuentra %s", path); return -1; }
+    int n = ssm3_index(f, &mesh_foff, &mesh_flen);
+    if (n < 0) { fclose(f); snprintf(errbuf, sizeof(errbuf), "mesh.bin antiguo: vuelve a ejecutar extract.py"); return -1; }
+    gd.meshes = calloc(n ? n : 1, sizeof(Mesh));
+    mesh_blk = calloc(n ? n : 1, sizeof(void *));
+    gd.nmeshes = mesh_nfile = n;
+    int kb = 0;
+    for (int i = 0; i < n; i++) {
+        mesh_blk[i] = mesh_read(f, mesh_foff[i], mesh_flen[i], &gd.meshes[i]);
+        if (!mesh_blk[i]) {
+            fclose(f);
+            snprintf(errbuf, sizeof(errbuf), "Sin memoria para mesh.bin (malla %d de %d)", i, n);
+            return -1;
+        }
+        kb += mesh_flen[i];
+    }
+    fclose(f);
+    dlog("CARGA %-10s %6d KB en %4.0f ms (%d mallas)", "mesh.bin", kb / 1024, (sceKernelGetSystemTimeLow() - t0) / 1000.0f, n);
     return 0;
 }
 
@@ -283,8 +346,6 @@ typedef struct { uint32_t off, pal, data; uint16_t fmt, alpha; } TexSrc;
 static TexSrc *tex_src[3];          /* [0] normal, [1] Halloween, [2] Navidad (data == 0: no hay) */
 static Mesh *mesh_alt;              /* la otra version de cada malla con tema (Halloween) */
 static int *mesh_alt_idx, mesh_nalt;
-static Mesh *mesh_alt2;             /* y las de Navidad (xm_mesh.bin, solo el mundo de la 1.5.2) */
-static int *mesh_alt2_idx, mesh_nalt2;
 static int theme_cur, tex_nbase;
 
 static void hw_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
@@ -354,29 +415,82 @@ int data_theme_init_tex(void)
     return nt > 0;
 }
 
-/* mallas de Navidad (xm_mesh.bin): las "xmas_X" sustituyen a X mientras dura el tema. Solo se leen en temporada */
+/* mallas de Navidad (xm_mesh.bin): la "xmas_X" sustituye a X (o a normal_X, el escenario de la 1.5.2) mientras dura
+ * el tema. Aqui solo se mira cuales hay; se leen al activar el tema, en lugar de la normal */
+static int *xm_mesh_idx, xm_nmesh;
+static uint32_t *xm_foff, *xm_flen, *xm_src;
 int data_xmas_meshes_init(void)
 {
-    if (mesh_alt2) return mesh_nalt2;
-    uint8_t *b = load_file_opt_world("xm_mesh.bin");
-    if (!b || memcmp(b, "SSM3", 4)) return 0;
-    int n;
-    Mesh *xm = parse_meshes(b, &n);
-    mesh_alt2 = calloc(n ? n : 1, sizeof(Mesh));
-    mesh_alt2_idx = calloc(n ? n : 1, sizeof(int));
+    if (xm_mesh_idx) return xm_nmesh;
+    char path[256];
+    snprintf(path, sizeof(path), "%s/xm_mesh.bin", basedir);
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    int n = ssm3_index(f, &xm_foff, &xm_flen);
+    xm_mesh_idx = calloc(n > 0 ? n : 1, sizeof(int));
+    xm_src = calloc(n > 0 ? n : 1, sizeof(uint32_t));
     for (int i = 0; i < n; i++) {
-        const char *nm = xm[i].name;
-        if (strncmp(nm, "xmas_", 5)) continue;
-        nm += 5;
-        for (int m = 0; m < gd.nmeshes; m++)
-            if (!strcmp(gd.meshes[m].name, nm) && gd.meshes[m].nbind == xm[i].nbind) {
-                mesh_alt2[mesh_nalt2] = xm[i];
-                mesh_alt2_idx[mesh_nalt2++] = m;
+        uint8_t h[32];
+        char nm[40];
+        if (fseek(f, xm_foff[i], SEEK_SET) || fread(h, 1, 32, f) != 32) break;
+        int l = h[0] > 31 ? 31 : h[0];
+        memcpy(nm, h + 1, l); nm[l] = 0;
+        /* con el nombre de la malla a la que sustituye (datos antiguos: "xmas_X", de X o normal_X) */
+        const char *base = strncmp(nm, "xmas_", 5) ? nm : nm + 5;
+        char alt[48];
+        snprintf(alt, sizeof(alt), "normal_%s", base);
+        alt[31] = 0;
+        for (int m = 0; m < mesh_nfile; m++)
+            if (!strcmp(gd.meshes[m].name, base) || !strcmp(gd.meshes[m].name, alt)) {
+                xm_mesh_idx[xm_nmesh] = m;
+                xm_src[xm_nmesh++] = i;
                 break;
             }
     }
-    dlog("Tema de Navidad: %d mallas", mesh_nalt2);
-    return mesh_nalt2;
+    fclose(f);
+    dlog("Tema de Navidad: %d mallas", xm_nmesh);
+    return xm_nmesh;
+}
+
+/* pone las mallas de Navidad (on) o vuelve a las normales: cada una se lee de su archivo encima de la otra */
+static void xmas_meshes_apply(int on)
+{
+    if (!xm_nmesh) return;
+    char path[256];
+    snprintf(path, sizeof(path), "%s/%s", basedir, on ? "xm_mesh.bin" : "mesh.bin");
+    FILE *f = fopen(path, "rb");
+    FILE *fn = on ? NULL : f;      /* para volver a la normal si la de Navidad no vale */
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    int kb = 0;
+    for (int i = 0; i < xm_nmesh; i++) {
+        int m = xm_mesh_idx[i];
+        Mesh *me = &gd.meshes[m];
+        char name[32];
+        int nbind = me->nbind;
+        memcpy(name, me->name, sizeof(name));
+        mesh_free(me);
+        free(mesh_blk[m]);
+        mesh_blk[m] = NULL;
+        if (f) {
+            uint32_t off = on ? xm_foff[xm_src[i]] : mesh_foff[m], len = on ? xm_flen[xm_src[i]] : mesh_flen[m];
+            mesh_blk[m] = mesh_read(f, off, len, me);
+            kb += len;
+            if (mesh_blk[m] && on && me->nbind != nbind) {
+                dlog("AVISO la malla de Navidad de %s no es como la normal: no se usa", name);
+                mesh_free(me); free(mesh_blk[m]); mesh_blk[m] = NULL;
+            }
+        }
+        if (!mesh_blk[m]) {
+            /* sin la de Navidad (o sin memoria): la normal otra vez */
+            if (!fn) { snprintf(path, sizeof(path), "%s/mesh.bin", basedir); fn = fopen(path, "rb"); }
+            if (fn) mesh_blk[m] = mesh_read(fn, mesh_foff[m], mesh_flen[m], me);
+            if (!mesh_blk[m]) dlog_error("Sin memoria para la malla %s", name);
+        }
+        memcpy(me->name, name, sizeof(name));
+    }
+    if (fn && fn != f) fclose(fn);
+    if (f) fclose(f);
+    dlog("Mallas %s: %d KB en %.0f ms", on ? "de Navidad" : "normales", kb / 1024, (sceKernelGetSystemTimeLow() - t0) / 1000.0f);
 }
 
 /* 2: mallas de hw_mesh.bin, con todo lo demas ya cargado. Las que tienen nombre de una malla de la 1.0 son su
@@ -537,7 +651,7 @@ void data_theme_set(int theme)
     if (theme < 0 || theme > 2 || !tex_src[0]) theme = 0;
     if (theme == theme_cur) return;
     if (theme_cur == 1) swap_alt(mesh_alt, mesh_alt_idx, mesh_nalt);
-    if (theme_cur == 2) swap_alt(mesh_alt2, mesh_alt2_idx, mesh_nalt2);
+    if (theme_cur == 2) xmas_meshes_apply(0);
     theme_cur = theme;
     for (int t = 0; t < tex_nbase; t++) {
         if (!data_theme_has_tex(t)) continue;
@@ -547,7 +661,7 @@ void data_theme_set(int theme)
         x->src = k; x->file_off = s->off; x->fmt = s->fmt; x->alpha = s->alpha;
     }
     if (theme == 1) swap_alt(mesh_alt, mesh_alt_idx, mesh_nalt);
-    if (theme == 2) swap_alt(mesh_alt2, mesh_alt2_idx, mesh_nalt2);
+    if (theme == 2) xmas_meshes_apply(1);
 }
 
 /* un clip en formato SSA1 (los datos se usan desde el buffer: no se copian) */
