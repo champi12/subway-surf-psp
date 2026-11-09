@@ -353,7 +353,8 @@ static int board_default(void)
     for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_ALWAYS) return i;
     return 0;
 }
-static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_COINS || (board_owned >> i & 1)); }
+/* la normal es siempre tuya; las de monedas y la de regalo (Starboard, "FREE GIFT") hasta que se compran o se reclaman */
+static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1)); }
 static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
 /* lista de animaciones de una accion: la de la tabla o, si no trae ninguna (Superhero, Starboard), la de la normal */
 static const BoardDef *board_anim_src(int i)
@@ -2595,6 +2596,8 @@ void game_init(void)
     n_avatars = node_find_child(n_avatar, "avatars");
     zombie_init(n_avatars >= 0 ? node_find_child(n_avatars, "slick") : -1);
     if (data_boards_load() > 0) {
+        /* partidas de antes: la de regalo contaba como tuya sin reclamarla; si estaba elegida, se queda */
+        if (board_sel >= 0 && board_sel < gd_nboards && gd_boards[board_sel].unlock == BOARD_FREE) board_owned |= 1 << board_sel;
         if (!board_has(board_sel)) board_sel = board_default();
         board_apply(board_sel);
         dlog("Tablas de la 1.5.2: %d (elegida %s)", gd_nboards, gd_boards[board_sel].name);
@@ -2857,6 +2860,7 @@ int board_price(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].
 int board_is_owned(int row) { return board_has(row); }
 int board_is_selected(int row) { return row == board_sel; }
 int board_effect(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].effect : 0; }
+int board_is_gift(int row) { return row >= 0 && row < gd_nboards && gd_boards[row].unlock == BOARD_FREE; }
 
 /* el personaje de pie en la tabla marcada, de cara a la camara (como la pose de la pantalla de personajes) */
 static void board_preview(int row)
@@ -2897,6 +2901,13 @@ static void boards_input(unsigned in, int confirm)
         if (board_has(r)) {
             board_sel = r;
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
+            game_save();
+        } else if (d->unlock == BOARD_FREE) {
+            /* regalo: se reclama y queda elegida */
+            board_owned |= 1 << r;
+            board_sel = r;
+            snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+            hud_slide(TR("¡Tabla de regalo!", "Free gift board!"), d->name);
             game_save();
         } else if (ginfo.total_coins >= d->price) {
             /* HoverboardBuyButton: se paga y queda elegida */

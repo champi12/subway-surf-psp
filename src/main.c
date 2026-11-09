@@ -277,6 +277,8 @@ int main(int argc, char **argv)
         if (frame_no == 70) pr |= PSP_CTRL_RTRIGGER;
 #ifdef AT_BOARD_LEFT
         if (frame_no == 100 || frame_no == 120) pr |= PSP_CTRL_LEFT;   /* dos a la izquierda: Freestyler */
+#elif defined(AT_BOARD_GIFT)
+        if (frame_no == 100 || frame_no == 120) pr |= PSP_CTRL_RIGHT;  /* dos a la derecha: Starboard (regalo) */
 #else
         if (frame_no == 100) pr |= PSP_CTRL_RIGHT;
 #endif

@@ -819,12 +819,21 @@ static void draw_boards(void)
     lab(0, 14, 8, 30, C_NAME, 0, 0, board_name(i));
     int fx = board_effect(i);
     if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : TR("Va agachado", "Stays Low"));
+    if (board_is_gift(i) && !board_is_owned(i)) {
+        /* BoardScreen: pegatina "FREE GIFT" mientras la de regalo no se ha reclamado */
+        float sx = 14 + labw(0, 30, board_name(i)) + U(36), sy = 26;
+        spr_c("background_sticker_medium", sx, sy, U(57), U(57), C_ORANGE);
+        labfit(0, sx, sy - 6, 14, U(48), C_WHITE, 1, 0, TR("GRATIS", "FREE"));
+        labfit(0, sx, sy + 7, 14, U(48), C_WHITE, 1, 0, TR("REGALO", "GIFT"));
+    }
     /* boton de comprar / elegir (HoverboardBuyButton / HoverboardSelectButton) */
     float bx = U(100), by = 112;
     ui_sliced(a_ui, "background_character_buy", bx - U(77), by - U(26), U(154), U(52), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_2_outline", bx - U(81), by - U(30), U(166), U(64), UIS, C_OUTLINE);
     if (board_is_owned(i)) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, board_is_selected(i) ? TR("ELEGIDA", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
+    } else if (board_is_gift(i)) {
+        labc(0, bx, by, 20, C_WHITE, 1, 1, TR("GRATIS (X)", "FREE (X)"));
     } else {
         snprintf(buf, sizeof(buf), "%d", board_price(i));
         float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
@@ -848,6 +857,10 @@ static void draw_boards(void)
         }
         if (board_is_selected(j)) spr_c("icon_character_selected", x + w * 0.5f - 6, cy + w * 0.5f - 8, 15, 15, C_WHITE);
         else if (board_is_owned(j)) spr_c("icon_character_owned", x + w * 0.5f - 6, cy + w * 0.5f - 8, 15, 15, C_WHITE);
+        else if (board_is_gift(j)) {
+            spr_c("background_sticker_medium", x + w * 0.5f - 8, cy - w * 0.5f + 10, 30, 30, C_ORANGE);
+            labfit(0, x + w * 0.5f - 8, cy - w * 0.5f + 10, 9, 24, C_WHITE, 1, 1, TR("GRATIS", "FREE"));
+        }
     }
     spr_c("button_arrow_left", cx - 2.5f * step - 4, cy, 14, 20, C_WHITE);
     spr_c("button_arrow_right", cx + 2.5f * step + 4, cy, 14, 20, C_WHITE);
