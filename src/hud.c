@@ -1159,7 +1159,8 @@ static int reward_spin(const char *name, float cx, float cy, float k, float ang,
         char tn[40];
         reward_spin_release();
         snprintf(spin_name, sizeof(spin_name), "%s", name);
-        snprintf(tn, sizeof(tn), "rw3d_%s", name);
+        /* las monedas pocas o muchas son el mismo modelo (rewardCoins): su hoja va con el nombre de la bolsa grande */
+        snprintf(tn, sizeof(tn), "rw3d_%s", !strcmp(name, "icon_coin_large") ? "Icon_coin_pouch_larger" : name);
         tn[31] = 0;
         spin_tex = data_tex_find(tn);
     }

@@ -58,7 +58,10 @@ int r_sky_flat;                           /* cielo liso del color de la niebla (
  * devuelve poco a poco. Asi los tramos pesados (el principio de la carrera con el entorno del menu, el inspector y el
  * perro; algunos ambientes de la 1.5.2) no bajan a 20 FPS; en los ligeros se ve hasta 700 como el original */
 float r_load_ms, r_dist_scale = 1.0f;
-#define DIST_MIN 0.6f
+/* como mucho se acerca al 80 % (al 60 % la niebla de Navidad tapaba media pantalla) y la niebla se mueve despacio
+ * hacia la distancia elegida (~2 s del 100 % al 80 %): antes saltaba un 10 % de un fotograma a otro y se notaba */
+#define DIST_MIN 0.8f
+static float fog_scale = 1.0f;
 void r_dist_hint(float scale) { if (r_dist_scale > scale) r_dist_scale = scale; }
 static void dist_adapt(float load)
 {
@@ -69,7 +72,7 @@ static void dist_adapt(float load)
     if (load > 100.0f) { over = 0; prev = 0; return; }
     over = load > 30.0f ? over + 1 : 0;
     if (over >= 2) {   /* pasado o al limite */
-        r_dist_scale -= load > 33.0f ? 0.10f : 0.04f;
+        r_dist_scale -= load > 33.0f ? 0.05f : 0.02f;
         calm = 0;
 #if DEVLOG
         static int nlog;
@@ -83,8 +86,10 @@ static void dist_adapt(float load)
 #ifdef AT_DIST
     r_dist_scale = AT_DIST;   /* prueba: distancia fija */
 #endif
-    r_fog_end = FOG_END * r_dist_scale;
-    r_fog_start = 200.0f * r_dist_scale;
+    if (fog_scale > r_dist_scale) fog_scale = fog_scale - 0.004f < r_dist_scale ? r_dist_scale : fog_scale - 0.004f;
+    else if (fog_scale < r_dist_scale) fog_scale = fog_scale + 0.003f > r_dist_scale ? r_dist_scale : fog_scale + 0.003f;
+    r_fog_end = FOG_END * fog_scale;
+    r_fog_start = 200.0f * fog_scale;
     prev = load;
 }
 unsigned int r_fog_color = 0xfff6e6bc;   /* ABGR (0.737, 0.902, 0.965) */
