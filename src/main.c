@@ -286,6 +286,9 @@ int main(int argc, char **argv)
         if (frame_no == 170) pr |= PSP_CTRL_CIRCLE;
         if (ginfo.state == GS_MENU && frame_no > 200 && frame_no < 260) pr |= PSP_CTRL_CROSS;
         { extern void game_debug_powerup(int k); if (frame_no == 330 || frame_no == 900) game_debug_powerup(4); }
+#ifdef AT_SMOKE
+        { extern void game_debug_board_crash(void); if (frame_no == 960) game_debug_board_crash(); }   /* humo */
+#endif
 #elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;
@@ -449,6 +452,9 @@ int main(int argc, char **argv)
 #endif
         if (frame_no % AT_SHOT == 0) {
             void *top; int bw, fmt;
+#ifdef AT_LOADSCREEN
+            if (frame_no == AT_SHOT) { hud_loading(0.6f); hud_loading(0.6f); }   /* prueba: la pantalla de carga */
+#endif
             r_present_last();
             sceDisplayGetFrameBuf(&top, &bw, &fmt, PSP_DISPLAY_SETBUF_NEXTFRAME);
             char fn[64];

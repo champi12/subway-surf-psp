@@ -1094,6 +1094,68 @@ def build_notebook_atlas(sc15):
     return sheet, sprites
 
 
+def export_board_crash_fx(sc15):
+    """Character.hoverboardCrashParticleSystem de la 1.5.2 (el humo de colores al romperse la tabla): los parametros del
+    ParticleSystem y su textura (spraySplash). fx.bin: SSF1 y los valores; None si no esta"""
+    for f in sc15.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            cl, fl = sc15.read_mono(o)
+            if cl != 'Character' or not fl or 'hoverboardCrashParticleSystem' not in fl:
+                continue
+            ps = sc15.resolve_ptr(o, fl['hoverboardCrashParticleSystem'])
+            if ps is None:
+                return None
+            t = ps.read_typetree()
+            go = sc15.resolve(ps.assets_file, t['m_GameObject']['m_FileID'], t['m_GameObject']['m_PathID'])
+            tr = ren = None
+            for c in go.read_typetree()['m_Component']:
+                pp = c[-1] if isinstance(c, (list, tuple)) else c.get('component', c)
+                co = sc15.resolve(go.assets_file, pp['m_FileID'], pp['m_PathID'])
+                if co is not None and co.type.name == 'Transform':
+                    tr = co.read_typetree()
+                if co is not None and co.type.name == 'ParticleSystemRenderer':
+                    ren = co
+            tex = None
+            if ren is not None:
+                rd = ren.read_typetree()
+                m = rd['m_Materials'][0]
+                mat = sc15.resolve(ren.assets_file, m['m_FileID'], m['m_PathID'])
+                if mat is not None:
+                    for _, tx in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+                        tt = sc15.resolve(mat.assets_file, tx['m_Texture']['m_FileID'], tx['m_Texture']['m_PathID'])
+                        if tt is not None:
+                            tex = tt.read().image
+                            break
+            I = t['InitialModule']
+
+            def rng(k):
+                v = I[k]
+                hi = v['scalar']
+                lo = v['minCurve']['m_Curve'][0]['value'] * hi if v.get('minMaxState') == 3 else hi
+                return lo, hi
+            sc = I['startColor']
+            cols = []
+            for g in ('minGradient', 'maxGradient'):
+                G = sc[g]
+                cols += [G['key0']['rgba'], G['key1']['rgba']]
+            E = t['EmissionModule']
+            S = t['ShapeModule']
+            sz = t['SizeModule']['curve']['maxCurve']['m_Curve'] if t['SizeModule']['enabled'] else [{'value': 1.0}, {'value': 1.0}]
+            lp, lr, ls = tr['m_LocalPosition'], tr['m_LocalRotation'], tr['m_LocalScale']
+            out = bytearray(b'SSF1')
+            out += struct.pack('<I', E['cnt0'] if E.get('m_BurstCount', 0) > 0 else 0)
+            out += struct.pack('<2f', *rng('startLifetime')) + struct.pack('<2f', *rng('startSpeed'))
+            out += struct.pack('<2f', *rng('startSize')) + struct.pack('<f', I['startRotation']['scalar'])
+            out += struct.pack('<2f', S['radius'], S['angle'])
+            out += struct.pack('<3f', lp['x'], lp['y'], lp['z']) + struct.pack('<4f', lr['x'], lr['y'], lr['z'], lr['w'])
+            out += struct.pack('<f', ls['x']) + struct.pack('<2f', sz[0]['value'], sz[-1]['value'])
+            out += struct.pack('<4I', *cols)
+            return bytes(out), tex
+    return None
+
+
 def find_texture(sc, name):
     for f in sc.files.values():
         for o in f.objects.values():
@@ -1576,6 +1638,20 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
         if mb is not None:
             # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256
             ex.textures.append(('generada', 'ui_mbox_bg', mb.convert('RGB').resize((256, 256), Image.LANCZOS)))
+        fx = export_board_crash_fx(sc15) if sc15 is not None else None
+        if fx is not None:
+            ex.fx_bin = fx[0]
+            if fx[1] is not None:
+                ex.textures.append(('generada', 'fx_spray', fx[1].convert('RGBA'), True))
+            print('  humo al romperse la tabla (hoverboardCrashParticleSystem): %d particulas' % struct.unpack_from('<I', fx[0], 4)[0])
+        sp15 = find_texture(sc15, 'splashScreen') if sc15 is not None else None
+        if sp15 is not None:
+            # pantalla de carga de la 1.5.2: la imagen de inicio es vertical (9:16, guardada en 1024x1024); para la
+            # PSP se toma una franja apaisada de la parte de arriba (la libreta con el consejo tapa la de abajo).
+            # 512x256 en 5650 = 256 KB, solo mientras se carga
+            im = sp15.convert('RGB').resize((576, 1024), Image.LANCZOS)
+            y0 = int(1024 * 0.20)
+            ex.textures.append(('generada', 'ui_splash', im.crop((0, y0, 576, y0 + 326)).resize((512, 256), Image.LANCZOS)))
         bg = ui_backgrounds(sc14)
         if bg:
             ex.textures.append(('generada', 'ui_bg', bg[0]))
@@ -2184,6 +2260,9 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         with open(os.path.join(outdir, fn), 'wb') as f:
             f.write(b)
         print('  %-10s %8d KB' % (fn, len(b) // 1024))
+    if getattr(ex, 'fx_bin', None) is not None:
+        with open(os.path.join(outdir, 'fx.bin'), 'wb') as f:
+            f.write(ex.fx_bin)
     with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))

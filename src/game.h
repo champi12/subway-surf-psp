@@ -56,7 +56,9 @@ int board_price(int row);
 int board_is_owned(int row);
 int board_is_selected(int row);
 int board_effect(int row);
-int board_is_gift(int row);      /* la de regalo (FREE GIFT) */
+int board_is_gift(int row);
+int game_cloud_tex(void);         /* nubes del jetpack */
+int game_fx_get(int i, V3 *pos, float *size, unsigned int *col);   /* particulas del humo de la tabla */      /* la de regalo (FREE GIFT) */
 const char *char_name(int i);
 const char *char_thumb(int row);   /* nombre de su miniatura (thumb_<nombre> en CharThumbs) */
 int char_unlock_type(int i);

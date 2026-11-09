@@ -363,6 +363,7 @@ static void *ld_pal, *ld_data;
 static unsigned int ld_t0;
 static int ld_want = -1;                      /* la ultima pedida mientras el hilo estaba ocupado */
 static int ld_failed = -1;                    /* la ultima que fallo: esa se lee como siempre */
+static int ld_last = -1;                      /* la ultima que se ha pedido: las demas que terminen se tiran */
 
 static int loader_thread(SceSize args, void *argp)
 {
@@ -382,7 +383,14 @@ static int loader_thread(SceSize args, void *argp)
         }
         int ok = fd >= 0 && sceIoLseek32(fd, tx->file_off, PSP_SEEK_SET) == (int)tx->file_off;
         if (ok && tx->palbytes) ok = sceIoRead(fd, ld_pal, tx->palbytes) == (int)tx->palbytes;
-        if (ok) ok = sceIoRead(fd, ld_data, tx->databytes) == (int)tx->databytes;
+        /* por trozos de 32 KB cediendo entre uno y otro: de golpe (257 KB) la musica, que tambien se lee de la Memory
+         * Stick, se quedaba sin datos y el audio tartamudeaba */
+        for (unsigned int done = 0; ok && done < tx->databytes;) {
+            unsigned int n = tx->databytes - done > 32768 ? 32768 : tx->databytes - done;
+            ok = sceIoRead(fd, (char *)ld_data + done, n) == (int)n;
+            done += n;
+            sceKernelDelayThread(2000);
+        }
         /* los mipmaps tambien aqui (en sus bufferes ya reservados): elegir el color de cada 2x2 cuesta */
         if (ok && tex_nmip[t] > 0) mips_build(t, ld_data);
         ld_state = ok ? 2 : 3;
@@ -417,7 +425,9 @@ void r_tex_async_poll(void)
     if (ld_state >= 2) {
         int t = ld_tex;
         Texture *tx = &gd.tex[t];
-        if (ld_state == 2 && !tx->loaded) {
+        /* pasando personajes deprisa se piden muchas: solo se queda la ultima pedida (antes se quedaban todas hasta
+         * que se cambiaba de modelo y la memoria llegaba casi al limite) */
+        if (ld_state == 2 && !tx->loaded && t == ld_last) {
             tx->pal = ld_pal; tx->data = ld_data;
             tx->loaded = 1;
             r_mip_bytes += ld_mipbytes;
@@ -453,6 +463,7 @@ int r_tex_request(int t)
         sceKernelStartThread(ld_thid, 0, NULL);
     }
     if (!async_ok(t) || t == ld_failed) { tex_ensure(t); return 1; }
+    ld_last = t;
     if (ld_tex != t) ld_want = t;
     r_tex_async_poll();
     return gd.tex[t].loaded;
@@ -1541,4 +1552,22 @@ void r_rect(float x, float y, float w, float h, unsigned int abgr)
     v[0].u = 0; v[0].v = 0; v[0].c = abgr; v[0].x = x; v[0].y = y; v[0].z = 0;
     v[1].u = 0; v[1].v = 0; v[1].c = abgr; v[1].x = x + w; v[1].y = y + h; v[1].z = 0;
     sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, 2, 0, v);
+}
+
+/* punto del mundo -> pixel de pantalla (con la curvatura); 0 si queda detras de la camara */
+int r_project(V3 w, float *sx, float *sy)
+{
+    V3 v = m34_point(&r_view, w);
+    if (v.z < r_near) return 0;
+    float zc = ZA * v.z + ZB, zz = zc * zc;
+    float x = v.x + (-0.0005f / P00) * zz, y = v.y + (-0.0003f / P11) * zz;
+    *sx = SCR_W * 0.5f * (1.0f + x * P00 / v.z);
+    *sy = SCR_H * 0.5f * (1.0f - y * P11 / v.z);
+    return 1;
+}
+/* tamano en pixeles de algo de "size" unidades del mundo en ese punto (0 si esta detras de la camara) */
+float r_world_px(V3 w, float size)
+{
+    V3 v = m34_point(&r_view, w);
+    return v.z < r_near ? 0 : size * P00 * SCR_W * 0.5f / v.z;
 }

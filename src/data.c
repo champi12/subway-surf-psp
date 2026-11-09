@@ -36,6 +36,15 @@ static void *load_file(const char *name, int *size)
 }
 
 static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+static void *load_file_opt(const char *path);
+
+/* archivo opcional de la carpeta del mundo (fx.bin...): NULL si no esta. Se queda en memoria */
+void *data_load_world_opt(const char *name)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "%s/%s", basedir, name);
+    return load_file_opt(path);
+}
 
 /* archivo opcional con su ruta (sin error si no esta); se queda en memoria */
 static void *load_file_opt(const char *path)

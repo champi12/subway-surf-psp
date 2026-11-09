@@ -130,6 +130,7 @@ int data_load(const char *dir);
 #define DATA_STEPS 6
 int data_load_step(const char *dir, int step);   /* 0..DATA_STEPS-1 archivos, DATA_STEPS comprobacion final */
 void data_tex_path(int i, char *out, int n);
+void *data_load_world_opt(const char *name);   /* archivo opcional de la carpeta del mundo */
 int data_tex_read(int i, void *pal, void *data);
 /* tema de Halloween */
 int data_theme_init_tex(void);      /* tras leer tex.bin, antes de r_init: 1 si esta hw_tex.bin */

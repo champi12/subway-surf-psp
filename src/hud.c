@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdarg.h>
+#include <pspkernel.h>
 #include "hud.h"
 #include "render.h"
 #include "data.h"
@@ -313,8 +314,27 @@ static const char *pw_icons[6] = {"icon_upgrades_hoverboard", "icon_upgrades_jet
                                   "icon_upgrades_coinMagnet", "icon_upgrades_doubleScore", "icon_upgrades_headstart500"};
 #define BOX_COL 0x66000000     /* background_ingame_beatThis, negro al 40 % */
 
+/* humo al romperse la tabla (hoverboardCrashParticleSystem del original, simulado en game.c): cada mancha de spray
+ * (spraySplash) en su sitio del mundo, en perspectiva. MaxParticleSize del original: media pantalla como mucho */
+static int fx_tex = -2;
+static void draw_board_smoke(void)
+{
+    V3 p; float size; unsigned int col;
+    if (fx_tex == -2) fx_tex = data_tex_find("fx_spray");
+    if (fx_tex < 0) return;
+    for (int i = 0; game_fx_get(i, &p, &size, &col); i++) {
+        float sx, sy;
+        if (!r_project(p, &sx, &sy)) continue;
+        float sz = r_world_px(p, size);
+        if (sz > SCR_H * 0.5f) sz = SCR_H * 0.5f;
+        if (sz < 1) continue;
+        r_sprite(fx_tex, sx - sz * 0.5f, sy - sz * 0.5f, sz, sz, 0, 0, 1, 1, col);
+    }
+}
+
 static void draw_ingame(void)
 {
+    draw_board_smoke();
     /* avisos del tutorial (UIScreenController.QueueMessage) */
     if (ginfo.message && ginfo.time - ginfo.message_t < 2.5f && ginfo.time >= ginfo.message_t) {
         float a = clampf(2.5f - (ginfo.time - ginfo.message_t), 0, 1);
@@ -1223,6 +1243,53 @@ static void draw_trophies(void)
 }
 
 /* pantalla de carga: al arrancar y si cambia el tema (Halloween) con el juego abierto. Es un fotograma entero */
+/* pantalla de carga de la 1.5.2: la imagen de inicio de fondo y abajo una hoja de libreta con un consejo y la barra
+ * de carga. La imagen (256 KB) solo esta en memoria mientras se carga */
+static const char *const tips_es[] = {
+    "Con la tabla activada, un choque no te para.",
+    "Rueda hacia abajo para pasar bajo las barreras.",
+    "Mejora los power-ups en la tienda para que duren más.",
+    "Las letras de la palabra del día dan premios.",
+    "Completar misiones sube tu multiplicador.",
+};
+static const char *const tips_en[] = {
+    "With a hoverboard on, a crash won't stop you.",
+    "Roll down to slide under barriers.",
+    "Upgrade power-ups in the shop to make them last longer.",
+    "The daily word letters give you prizes.",
+    "Finishing missions raises your multiplier.",
+};
+static int splash_tex = -2, splash_tip = -1;
+static int loading_15(float p)
+{
+    if (splash_tex == -2) splash_tex = gd.ntex > 0 ? data_tex_find("ui_splash") : -2;
+    if (splash_tex < 0 || f_mid < 0) return 0;
+    if (a_nb == -2) a_nb = ui_atlas("Notebook15");
+    if (splash_tip < 0) splash_tip = (int)(sceKernelGetSystemTimeLow() / 1000u) % 5;
+    r_sprite(splash_tex, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE);
+    /* hoja de libreta abajo con su espiral */
+    float y0 = 150, x0 = 24, x1 = SCR_W - 24;
+    if (a_nb >= 0 && find_sprite(a_nb, "newbackground")) {
+        ui_sliced(a_nb, "newbackground", x0, y0 + 6, x1 - x0, SCR_H - y0, 1.0f, C_WHITE);
+        USprite *sp = find_sprite(a_nb, "metal_spiral_lo");
+        if (sp) {
+            float h = 20, w = h * sp->ow / sp->oh, step = w * 1.75f;
+            for (float x = x0 + 12; x + w < x1 - 8; x += step) ui_sprite_wh(a_nb, "metal_spiral_lo", x, y0 - 4, w, h, C_WHITE);
+        }
+    } else r_rect(x0, y0 + 6, x1 - x0, SCR_H - y0, 0xfff0f0f0u);
+    labc(1, SCR_W * 0.5f, y0 + 34, 26, C_NAVY, 1, 0, TR("¡Un consejo!", "Here's a tip!"));
+    labfit(0, SCR_W * 0.5f, y0 + 62, 16, x1 - x0 - 30, C_NAVY, 1, 0, TR(tips_es[splash_tip], tips_en[splash_tip]));
+    /* barra de carga celeste con el borde amarillo a la izquierda */
+    float bw = x1 - x0 - 50, bx = (SCR_W - bw) * 0.5f, by = SCR_H - 30;
+    if (p < 0) p = 0;
+    if (p > 1) p = 1;
+    r_rect(bx, by, bw, 18, 0xfff5cf8eu);
+    r_rect(bx, by, bw * p, 18, 0xffe8b060u);
+    r_rect(bx, by, 3, 18, 0xff00cff5u);
+    labc(0, SCR_W * 0.5f, by + 9, 13, C_NAVY, 1, 1, TR("CARGANDO...", "LOADING..."));
+    return 1;
+}
+
 void hud_loading(float p)
 {
     /* morada solo si el tema se va a poder poner: en temporada pero sin los datos de la 1.4 parecia que el
@@ -1231,6 +1298,11 @@ void hud_loading(float p)
     r_begin_frame(hw ? 0xff301028 : 0xff6a3a10);   /* morado de Halloween o azul */
     hud_fonts();
     r_begin_2d();
+    if (!hw && loading_15(p)) {
+        r_end_frame();
+        if (p >= 1.0f && splash_tex >= 0) { r_wait_idle(); r_tex_unload(splash_tex); }
+        return;
+    }
     if (f_big >= 0) {
         text_shadow(f_big, SCR_W / 2, 70, 1.2f, 0xff00dbff, 1, "Subway Surfers");
         if (hw) text_shadow(f_big, SCR_W / 2, 112, 0.9f, 0xff1a8cff, 1, "Halloween");

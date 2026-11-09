@@ -17,6 +17,8 @@ void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capt
 extern float r_wait_ms;
 extern float r_load_ms, r_dist_scale;
 void r_dist_hint(float scale);
+int r_project(V3 world, float *sx, float *sy);
+float r_world_px(V3 world, float size);   /* tamano en pantalla de algo de ese tamano en ese punto */   /* punto del mundo -> pantalla; 0 si esta detras */
 extern void (*r_background_extra)(void);   /* dibujo 2D entre el fondo y el 3D (r_background) */
 int r_tex_request(int t);      /* 1 si ya esta cargada; si no, se lee en segundo plano (pedirla cada fotograma) */
 void r_tex_async_poll(void);   /* una vez por fotograma: termina la carga en segundo plano */   /* tramo pesado a punto de empezar: como mucho esa distancia (luego se recupera) */

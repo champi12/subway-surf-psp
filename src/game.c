@@ -347,7 +347,11 @@ static int play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); ret
 static int board_sel = -1, board_owned;       /* fila de boards.bin; bit i: comprada */
 static int board_applied = -2, board_applied_full, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
 static uint32_t *hb_mesh_comp, hb_mesh0, hb_mat0;
-static int board_previewing, prev_mesh[16], nprev_mesh;   /* pantalla de tablas: mallas de las vistas previas */
+static int board_previewing, prev_mesh[16], nprev_mesh;
+static void fx_load(void);
+static void fx_board_crash(void);
+static void fx_update(float dt);
+static int nfx;   /* pantalla de tablas: mallas de las vistas previas */
 
 static int board_default(void)
 {
@@ -1720,6 +1724,8 @@ static void mods_update(float dt)
                 hb_last_end = game_time;
                 if (mods[m].stop != STOP_STOP) { mods[m].phase = 99; continue; }
                 play_ci(&snd_hcrash);
+                fx_board_crash();   /* hoverboardCrashParticleSystem.Play() */
+                dlog("TABLA rota a %d m (humo de colores, %d particulas)", ginfo.meters, nfx);
                 mods[m].phase = 1;
                 mods[m].t0 = game_time;
                 continue;
@@ -2571,6 +2577,7 @@ void game_init(void)
     n_efx = find("EFX");
     n_jetParticles = find("EFX/Jetpack");
     n_ssRing = find("EFX/superSneakersRing");
+    fx_load();
     n_cloud[0] = find("EFX/Jetpack/jetpackCloud_L");
     n_cloud[1] = find("EFX/Jetpack/jetpackCloud_R");
     n_cloud_tgt[0] = node_find_path(n_spine, "sprayCanBooster/jetpackCloud_posL");
@@ -2895,8 +2902,14 @@ static void board_preview_end(void)
     board_applied = -2;
     board_apply(board_sel);
     if (nprev_mesh) {
+        /* las mallas no llevan cuenta de usos: la de la tabla elegida (que puede estar en la lista) no se suelta.
+         * Antes se soltaba y en la carrera la tabla no se veia (solo la animacion) */
         r_wait_idle();
-        for (int k = 0; k < nprev_mesh; k++) data_mesh_release(prev_mesh[k]);
+        for (int k = 0; k < nprev_mesh; k++) {
+            int m = prev_mesh[k], dup = 0;
+            for (int j = 0; j < k; j++) dup |= prev_mesh[j] == m;
+            if (m != board_mesh_cur && !dup) data_mesh_release(m);
+        }
         nprev_mesh = 0;
     }
     nrt[n_sprayCan].rend = 1;
@@ -3439,6 +3452,7 @@ void game_update(float dt)
     anim_update(&anim_guard, dt);
     anim_update(&anim_dog, dt);
     anim_update(&anim_cam, dt);
+    fx_update(dt);
     DBG_PHASE(main, "game_update: anim_apply Jake");
     anim_apply(&anim_char);
     if (char_posing && n_spine >= 0) {
@@ -3676,6 +3690,103 @@ void game_debug_boxes(int n)
 }
 
 /* para la prueba automatica: activar power-ups a voluntad */
+/* ------------------------------------------------------------ humo al romperse la tabla
+ * Character.hoverboardCrashParticleSystem de la 1.5.2, con sus parametros (fx.bin, del ParticleSystem de la escena):
+ * una rafaga de 35 manchas de spray (spraySplash) que salen en un cono hacia arriba y atras, vida 1 s, velocidad y
+ * tamano al azar entre sus dos valores, color al azar entre los dos degradados (verde-naranja y magenta-cian) y
+ * tamano que crece con la curva del SizeModule. moveWithTransform: se mueven con el personaje */
+typedef struct { V3 p, v; float age, life, size, rot; unsigned int col; } FxPart;
+#define MAX_FX 48
+static FxPart fxp[MAX_FX];
+static struct {
+    int ok, count;
+    float life0, life1, spd0, spd1, size0, size1, rot, radius, angle;
+    V3 lpos; Q4 lrot; float scale, sz0, sz1;
+    unsigned int col[4];
+} fxd;
+
+static void fx_load(void)
+{
+    const uint8_t *b = data_load_world_opt("fx.bin");
+    if (!b || memcmp(b, "SSF1", 4)) return;
+    float f[23];
+    memcpy(&fxd.count, b + 4, 4);
+    memcpy(f, b + 8, 4 * 20);
+    fxd.life0 = f[0]; fxd.life1 = f[1]; fxd.spd0 = f[2]; fxd.spd1 = f[3]; fxd.size0 = f[4]; fxd.size1 = f[5];
+    fxd.rot = f[6]; fxd.radius = f[7]; fxd.angle = f[8];
+    fxd.lpos = v3(f[9], f[10], f[11]); fxd.lrot = q4(f[12], f[13], f[14], f[15]);
+    fxd.scale = f[16]; fxd.sz0 = f[17]; fxd.sz1 = f[18];
+    memcpy(fxd.col, b + 8 + 4 * 19, 16);
+    if (fxd.count > MAX_FX) fxd.count = MAX_FX;
+    fxd.ok = fxd.count > 0;
+}
+
+static unsigned int col_lerp(unsigned int a, unsigned int b, float t)
+{
+    unsigned int r = 0;
+    for (int k = 0; k < 32; k += 8) {
+        float ca = (a >> k) & 255, cb = (b >> k) & 255;
+        r |= (unsigned int)(ca + (cb - ca) * t + 0.5f) << k;
+    }
+    return r;
+}
+
+static void fx_board_crash(void)
+{
+    if (!fxd.ok) return;
+    float ta = tanf(fxd.angle * 0.0174533f);
+    nfx = 0;
+    for (int i = 0; i < fxd.count; i++) {
+        FxPart *q = &fxp[nfx++];
+        /* ShapeModule cono: un punto del circulo de la base y la direccion abriendose con el angulo (eje Z local) */
+        float a = rnd_rangef(0, 6.2831853f), r = sqrtf(rnd_rangef(0, 1));
+        V3 base = v3(cosf(a) * r * fxd.radius, sinf(a) * r * fxd.radius, 0);
+        V3 dir = v3norm(v3(cosf(a) * r * ta, sinf(a) * r * ta, 1));
+        q->p = v3add(fxd.lpos, qrot(fxd.lrot, v3scale(base, fxd.scale)));
+        q->v = v3scale(qrot(fxd.lrot, dir), rnd_rangef(fxd.spd0, fxd.spd1));
+        q->age = 0;
+        q->life = rnd_rangef(fxd.life0, fxd.life1);
+        q->size = rnd_rangef(fxd.size0, fxd.size1);
+        q->rot = rnd_rangef(0, fxd.rot);
+        /* color: al azar entre los dos degradados (cada uno evaluado en el mismo punto al azar) */
+        float t = rnd_rangef(0, 1);
+        q->col = col_lerp(col_lerp(fxd.col[0], fxd.col[1], t), col_lerp(fxd.col[2], fxd.col[3], t), rnd_rangef(0, 1));
+    }
+}
+
+static void fx_update(float dt)
+{
+    for (int i = 0; i < nfx;) {
+        FxPart *q = &fxp[i];
+        q->age += dt;
+        if (q->age >= q->life) { fxp[i] = fxp[--nfx]; continue; }
+        q->p = v3add(q->p, v3scale(q->v, dt));
+        i++;
+    }
+}
+
+/* para la interfaz: posicion en el mundo, tamano y color de la particula i (0 si no hay) */
+int game_fx_get(int i, V3 *pos, float *size, unsigned int *col)
+{
+    if (i < 0 || i >= nfx || ginfo.paused) return 0;
+    const FxPart *q = &fxp[i];
+    float k = q->age / q->life;
+    *pos = v3add(cc.pos, q->p);
+    *size = q->size * (fxd.sz0 + (fxd.sz1 - fxd.sz0) * k);
+    *col = q->col;
+    return 1;
+}
+
+/* textura de las nubes de la estela del jetpack (tambien para el humo de la tabla) */
+int game_cloud_tex(void)
+{
+    int m = cloud_mat[0];
+    return m >= 0 && m < gd.nmats ? gd.mats[m].tex : -1;
+}
+
+/* prueba: romper la tabla como al chocar */
+void game_debug_board_crash(void) { if (mods[MOD_HOVERBOARD].active) mods[MOD_HOVERBOARD].stop = STOP_STOP; }
+
 void game_debug_powerup(int k)
 {
     if (state != GS_RUNNING) return;
