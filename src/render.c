@@ -51,6 +51,7 @@ float r_near = 2.0f, r_far = 1000.0f;
 #endif
 float r_fog_start = 200.0f, r_fog_end = FOG_END;
 unsigned int r_sky_tint = 0xffffffffu;   /* color que multiplica el cielo (blanco: sin tinte) */
+int r_sky_flat;                           /* cielo liso del color de la niebla (Navidad) */
 /* Distancia de dibujo adaptativa (30 FPS fijos): r_load_ms es lo que tardo de verdad el ultimo fotograma, desde que se
  * mando su lista al GE hasta que terminaron el GE y la CPU del siguiente (lo que mas tarde). Si se acerca a 33 ms se
  * acerca un poco la niebla (menos via, menos dibujos, menos vertices: baja la CPU y el GE a la vez) y, con margen, se
@@ -123,11 +124,8 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de la proyeccion) */
 /* Mipmaps: en la consola, dejar que el GE elija el nivel (GU_TEXTURE_AUTO) llenaba las texturas del escenario de lineas
  * negras y blancas (bordes de las piezas del atlas), sobre todo con el de Navidad; sin mipmaps salian bien pero el GE no
- * llegaba (35 ms) y la distancia de dibujo bajaba mucho. En el emulador cualquier nivel fijo se ve bien: el nivel lo
- * elige la CPU para cada trozo segun su distancia (GU_TEXTURE_CONST), cerca el 0 y de lejos los reducidos.
- * Prueba en la consola (devlog, SELECT + L): 0 nivel por distancia, 1 automatico del GE (el de antes), 2 sin mipmaps,
- * 3 nivel por distancia mas nitido */
-int r_dbg_mode;
+ * llegaba (35 ms) y la distancia de dibujo bajaba mucho. El nivel lo elige la CPU para cada trozo segun su distancia
+ * (GU_TEXTURE_CONST): cerca el 0 y de lejos los reducidos. Probado en la consola: sin lineas y a 30 FPS */
 static int part_lod;
 
 typedef struct { float u, v, x, y, z; } OV;   /* vertice enviado al GE */
@@ -495,15 +493,14 @@ static void tex_filter(void)
      * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
      * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
     int mag = filt_nearest ? GU_NEAREST : GU_LINEAR;
-    int use = cur_mips && mip_ok && r_dbg_mode != 2;
+    int use = cur_mips && mip_ok;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
 #ifdef AT_MIPLEVEL
     /* prueba: el emulador no elige los niveles reducidos como la consola; asi se ve uno concreto */
     if (cur_mips) sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)AT_MIPLEVEL : 0.0f);
 #else
     if (cur_mips) {
-        if (use && r_dbg_mode == 1) sceGuTexLevelMode(GU_TEXTURE_AUTO, 0.0f);
-        else sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
+        sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
     }
 #endif
     sceGuTexFilter(min, mag);
@@ -513,7 +510,7 @@ static void tex_filter(void)
  * campo de vision de la PSP ~514/d pixeles por unidad: un texel por pixel a d ~ 40. Cada nivel, el doble de lejos */
 static void lod_for(float d)
 {
-    float d1 = r_dbg_mode == 3 ? 200.0f : 100.0f;
+    const float d1 = 100.0f;
     int l = d < d1 ? 0 : d < d1 * 2 ? 1 : d < d1 * 4 ? 2 : 3;
     if (l == part_lod) return;
     part_lod = l;
@@ -619,7 +616,10 @@ static int bind_material(int mi, float amul)
 {
     if (mi < 0 || mi >= gd.nmats) return BLEND_OPAQUE;
     const MatFile *m = &gd.mats[mi];
-    r_bind_texture(m->tex);
+    /* Navidad: el cielo del color exacto de la niebla. Lo que aparece a lo lejos sale ya del color de la niebla y, con el
+     * degradado del cielo detras (otro morado), se veian sus siluetas como sombras al generarse el mundo */
+    int flat = m->sky && r_sky_flat;
+    r_bind_texture(flat ? -1 : m->tex);
     int blend = m->blend;
     if (amul < 0.999f && blend == BLEND_OPAQUE) blend = BLEND_ALPHA;
     set_blend(blend);
@@ -634,7 +634,8 @@ static int bind_material(int mi, float amul)
         float c[4] = {m->color[0] * amul, m->color[1] * amul, m->color[2] * amul, m->color[3]};
         col = col_abgr(c, 1.0f);
     }
-    if (m->sky && r_sky_tint != 0xffffffffu) col = r_sky_tint;   /* tema de Navidad: el cielo hacia el morado */
+    if (m->sky && r_sky_tint != 0xffffffffu) col = r_sky_tint;
+    if (flat) col = r_fog_color | 0xff000000u;
     if (col != cur_color) { sceGuColor(col); cur_color = col; }
     /* uv' = uv * escala + desplazamiento (v ya viene invertida: v' = v*sv + 1 - sv - ov) */
     float st[4] = {m->st[0], m->st[1], m->st[2] + (mi < 256 ? r_mat_uoff[mi] : 0), 1.0f - m->st[1] - m->st[3]};

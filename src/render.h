@@ -15,7 +15,6 @@ void r_begin_frame(unsigned int clear_abgr);
 void r_end_frame(void);
 void r_present_last(void);   /* espera al GE y muestra el ultimo fotograma (capturas) */
 extern float r_wait_ms;
-extern int r_dbg_mode;      /* prueba de mipmaps en la consola (devlog, SELECT + L): 0-3 */
 extern float r_load_ms, r_dist_scale;
 void r_dist_hint(float scale);
 int r_project(V3 world, float *sx, float *sy);
@@ -57,7 +56,8 @@ extern M34 r_view;
 extern V3 r_cam_pos;
 extern float r_near, r_far, r_fov;
 extern float r_fog_start, r_fog_end;
-extern unsigned int r_sky_tint;   /* tinte del cielo (Navidad) */
+extern unsigned int r_sky_tint;   /* tinte del cielo */
+extern int r_sky_flat;            /* cielo liso del color de la niebla (Navidad) */
 extern unsigned int r_fog_color;     /* ABGR */
 extern unsigned int r_clear_color;   /* ABGR; color de fondo (solo asoma por las juntas) */
 

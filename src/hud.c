@@ -266,6 +266,9 @@ static void ui_sliced(int ai, const char *name, float x, float y, float w, float
     if (L + R > w) { float k = w / (L + R); L *= k; R *= k; }
     if (T + B > h) { float k = h / (T + B); T *= k; B *= k; }
     float xs[4] = {x, x + L, x + w - R, x + w}, ys[4] = {y, y + T, y + h - B, y + h};
+    /* a pixeles enteros: con medios pixeles la consola pintaba dos veces la columna donde se juntan dos trozos y en
+     * los recuadros semitransparentes (el del multiplicador) quedaba una franja mas oscura */
+    for (int k = 0; k < 4; k++) { xs[k] = floorf(xs[k] + 0.5f); ys[k] = floorf(ys[k] + 0.5f); }
     float us[4] = {s->ox, s->ix, s->ix + s->iw, s->ox + s->ow}, vs[4] = {s->oy, s->iy, s->iy + s->ih, s->oy + s->oh};
     for (int j = 0; j < 3; j++)
         for (int i = 0; i < 3; i++) {

@@ -1993,6 +1993,7 @@ void game_theme_check(int boot)
     r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
     /* el cielo de Navidad es su propia malla con el degradado morado del atlas (data_theme_set): sin tintes */
     r_sky_tint = 0xffffffffu;
+    r_sky_flat = xm;
     r_clear_color = on ? 0xff324c8cu : 0xff3c5e74u;   /* color medio del suelo (normal / Halloween) */
     if (boot && xm) dlog("TEMA de Navidad activo (fecha de la consola)");
     if (boot) {

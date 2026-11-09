@@ -267,17 +267,6 @@ int main(int argc, char **argv)
         /* SELECT: resumen -> memoria -> grafica de tiempos -> oculto */
         if (pr & PSP_CTRL_SELECT) show_perf = (show_perf + 1) & 3;
 #if DEVLOG
-        /* SELECT + L: modo de dibujo de prueba (lineas que solo salen en la consola) */
-        if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_LTRIGGER)) {
-            static const char *const nm[4] = {"mipmap por distancia", "mipmap automatico (antes)", "sin mipmaps",
-                                              "mipmap por distancia, mas nitido"};
-            r_dbg_mode = (r_dbg_mode + 1) % 4;
-            pr &= ~PSP_CTRL_LTRIGGER;
-            dlog("PRUEBA DE DIBUJO modo %d: %s", r_dbg_mode, nm[r_dbg_mode]);
-            char t[48];
-            snprintf(t, sizeof(t), "Modo de dibujo %d", r_dbg_mode);
-            hud_slide(t, nm[r_dbg_mode]);
-        }
         /* SELECT + R: captura de pantalla (captura_NNN.bmp en la carpeta del juego), sin el medidor */
         if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_RTRIGGER)) { shot_pending = 1; pr &= ~PSP_CTRL_RTRIGGER; }
 #if defined(AUTOTEST) && defined(AT_SHOTBMP)
