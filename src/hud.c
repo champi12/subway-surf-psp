@@ -1141,6 +1141,28 @@ static void mbox_bg_release(int showing)
 {
     if (mbox_loaded && !showing) { r_tex_unload(mbox_bg); mbox_loaded = 0; }
 }
+/* las cajas de 112 px con la tapa abriendose en 4 pasos (clip "up" del original, de 0 a 0,46 s): hoja BoxFrames
+ * (128 KB) cargada solo mientras se abren cajas. Sin ella, los dibujos de 88 px de antes */
+static int a_boxes = -2, boxes_loaded;
+static void boxes_release(void)
+{
+    if (boxes_loaded && a_boxes >= 0) { r_wait_idle(); r_tex_unload(atl[a_boxes].tex); }
+    boxes_loaded = 0;
+}
+static int box_frame(int sup, int f, float cx, float cy)
+{
+    if (a_boxes == -2) a_boxes = ui_atlas("BoxFrames");
+    char nm[32];
+    snprintf(nm, sizeof(nm), "%s_f%d", sup ? "box_super" : "box_mystery", f < 0 ? 0 : f > 3 ? 3 : f);
+    USprite *s = find_sprite(a_boxes, nm);
+    if (!s) return 0;
+    UAtlas *a = &atl[a_boxes];
+    r_sprite(a->tex, (int)(cx - s->ow * 0.5f), (int)(cy - s->oh * 0.5f), s->ow, s->oh, s->ox / a->w, s->oy / a->h,
+             (s->ox + s->ow) / a->w, (s->oy + s->oh) / a->h, C_WHITE);
+    boxes_loaded = 1;
+    return 1;
+}
+
 static void draw_box_popup(int sup)
 {
     char buf[48];
@@ -1158,7 +1180,8 @@ static void draw_box_popup(int sup)
     if (!ginfo.reward[0]) {
         /* esperando: la caja flota arriba y abajo (BoxIdleAnimCoroutine) */
         spr_c("background_superglow", bx, cy, 150 * gl + 40, 150 * gl + 40, sup ? 0x70ffffffu : 0x40ffffffu);
-        reward_spr(box, old, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f, 1, 1, C_WHITE);
+        if (!box_frame(sup, 0, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f))
+            reward_spr(box, old, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f, 1, 1, C_WHITE);
         labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
         snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
         labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
@@ -1175,7 +1198,8 @@ static void draw_box_popup(int sup)
     /* la caja: cerrada un instante, abierta despues, y se va hacia abajo */
     if (t < 1.2f) {
         float y = cy + (t > 0.46f ? ease_cos((t - 0.46f) / 0.7f) * 200 : 0);
-        reward_spr(t < 0.12f ? box : box_open, old, bx, y, 1, 1, C_WHITE);
+        int f = (int)(t / 0.46f * 3.0f + 0.5f);   /* la tapa subiendo: 0, 0,15, 0,30 y 0,46 s */
+        if (!box_frame(sup, f, bx, y)) reward_spr(t < 0.12f ? box : box_open, old, bx, y, 1, 1, C_WHITE);
     }
     /* el premio: aparece cuando la tapa esta arriba, crece de 1/4 a su tamano y gira frenando */
     if (t >= 0.3f && ginfo.reward_icon) {
@@ -1235,7 +1259,7 @@ static void draw_gameover(void)
         if (mbox_bg < 0) r_rect(0, 0, SCR_W, SCR_H, 0xa0000000);   /* sin el APK de la 1.5.2 */
         /* super caja (SuperMysteryBoxEffect): la plateada con mas brillo; se abren antes que las normales */
         draw_box_popup(ginfo.reward[0] ? ginfo.reward_super : ginfo.sboxes_pending > 0);
-    } else { mbox_bg_release(0); reward_spin_release(); }
+    } else { mbox_bg_release(0); reward_spin_release(); boxes_release(); }
 }
 
 /* ------------------------------------------------------------ pausa (PauseUI de la 1.4) */

@@ -1557,6 +1557,47 @@ def render_reward_spins(sc14):
     return out
 
 
+BOX_FRAME_TIMES, BOX_FRAME_PX = (0.0, 0.15, 0.30, 0.46), 112
+
+
+def render_box_frames(sc14):
+    """Las dos cajas (normal y super) mas grandes (112 px) y con la tapa abriendose en 4 pasos: el clip "up" de su
+    Animation (MysteryBoxHandler) muestreado de 0 a 0,46 s, la misma escala en todos (la caja no salta). Hoja de
+    512x256 (128 KB en T8) que solo se carga mientras se abren cajas. Devuelve (imagen, sprites) o None"""
+    fl = obj = None
+    for f in sc14.files.values():
+        for o in f.objects.values():
+            if o.type.name == 'MonoBehaviour':
+                cl, fl_ = sc14.read_mono(o)
+                if cl == 'MysteryBoxHandler' and fl_:
+                    fl, obj = fl_, o
+                    break
+        if fl:
+            break
+    if fl is None:
+        return None
+    sheet = Image.new('RGBA', (512, 256), (0, 0, 0, 0))
+    sprites = []
+    texcache = {}
+    px = BOX_FRAME_PX
+    for row, (field, name) in enumerate(REWARD_BOXES):
+        go = sc14.resolve_ptr(obj, fl.get(field))
+        if go is None:
+            continue
+        rot = euler_quat(*REWARD_ROT[field])
+        frames = [reward_parts(sc14, go, rot, texcache, t) for t in BOX_FRAME_TIMES]
+        if not all(frames):
+            continue
+        allv = np.vstack([p_[0] for fr in frames for p_ in fr])
+        box = (allv.min(axis=0), allv.max(axis=0))
+        for k, fr in enumerate(frames):
+            x, y = k * (px + 4), row * (px + 4)
+            sheet.paste(draw_parts(fr, px, box), (x, y))
+            r_ = {'x': x, 'y': y, 'width': px, 'height': px}
+            sprites.append({'name': '%s_f%d' % (name, k), 'outer': r_, 'inner': dict(r_)})
+    return (sheet, sprites) if sprites else None
+
+
 def fix_coin_glow(ex):
     """El brillo de las monedas (material "glow gold", Additive falloff) es un trocito de 26x26 pixeles de la hoja
     'main' de 1024x1024, pegado a otros dibujos. En la PSP la hoja va a 512 y el filtrado mezcla esos vecinos en el
@@ -1663,6 +1704,12 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
                             'sprites': rw[1], 'key': ('gen', 'RewardIcons')})
             ex.textures.append(('generada', 'ui_rewards', rw[0], True))
             print('  premios de las cajas: %d dibujos' % len(set(s_['outer']['x'] * 1000 + s_['outer']['y'] for s_ in rw[1])))
+            bf = render_box_frames(sc14)
+            if bf:
+                atlases.append({'name': 'BoxFrames', 'tex': len(ex.textures), 'w': 512, 'h': 256, 'pixel': 1.0,
+                                'sprites': bf[1], 'key': ('gen', 'BoxFrames')})
+                ex.textures.append(('generada', 'ui_boxes', bf[0], True))
+                print('  cajas abriendose: %d dibujos de %d px' % (len(bf[1]), BOX_FRAME_PX))
             spins = render_reward_spins(sc14)
             for nm, im in spins:
                 ex.textures.append(('generada', ('rw3d_' + nm)[:31], im, True))
