@@ -58,6 +58,9 @@ static void col_cache_init(void)
     for (int i = 0; i < gd.nnodes; i++) if (gd.nodes[i].parent < 0) calc_subcol(i);
 }
 
+/* r->col es el collider.enabled de Unity: empieza con el valor de la escena (scene_init) y lo cambian los scripts.
+ * Antes tambien se exigia el valor de la escena: en la 1.5.2 la esfera de randomPickup viene apagada y la enciende
+ * PickupDefault.OnActivate, asi que ningun power-up (ni la caja) se podia coger; las letras si (traen su esfera) */
 static void add_node_cols(int n)
 {
     const NodeRT *r = &nrt[n];
@@ -65,7 +68,7 @@ static void add_node_cols(int n)
     const uint32_t *b = ccol[n];
     int ty = ctype[n];
     const M34 *w = &r->world;
-    if (ty == C_BOX && b[1]) {
+    if (ty == C_BOX) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_BOX; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;
@@ -78,7 +81,7 @@ static void add_node_cols(int n)
             (&c->he.x)[i] = fabsf(sz[i] * l * 0.5f);
         }
         aabb_from_box(c);
-    } else if (ty == C_SPHERE && b[1]) {
+    } else if (ty == C_SPHERE) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_SPHERE; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;
@@ -90,7 +93,7 @@ static void add_node_cols(int n)
         c->r = u2f(b[5]) * s;
         c->bmin = v3sub(c->p0, v3(c->r, c->r, c->r));
         c->bmax = v3add(c->p0, v3(c->r, c->r, c->r));
-    } else if (ty == C_CAPSULE && b[1]) {
+    } else if (ty == C_CAPSULE) {
         Col *c = &cols[ncols++];
         c->node = n; c->type = COL_CAPSULE; c->trigger = b[0];
         c->layer = gd.nodes[n].layer; c->tag = gd.nodes[n].tag;

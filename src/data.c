@@ -550,24 +550,65 @@ void data_board_clips_free(void)
 static int bclip_n = -1;
 static uint32_t *bclip_off;
 static char (*bclip_name)[48];
+/* SSA2: las rutas de los huesos van en una tabla propia del archivo (el mismo boardanim.bin sirve para el mundo
+ * clasico y el de la 1.5.2, y cada world.bin tiene su tabla de cadenas). bstr_map: indice propio -> gd.strings */
+static uint16_t *bstr_map;
+static int bstr_n;
+
+/* indice en gd.strings de esa cadena; si no esta se anade al final */
+static int gd_string_id(const char *s)
+{
+    for (int i = 0; i < gd.nstrings; i++) if (!strcmp(gd.strings[i], s)) return i;
+    if (gd.nstrings >= 65535) return 0;
+    char **ns = realloc(gd.strings, sizeof(char *) * (gd.nstrings + 1));
+    char *c = malloc(strlen(s) + 1);
+    if (!ns || !c) { if (ns) gd.strings = ns; free(c); return 0; }
+    gd.strings = ns;
+    strcpy(c, s);
+    gd.strings[gd.nstrings] = c;
+    return gd.nstrings++;
+}
 
 static void board_clip_index(FILE *f)
 {
     bclip_n = 0;
-    uint8_t h[8];
-    if (fread(h, 1, 8, f) != 8 || memcmp(h, "SSA1", 4)) return;
+    uint8_t h[12];
+    if (fread(h, 1, 8, f) != 8) return;
+    int v2 = !memcmp(h, "SSA2", 4);
+    if (!v2 && memcmp(h, "SSA1", 4)) return;
     int nc = rd32(h + 4);
+    uint32_t stroff = 0;
+    if (v2) {
+        if (fread(h + 8, 1, 4, f) != 4) return;
+        stroff = rd32(h + 8);
+    }
     bclip_off = malloc(4 * (nc + 1));
     bclip_name = malloc(48 * (nc ? nc : 1));
     if (!bclip_off || !bclip_name || (int)fread(bclip_off, 4, nc, f) != nc) return;
     fseek(f, 0, SEEK_END);
-    bclip_off[nc] = ftell(f);
+    bclip_off[nc] = v2 ? stroff : (uint32_t)ftell(f);
     for (int k = 0; k < nc; k++) {
         char nm[48];
         fseek(f, bclip_off[k], SEEK_SET);
         if (fread(nm, 1, 48, f) != 48) return;
         int l = (unsigned char)nm[0]; if (l > 47) l = 47;
         memcpy(bclip_name[k], nm + 1, l); bclip_name[k][l] = 0;
+    }
+    if (v2) {
+        uint8_t c4[4];
+        fseek(f, stroff, SEEK_SET);
+        if (fread(c4, 1, 4, f) != 4) return;
+        int ns = rd32(c4);
+        bstr_map = malloc(2 * (ns ? ns : 1));
+        if (!bstr_map) return;
+        for (int i = 0; i < ns; i++) {
+            char s[256];
+            int l = fgetc(f);
+            if (l < 0 || (int)fread(s, 1, l, f) != l) return;
+            s[l] = 0;
+            bstr_map[i] = (uint16_t)gd_string_id(s);
+        }
+        bstr_n = ns;
     }
     bclip_n = nc;
 }
@@ -599,7 +640,11 @@ int data_board_clips_load(const char *const *names, int n)
                 if (!nc2) { free(buf); break; }
                 gd.clips = nc2;
                 memset(&gd.clips[gd.nclips], 0, sizeof(Clip));
-                parse_clip(buf, &gd.clips[gd.nclips++]);
+                Clip *cl = &gd.clips[gd.nclips++];
+                parse_clip(buf, cl);
+                /* rutas de los huesos: de la tabla del archivo a la de este mundo (las que no esten, a ninguna) */
+                for (int t = 0; t < cl->ntracks && bstr_map; t++)
+                    cl->tracks[t].path = cl->tracks[t].path < bstr_n ? bstr_map[cl->tracks[t].path] : 0;
                 board_clip_buf[board_nbuf++] = buf;
                 added++;
             }

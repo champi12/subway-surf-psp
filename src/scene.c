@@ -2,6 +2,7 @@
  * Selector/Randomizer/RandomizerTarget/SpawnPoint, Group, RandomizeOffset, Mirror, MovingTrain, MovingCoin,
  * CoinPool, CoinPlaceholder, CoinLine, CoinJumpCurve, PickupDefault, PickupRotate, RendererActivator.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
@@ -320,6 +321,14 @@ static int moving_nodes[MAX_MOVING];
 static int moving_auto[MAX_MOVING];
 static int nmoving;
 
+/* el enabled del collider tal y como viene en la escena (1 si el nodo no tiene) */
+static int scene_col_enabled(int n)
+{
+    const uint32_t *c;
+    if ((c = node_comp(n, C_BOX, NULL)) || (c = node_comp(n, C_SPHERE, NULL)) || (c = node_comp(n, C_CAPSULE, NULL))) return c[1] != 0;
+    return 1;
+}
+
 static void moving_add(int n)
 {
     for (int i = 0; i < nmoving; i++) if (moving_nodes[i] == n) { moving_auto[i] = 0; return; }
@@ -327,7 +336,7 @@ static void moving_add(int n)
     if (nmoving < MAX_MOVING) {
         moving_auto[nmoving] = 0;
         moving_nodes[nmoving++] = n;
-        nrt[n].col = 1;
+        nrt[n].col = scene_col_enabled(n);
         if (nmoving > peak && nmoving > MAX_MOVING * 3 / 4) dlog("Objetos en movimiento: nuevo pico %d de %d", peak = nmoving, MAX_MOVING);
         return;
     }
@@ -470,6 +479,52 @@ void scene_letter_picked(int n)
         if (node_comp(k, C_DAILYLETTER, NULL)) { nrt[k].picked = 1; letter_show(k); return; }
 }
 
+#if DEVLOG
+/* diagnostico: power-ups visibles por delante; al pasar a su lado sin cogerlo se escribe por que */
+#define MAX_PKDIAG 16
+static int pkdiag[MAX_PKDIAG], npkdiag;
+void scene_pickup_diag(V3 ch, int (*overlaps)(int col_node))
+{
+    for (int i = 0; i < npkdiag; i++) {
+        int n = pkdiag[i];
+        V3 p = m34_pos(&nrt[n].world);
+        if (p.z > ch.z) continue;
+        pkdiag[i--] = pkdiag[--npkdiag];
+        if (nrt[n].picked || !nrt[n].active) continue;
+        if (fabsf(p.x - ch.x) > 8.0f || fabsf(p.y - ch.y) > 25.0f) continue;   /* en otro carril o muy por encima */
+        int pc = find_parent_collider(n);
+        dlog("POWERUP %s no cogido: pos %.0f %.0f %.0f, personaje %.0f %.0f %.0f, collider %s col %d activo %d toca %d",
+             gd.strings[gd.nodes[n].name], p.x, p.y, p.z, ch.x, ch.y, ch.z, pc >= 0 ? gd.strings[gd.nodes[pc].name] : "-",
+             pc >= 0 ? nrt[pc].col : -1, pc >= 0 ? nrt[pc].active : -1, pc >= 0 && overlaps ? overlaps(pc) : -1);
+        if (pc >= 0) {
+            const uint32_t *sc = node_comp(pc, C_SPHERE, NULL);
+            char path[256]; int l = 0;
+            for (int k = pc; k >= 0 && l < 200; k = gd.nodes[k].parent)
+                l += snprintf(path + l, sizeof(path) - l, "%s[a%d h%d t%d]<", gd.strings[gd.nodes[k].name], nrt[k].active, nrt[k].hidden, nrt[k].taken);
+            dlog("   esfera %d enabled %d trig %d r %.1f | %s", sc != NULL, sc ? (int)sc[1] : -1, sc ? (int)sc[0] : -1, sc ? u2f(sc[5]) : 0, path);
+        }
+    }
+}
+#ifdef AT_PKTEST
+int scene_pickup_ahead(float z, V3 *out)
+{
+    float best = 1e9f;
+    for (int i = 0; i < npkdiag; i++) {
+        int n = pkdiag[i];
+        if (nrt[n].picked || !nrt[n].active) continue;
+        V3 p = m34_pos(&nrt[n].world);
+        if (p.z > z && p.z - z < best) { best = p.z - z; *out = p; }
+    }
+    return best < 1e9f;
+}
+#endif
+static void pkdiag_add(int n)
+{
+    for (int i = 0; i < npkdiag; i++) if (pkdiag[i] == n) return;
+    if (npkdiag < MAX_PKDIAG) pkdiag[npkdiag++] = n;
+}
+#endif
+
 static void obj_activate(int n)
 {
     const uint32_t *c;
@@ -493,6 +548,9 @@ static void obj_activate(int n)
         if ((int)c[0] >= 0) nrt[c[0]].rend = 1;
         scene_glow_visible((int)c[1], 1);
         nrt[n].picked = 0;
+#if DEVLOG
+        pkdiag_add(n);
+#endif
     }
     if (node_comp(n, C_DAILYLETTER, NULL)) {
         nrt[n].picked = 0;

@@ -93,5 +93,8 @@ void scene_on_chunk_laid(int chunk);
 /* palabra del dia */
 void scene_set_daily_letter(char l);   /* letra que sale en la via (0: ninguna) */
 void scene_letter_picked(int node);
+#if DEVLOG
+void scene_pickup_diag(V3 ch, int (*overlaps)(int col_node));   /* registro: power-ups que se pasan sin coger */
+#endif
 
 #endif

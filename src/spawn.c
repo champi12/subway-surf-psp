@@ -27,6 +27,12 @@ void spawn_restart(void)
 #endif
     spawn_z = 250.0f * DISTANCE_PER_METER;
     spawn_spacing = 300.0f * DISTANCE_PER_METER;
+#ifdef AT_PKTEST
+    /* prueba: power-ups muy seguidos y sin letras (el personaje va a por ellos) */
+    pk[0].prob = 0; pk[2].dist_min = 0; pk[5].dist_min = 0; pk[5].prob = 25.0f;
+    spawn_z = 40.0f * DISTANCE_PER_METER;
+    spawn_spacing = 50.0f * DISTANCE_PER_METER;
+#endif
     for (int i = 0; i < 6; i++) pk[i].spawn_z = -FLT_MAX;
 }
 

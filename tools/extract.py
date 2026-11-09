@@ -756,9 +756,16 @@ def eval_curve(keys, t, comp=None):
     return hermite(keys[lo], keys[hi], t, comp)
 
 
-def export_anims(ex):
-    out = bytearray(b'SSA1')
+def export_anims(ex, local_strings=False):
+    # local_strings: las rutas de los huesos van en una tabla propia al final (SSA2). boardanim.bin vale para todos
+    # los mundos (data/ y data/w15) y cada world.bin tiene su propia tabla de cadenas: con indices de la del mundo
+    # clasico, en el de la 1.5.2 las pistas caian en huesos equivocados y el personaje se rompia en la tabla
+    strs = Strings() if local_strings else ex.strings
+    out = bytearray(b'SSA2' if local_strings else b'SSA1')
     out += struct.pack('<I', len(ex.clips))
+    hdr = 8 + (4 if local_strings else 0)
+    if local_strings:
+        out += b'\0\0\0\0'      # posicion de la tabla de cadenas (se rellena al final)
     body = bytearray()
     offs = []
     for co in ex.clips:
@@ -787,7 +794,7 @@ def export_anims(ex):
             fn = e['functionName'].encode()[:31]
             body += struct.pack('<f', e['time']) + struct.pack('<B', len(fn)) + fn.ljust(31, b'\0')
         for path, tr in tracks.items():
-            pb = ex.strings.get(path)
+            pb = strs.get(path)
             flags = (1 if 'pos' in tr else 0) | (2 if 'rot' in tr else 0) | (4 if 'scl' in tr else 0)
             body += struct.pack('<HH', pb, flags)
             for f in range(nfr):
@@ -801,8 +808,13 @@ def export_anims(ex):
                 if 'scl' in tr:
                     body += struct.pack('<3f', *[eval_curve(tr['scl'], t, c_) for c_ in 'xyz'])
     for o in offs:
-        out += struct.pack('<I', o + 8 + 4 * len(offs))
+        out += struct.pack('<I', o + hdr + 4 * len(offs))
     out += body
+    if local_strings:
+        while len(out) % 4:
+            out += b'\0'
+        struct.pack_into('<I', out, 8, len(out))
+        out += strs.blob()
     return bytes(out)
 
 
@@ -2060,8 +2072,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     boardanim = None
     if boards is not None and boards.clips:
         from types import SimpleNamespace
-        # mismo formato que anim.bin; las rutas de los huesos van en las cadenas de world.bin (se escribe despues)
-        boardanim = export_anims(SimpleNamespace(clips=boards.clips, strings=ex.strings))
+        # como anim.bin, pero con sus propias cadenas: el mismo archivo sirve para los dos mundos
+        boardanim = export_anims(SimpleNamespace(clips=boards.clips, strings=None), local_strings=True)
         print('  boardanim.bin: %d animaciones de las tablas, %d KB (se cargan solo las de la elegida)' %
               (len(boards.clips), len(boardanim) // 1024))
     print('Exportando audio...')

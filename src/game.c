@@ -1239,6 +1239,18 @@ static void hit_by_train_sequence(void)
 #define MAX_OVER 64
 static int over_prev[MAX_OVER], nover_prev;
 
+#if DEVLOG
+static int diag_overlaps(int node)
+{
+    V3 c = v3add(cc.pos, col_center);
+    float half = col_height * 0.5f - col_radius;
+    if (half < 0) half = 0;
+    V3 a = v3sub(c, v3(0, half, 0)), b = v3add(c, v3(0, half, 0));
+    for (int i = 0; i < ncols; i++) if (cols[i].node == node) return 1 + capsule_overlaps(a, b, col_radius, &cols[i]);
+    return 0;   /* 0: no esta en la lista de colliders; 1: esta pero no toca; 2: toca */
+}
+#endif
+
 static void check_triggers(void)
 {
     if (!nrt[n_colChar].active) { nover_prev = 0; return; }
@@ -3317,9 +3329,14 @@ void game_update(float dt)
         }
     }
     if (dw_next_t > 0 && game_time >= dw_next_t) { dw_next_t = 0; scene_set_daily_letter(daily_next_letter()); }
-#ifdef AT_LETTERS
-    {   /* prueba: ir al carril de la letra que viene */
+#if defined(AT_LETTERS) || defined(AT_PKTEST)
+    {   /* prueba: ir al carril de la letra (o del power-up) que viene */
+#ifdef AT_PKTEST
+        extern int scene_pickup_ahead(float z, V3 *out);
+#define scene_letter_ahead scene_pickup_ahead
+#else
         extern int scene_letter_ahead(float z, V3 *out);
+#endif
         V3 lp;
         if (state == GS_RUNNING && !ch.trackMovement && scene_letter_ahead(cc.pos.z, &lp) && lp.z - cc.pos.z < 150.0f) {
             int best = 0; float bd = 1e9f;
@@ -3353,6 +3370,9 @@ void game_update(float dt)
         phys_build(extra_cols, 1, ch.z - PHYS_BEHIND, ch.z + PHYS_AHEAD);
         DBG_PHASE(main, "game_update: check_triggers");
         check_triggers();
+#if DEVLOG
+        scene_pickup_diag(v3add(cc.pos, col_center), diag_overlaps);
+#endif
         DBG_PHASE(main, "game_update: coins_tick (monedas e iman)");
         coins_tick(dt);
     }
