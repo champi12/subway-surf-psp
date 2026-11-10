@@ -837,12 +837,32 @@ void r_end_frame(void)
     }
     /* el fotograma anterior (ya dibujado) esta en fbp[kick_i] */
     int done_i = ge_busy ? kick_i : -1;
-    /* con tres imagenes el GE empieza ya el nuevo: dibuja en la tercera, que no se esta viendo */
-    if (nfb == 3) { ge_kick(); t_kick = sceKernelGetSystemTimeLow(); }
+    static unsigned int last_vc;   /* refresco en el que se empezo a ver la ultima imagen */
+    if (nfb == 3) {
+        /* Tres imagenes: la CPU no se queda esperando al refresco. El GE empieza ya el fotograma nuevo en la imagen que
+         * dejo de verse en el ultimo cambio (si ese cambio aun no ha llegado, se espera a el: solo pasa si el
+         * fotograma fue muy rapido) y la terminada se manda a la pantalla para el proximo refresco que toque
+         * (SETBUF_NEXTFRAME): mientras, la CPU ya prepara el siguiente. Antes la CPU esperaba al refresco despues de
+         * cada envio y perdia hasta 16 ms: con 27-31 ms de CPU (el puente, varios trenes en marcha) no llegaba */
+        DBG_PHASE(main, "r_end_frame: esperando el cambio de imagen anterior");
+        while ((int)(sceDisplayGetVcount() - last_vc) < 0) sceDisplayWaitVblankStart();
+        ge_kick();
+        t_kick = sceKernelGetSystemTimeLow();
+        if (done_i >= 0) {
+            /* 30 FPS fijos: cada imagen se ve al menos R_VBLANKS refrescos (se espera solo si va sobrado) */
+            DBG_PHASE(main, "r_end_frame: esperando el VBlank");
+            unsigned int vc = sceDisplayGetVcount();
+            while ((int)(vc + 1 - last_vc) < R_VBLANKS) { sceDisplayWaitVblankStart(); vc = sceDisplayGetVcount(); }
+            sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)fbp[done_i]), BUF_W, PSP_DISPLAY_PIXEL_FORMAT_565,
+                                  PSP_DISPLAY_SETBUF_NEXTFRAME);
+            last_vc = vc + 1;
+        }
+        r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
+        return;
+    }
     DBG_PHASE(main, "r_end_frame: esperando el VBlank");
     /* 30 FPS fijos como el original (Unity en movil): cada fotograma dura al menos R_VBLANKS refrescos de 60 Hz.
      * Asi el ritmo es estable en la consola en vez de saltar entre 60, 30 y 20. */
-    static unsigned int last_vc;
     unsigned int vc;
     do {
         sceDisplayWaitVblankStart();
@@ -853,7 +873,8 @@ void r_end_frame(void)
                                            PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
     r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
     /* con dos imagenes, el nuevo solo cuando ya se ve el anterior (dibuja en la que se dejaba de ver) */
-    if (nfb == 2) { ge_kick(); t_kick = sceKernelGetSystemTimeLow(); }
+    ge_kick();
+    t_kick = sceKernelGetSystemTimeLow();
 }
 
 /* lanza al GE la lista del fotograma preparado (dibuja en fbp[draw_i]) */
