@@ -297,6 +297,10 @@ int main(int argc, char **argv)
             if (frame_no % 90 == 26) pr |= PSP_CTRL_DOWN;
         }
 #endif
+#ifdef AT_JET
+        /* prueba: jetpack en el fotograma AT_JET (si se esta corriendo) */
+        { extern void game_debug_powerup(int k); if (frame_no == AT_JET) game_debug_powerup(3); }
+#endif
 #ifdef AT_PAGES
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
 #endif
@@ -494,6 +498,12 @@ int main(int argc, char **argv)
         r_ge_mark(7);   /* interfaz (cronometro del GE del devlog) */
         dbg_sect_ms[7] = (sceKernelGetSystemTimeLow() - th0) / 1000.0f;
         unsigned int t1 = sceKernelGetSystemTimeLow();
+#if defined(AUTOTEST) && defined(AT_SLOWLOG)
+        if (t1 - t0 > AT_SLOWLOG * 1000u)
+            dlog("LENTO cpu %.1f ms: logica %.1f | camara %.1f cielo %.1f via %.1f menu %.1f monedas %.1f personajes %.1f efectos %.1f interfaz %.1f",
+                 (t1 - t0) / 1000.0f, (tu1 - tu0) / 1000.0f, dbg_sect_ms[0], dbg_sect_ms[1], dbg_sect_ms[2], dbg_sect_ms[3],
+                 dbg_sect_ms[4], dbg_sect_ms[5], dbg_sect_ms[6], dbg_sect_ms[7]);
+#endif
         /* el fotograma de la captura sale sin el medidor del devlog (se ve el juego entero) */
         if (show_perf && !shot_pending) perf_draw(show_perf, cpu_ms, gpu_ms, fps);
         r_end_frame();

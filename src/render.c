@@ -35,7 +35,14 @@ static void vfpu_selftest(void);
 static int model_set;
 static int bones_zero;       /* huesos 1-3 a cero (modo aproximado de objetos pequenos) */
 static int vpos, ipos;
-static void *fbp0, *fbp1, *zbp;
+/* Imagenes: dos (dibujar una mientras se ve la otra) o tres en el mapa de la 1.5.2. Con dos, el GE espera a que se
+ * muestre la imagen anterior para empezar la siguiente: si tarda 34 ms (1 mas de lo que dura un fotograma a 30 FPS)
+ * pierde un refresco entero y ese fotograma dura 50 ms (20 FPS). Con tres empieza en cuanto acaba la anterior y un
+ * fotograma de 34 ms sale casi siempre a tiempo (los sitios cargados de la 1.5.2 estaban justo en 32-34 ms) */
+#define FB_BYTES (BUF_W * SCR_H * 2)
+static void *fbp[3], *zbp;
+static int nfb = 2, draw_i, kick_i = -1;
+static unsigned int vram_base = 0xCC000;
 static int cur_fb;
 
 int r_stat_verts, r_stat_tris, r_stat_draws, r_stat_clipped, r_stat_skin_cpu;
@@ -137,11 +144,11 @@ static unsigned char *tex_failed;
 RMem r_mem;
 
 static unsigned int vram_off;
-static int vram_free_bytes(void) { return 0x200000 - (int)((vram_off ? vram_off : 0xCC000) + 15 & ~15u); }
+static int vram_free_bytes(void) { return 0x200000 - (int)((vram_off ? vram_off : vram_base) + 15 & ~15u); }
 static void *vram_alloc(int bytes)
 {
     unsigned int off = vram_off;
-    if (!off) off = 0xCC000;
+    if (!off) off = vram_base;
     off = (off + 15) & ~15;
     if (off + bytes > 0x200000) return NULL;
     void *p = (void *)(0x04000000 + off);
@@ -153,7 +160,7 @@ static void *vram_alloc(int bytes)
  * carrera. Antes solo entraban las de 16 bits, por orden de carga: los trenes y "main" (que en la 1.5.2 solo usan la
  * sombra, efectos y el cielo) llenaban la VRAM y las de paleta del escenario (vias, paredes, objetos) se leian de la
  * RAM. Cada una entra solo si deja sitio a las de delante que aun no se han cargado */
-static const char *const vram_prio[] = {"environment", "props", "trains", "main", "enemies", "train_start"};
+static const char *const vram_prio[] = {"environment", "props", "trains", "enemies", "main", "train_start"};
 #define NVRAM_PRIO ((int)(sizeof(vram_prio) / sizeof(vram_prio[0])))
 static int vram_rank(const char *name)
 {
@@ -689,10 +696,11 @@ static void ge_signal_cb(int id);
 #endif
 void r_init(void)
 {
-    fbp0 = (void *)0;
-    fbp1 = (void *)(BUF_W * SCR_H * 2);
-    zbp = (void *)(BUF_W * SCR_H * 4);
-    r_mem.vram_fb = BUF_W * SCR_H * 2 * 3;
+    nfb = r_light ? 3 : 2;   /* el mapa clasico como siempre */
+    for (int i = 0; i < nfb; i++) fbp[i] = (void *)(FB_BYTES * i);
+    zbp = (void *)(FB_BYTES * nfb);
+    vram_base = FB_BYTES * (nfb + 1);
+    r_mem.vram_fb = FB_BYTES * (nfb + 1);
     r_mem.dlist_max = LIST_WORDS * 4;
     r_mem.vring_max = VRING_BYTES;
     r_mem.iring_max = IRING_BYTES;
@@ -705,8 +713,8 @@ void r_init(void)
     sceGuSetCallback(GU_CALLBACK_SIGNAL, ge_signal_cb);
 #endif
     sceGuStart(GU_DIRECT, dlists[0]);
-    sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);
-    sceGuDispBuffer(SCR_W, SCR_H, fbp1, BUF_W);
+    sceGuDrawBuffer(GU_PSM_5650, fbp[0], BUF_W);
+    sceGuDispBuffer(SCR_W, SCR_H, fbp[1], BUF_W);
     sceGuDepthBuffer(zbp, BUF_W);
     sceGuOffset(2048 - SCR_W / 2, 2048 - SCR_H / 2);
     sceGuViewport(2048, 2048, SCR_W, SCR_H);
@@ -756,7 +764,7 @@ void r_begin_frame(unsigned int clear)
     sceGuFog(r_fog_start, r_fog_end, r_fog_color);
     sceGuDisable(GU_FOG); cur_fog = 0;
     cur_tex = -2; cur_blend = -1; cur_color = 0; cur_st[0] = -1;
-    sceGuDrawBufferList(GU_PSM_5650, frame_par ? fbp1 : fbp0, BUF_W);
+    sceGuDrawBufferList(GU_PSM_5650, fbp[draw_i], BUF_W);
     sceGuClearColor(clear);
     sceGuClearDepth(0);
     sceGuDepthMask(GU_FALSE);
@@ -775,6 +783,7 @@ void r_begin_frame(unsigned int clear)
 }
 
 float r_wait_ms;
+static void ge_kick(void);
 
 #if DEVLOG
 /* Cronometro del GE (solo en la version de pruebas): marcas (sceGuSignal) en la lista de cada fotograma; el GE avisa
@@ -821,7 +830,15 @@ void r_end_frame(void)
     if (t_kick) {
         r_load_ms = (sceKernelGetSystemTimeLow() - t_kick) / 1000.0f;
         dist_adapt(r_load_ms);
+#if DEVLOG
+        /* con tres imagenes el GE no espera a nadie: lo que tarda es lo que marcan sus avisos */
+        if (nfb == 3 && r_ge_total > 0) r_load_ms = r_ge_total;
+#endif
     }
+    /* el fotograma anterior (ya dibujado) esta en fbp[kick_i] */
+    int done_i = ge_busy ? kick_i : -1;
+    /* con tres imagenes el GE empieza ya el nuevo: dibuja en la tercera, que no se esta viendo */
+    if (nfb == 3) { ge_kick(); t_kick = sceKernelGetSystemTimeLow(); }
     DBG_PHASE(main, "r_end_frame: esperando el VBlank");
     /* 30 FPS fijos como el original (Unity en movil): cada fotograma dura al menos R_VBLANKS refrescos de 60 Hz.
      * Asi el ritmo es estable en la consola en vez de saltar entre 60, 30 y 20. */
@@ -832,11 +849,17 @@ void r_end_frame(void)
         vc = sceDisplayGetVcount();
     } while (vc - last_vc < R_VBLANKS);
     last_vc = vc;
-    if (ge_busy) sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)(frame_par ? fbp0 : fbp1)), BUF_W,
-                                       PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
+    if (done_i >= 0) sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)fbp[done_i]), BUF_W,
+                                           PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
     r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
+    /* con dos imagenes, el nuevo solo cuando ya se ve el anterior (dibuja en la que se dejaba de ver) */
+    if (nfb == 2) { ge_kick(); t_kick = sceKernelGetSystemTimeLow(); }
+}
+
+/* lanza al GE la lista del fotograma preparado (dibuja en fbp[draw_i]) */
+static void ge_kick(void)
+{
     DBG_PHASE(main, "r_end_frame: enviando la lista al GE");
-    /* lanza el fotograma nuevo */
 #if DEVLOG
     for (int k = 0; k < R_GE_MARKS; k++) ge_mark_t[k] = 0;
     ge_kick_t = sceKernelGetSystemTimeLow();
@@ -844,8 +867,9 @@ void r_end_frame(void)
     sceGuStart(GU_DIRECT, kick_list[frame_par]);
     sceGuCallList(dlist);
     sceGuFinish();
-    t_kick = sceKernelGetSystemTimeLow();
     ge_busy = 1;
+    kick_i = draw_i;
+    draw_i = (draw_i + 1) % nfb;
     frame_par ^= 1;
 }
 
@@ -854,7 +878,7 @@ void r_present_last(void)
     if (!ge_busy) return;
     sceGuSync(0, 0);
     sceDisplayWaitVblankStart();
-    sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)(frame_par ? fbp0 : fbp1)), BUF_W,
+    sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)fbp[kick_i]), BUF_W,
                           PSP_DISPLAY_PIXEL_FORMAT_565, PSP_DISPLAY_SETBUF_IMMEDIATE);
     ge_busy = 0;
 }

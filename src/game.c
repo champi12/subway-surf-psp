@@ -2308,6 +2308,9 @@ static void running_tick(float dt)
 static void start_jetpack(int headstart, float hs_dist)
 {
     if (state == GS_JETPACK) return;
+#if DEVLOG
+    unsigned int jt0 = sceKernelGetSystemTimeLow(), jt1, jt2, jt3;
+#endif
     jp.headStart = headstart;
     jp.headStartDistance = hs_dist;
     jp.phase = 0;
@@ -2322,6 +2325,9 @@ static void start_jetpack(int headstart, float hs_dist)
     ch.shadow_on = 0;
     an.run = "jetpack_forward"; an.dodgeLeft = "jetpack_forward"; an.dodgeRight = "jetpack_forward";
     anim_crossfade(&anim_char, an.run, 0.3f);
+#if DEVLOG
+    jt1 = sceKernelGetSystemTimeLow();
+#endif
     jp.cam_off0 = v3sub(cam_pos, cc.pos);
     jp.aim0 = CAM_AIM;
     jp.startY = cc.pos.y;
@@ -2333,6 +2339,9 @@ static void start_jetpack(int headstart, float hs_dist)
     float aheadDist = jp.speed * JET_FLY_AHEAD;
     float jd = aheadDist + flyDist;
     jd = track_lay_jetpack_chunks(ch.z, jd) - JET_STOP_BEFORE_LANDING * normalized_speed();
+#if DEVLOG
+    jt2 = sceKernelGetSystemTimeLow();
+#endif
     float extDur = jd / jp.speed;
     jp.extFly = extDur - JET_FLY_AHEAD;
     flyDist = jp.extFly * jp.speed;
@@ -2367,6 +2376,11 @@ static void start_jetpack(int headstart, float hs_dist)
     jp.cam_tgt0 = cam_target;
     scene_set_active_recursive(n_jetParticles, 1);
     jp.phase = 1;
+#if DEVLOG
+    jt3 = sceKernelGetSystemTimeLow();
+    dlog("JETPACK inicio %.1f ms: estado, sonido y animacion %.1f | tramos del vuelo %.1f | monedas del aire %.1f",
+         (jt3 - jt0) / 1000.0f, (jt1 - jt0) / 1000.0f, (jt2 - jt1) / 1000.0f, (jt3 - jt2) / 1000.0f);
+#endif
 }
 
 static void jetpack_tick(float dt)
