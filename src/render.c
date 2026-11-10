@@ -684,6 +684,9 @@ void r_init_materials(void)
 }
 
 /* necesita el directorio de texturas (gd.ntex): se llama nada mas leer tex.bin, para la pantalla de carga */
+#if DEVLOG
+static void ge_signal_cb(int id);
+#endif
 void r_init(void)
 {
     fbp0 = (void *)0;
@@ -698,6 +701,9 @@ void r_init(void)
     tex_nmip = calloc(gd.ntex > 0 ? gd.ntex : 1, 1);
     tex_mip = calloc(gd.ntex > 0 ? gd.ntex : 1, sizeof(*tex_mip));
     sceGuInit();
+#if DEVLOG
+    sceGuSetCallback(GU_CALLBACK_SIGNAL, ge_signal_cb);
+#endif
     sceGuStart(GU_DIRECT, dlists[0]);
     sceGuDrawBuffer(GU_PSM_5650, fbp0, BUF_W);
     sceGuDispBuffer(SCR_W, SCR_H, fbp1, BUF_W);
@@ -770,6 +776,29 @@ void r_begin_frame(unsigned int clear)
 
 float r_wait_ms;
 
+#if DEVLOG
+/* Cronometro del GE (solo en la version de pruebas): marcas (sceGuSignal) en la lista de cada fotograma; el GE avisa
+ * al pasar por cada una y se apunta la hora. Asi el devlog dice cuanto tarda el GE en cada bloque (via, trenes,
+ * monedas, personajes, efectos, interfaz), que es lo que en la consola baja a 20 FPS en los sitios cargados */
+static volatile unsigned int ge_mark_t[R_GE_MARKS];
+static unsigned int ge_kick_t;
+float r_ge_ms[R_GE_MARKS], r_ge_total;
+static void ge_signal_cb(int id) { if (id >= 0 && id < R_GE_MARKS) ge_mark_t[id] = sceKernelGetSystemTimeLow(); }
+void r_ge_mark(int id) { if (id >= 0 && id < R_GE_MARKS) sceGuSignal(GU_SIGNAL_NOWAIT, id); }
+static void ge_marks_read(void)
+{
+    unsigned int prev = ge_kick_t;
+    for (int k = 0; k < R_GE_MARKS; k++) {
+        unsigned int t = ge_mark_t[k];
+        r_ge_ms[k] = t && (int)(t - prev) >= 0 ? (t - prev) / 1000.0f : 0.0f;
+        if (t && (int)(t - prev) >= 0) prev = t;
+    }
+    r_ge_total = (prev - ge_kick_t) / 1000.0f;
+}
+#else
+void r_ge_mark(int id) { (void)id; }
+#endif
+
 void r_end_frame(void)
 {
     r_mem.dlist_used = sceGuCheckList();
@@ -778,12 +807,16 @@ void r_end_frame(void)
     if (r_mem.dlist_used > r_mem.dlist_peak) r_mem.dlist_peak = r_mem.dlist_used;
     if (vpos > r_mem.vring_peak) r_mem.vring_peak = vpos;
     if (ipos > r_mem.iring_peak) r_mem.iring_peak = ipos;
+    r_ge_mark(R_GE_MARKS - 1);   /* fin del fotograma (solo devlog) */
     sceGuFinish();
     sceKernelDcacheWritebackAll();
     unsigned int t0 = sceKernelGetSystemTimeLow();
     /* espera a que el GE termine el fotograma anterior y lo muestra en el siguiente VBlank */
     DBG_PHASE(main, "r_end_frame: esperando a que el GE termine (sceGuSync)");
     if (ge_busy) sceGuSync(0, 0);
+#if DEVLOG
+    if (ge_busy) ge_marks_read();
+#endif
     static unsigned int t_kick;
     if (t_kick) {
         r_load_ms = (sceKernelGetSystemTimeLow() - t_kick) / 1000.0f;
@@ -804,6 +837,10 @@ void r_end_frame(void)
     r_wait_ms = (sceKernelGetSystemTimeLow() - t0) / 1000.0f;
     DBG_PHASE(main, "r_end_frame: enviando la lista al GE");
     /* lanza el fotograma nuevo */
+#if DEVLOG
+    for (int k = 0; k < R_GE_MARKS; k++) ge_mark_t[k] = 0;
+    ge_kick_t = sceKernelGetSystemTimeLow();
+#endif
     sceGuStart(GU_DIRECT, kick_list[frame_par]);
     sceGuCallList(dlist);
     sceGuFinish();
@@ -1324,6 +1361,9 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
                 r_stat_draws++;
                 r_stat_hw += pt->nv;
                 r_stat_tris += ni / 3;
+#ifdef AUTOTEST
+                if (mi < 512) r_mesh_verts[mi] += pt->nv;   /* perf.log de las pruebas: vertices por malla */
+#endif
             }
             continue;
         }

@@ -336,8 +336,18 @@ static struct {
     int sum_vcpu, sum_vhw, sum_vskin, sum_seam;
     float sum_sect[8];
     float sum_load, max_load, min_dist;
+    float sum_ge[R_GE_MARKS], sum_ge_tot, max_ge_tot, worst_ge[R_GE_MARKS];
+    int worst_ge_draws, worst_ge_tris, worst_ge_vhw;
     unsigned long long t0;
 } win;
+
+/* lo que tardo el GE en cada bloque (marcas de r_ge_mark): borrado, cielo, via, entorno del menu, monedas,
+ * personajes, efectos y transparentes, interfaz y el resto (medidor del devlog) */
+static void ge_line(char *o, int n, const float *g, float tot)
+{
+    snprintf(o, n, "total %.1f: borrado %.1f | cielo %.1f | via %.1f | menu %.1f | monedas %.1f | personajes %.1f | "
+             "efectos %.1f | interfaz %.1f | resto %.1f", tot, g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8] + g[9]);
+}
 static int last_state = -1;
 static float run_start_t;
 
@@ -364,6 +374,16 @@ static void stat_line(void)
          win.sum_upd / win.frames, win.sum_phys / win.frames, win.sum_draw / win.frames,
          win.sum_vcpu / win.frames, win.sum_vhw / win.frames);
     float f = 1.0f / win.frames;
+    {
+        float avg[R_GE_MARKS];
+        char b1[256], b2[256];
+        for (int k = 0; k < R_GE_MARKS; k++) avg[k] = win.sum_ge[k] * f;
+        ge_line(b1, sizeof(b1), avg, win.sum_ge_tot * f);
+        ge_line(b2, sizeof(b2), win.worst_ge, win.max_ge_tot);
+        dlog("GE ms media %s", b1);
+        dlog("GE ms peor  %s (dibujos %d, triangulos %d, vertices %d)", b2, win.worst_ge_draws, win.worst_ge_tris,
+             win.worst_ge_vhw);
+    }
     dlog("DIBUJO via %.1f | personajes %.1f (piel por CPU %d vert) | monedas %.1f | efectos y transparentes %.1f | entorno menu %.1f | "
          "cielo %.1f | interfaz %.1f ms | recorte por software: %d triangulos (%.1f trozos repetidos en el GE)",
          win.sum_sect[2] * f, win.sum_sect[5] * f, win.sum_vskin / win.frames, win.sum_sect[4] * f, win.sum_sect[6] * f, win.sum_sect[3] * f,
@@ -412,6 +432,14 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
     win.sum_seam += r_stat_seam;
     win.sum_vskin += r_stat_skin_cpu;
     for (int k = 0; k < 8; k++) win.sum_sect[k] += dbg_sect_ms[k];
+    for (int k = 0; k < R_GE_MARKS; k++) win.sum_ge[k] += r_ge_ms[k];
+    win.sum_ge_tot += r_ge_total;
+    if (r_ge_total > win.max_ge_tot && n > 5) {
+        win.max_ge_tot = r_ge_total;
+        for (int k = 0; k < R_GE_MARKS; k++) win.worst_ge[k] = r_ge_ms[k];
+        /* los contadores son del fotograma que se acaba de preparar: casi iguales a los del que dibujo el GE */
+        win.worst_ge_draws = r_stat_draws; win.worst_ge_tris = r_stat_tris; win.worst_ge_vhw = r_stat_hw;
+    }
     if (cpu_ms > win.max_cpu) win.max_cpu = cpu_ms;
     win.sum_wait += wait_ms;
     win.sum_load += r_load_ms;
@@ -432,6 +460,11 @@ void dbg_frame(float frame_ms, float cpu_ms, float wait_ms)
         dlog("TIRON %.0f ms (cpu %.1f ms, ge %.1f ms, otros %.1f ms) en %s a %d m%s", frame_ms, prev_cpu, prev_wait,
              other > 0 ? other : 0, state_name(ginfo.state), ginfo.meters,
              prev_loads ? " - cargando texturas de la Memory Stick" : "");
+        if (r_ge_total > 25.0f) {
+            char b[256];
+            ge_line(b, sizeof(b), r_ge_ms, r_ge_total);
+            dlog("   GE ms %s", b);
+        }
     }
     prev_cpu = cpu_ms;
     prev_wait = wait_ms;

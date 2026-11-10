@@ -3666,7 +3666,7 @@ void game_draw(void)
     }
 #else
 #define SECT(i) (tnow = sceKernelGetSystemTimeLow(), dbg_sect_ms[i] = (tnow - tsec) / 1000.0f, tsec = tnow, \
-                 DBG_PHASE(main, sect_phase[i]))
+                 r_ge_mark(i), DBG_PHASE(main, sect_phase[i]))
 #endif
     static const char *const sect_phase[7] = {"game_draw: cielo", "game_draw: via", "game_draw: entorno del menu",
                                               "game_draw: monedas", "game_draw: personajes (Jake, inspector, perro)",

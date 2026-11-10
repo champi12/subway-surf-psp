@@ -491,6 +491,7 @@ int main(int argc, char **argv)
         DBG_PHASE(main, "hud_draw (interfaz)");
         unsigned int th0 = sceKernelGetSystemTimeLow();
         hud_draw();
+        r_ge_mark(7);   /* interfaz (cronometro del GE del devlog) */
         dbg_sect_ms[7] = (sceKernelGetSystemTimeLow() - th0) / 1000.0f;
         unsigned int t1 = sceKernelGetSystemTimeLow();
         /* el fotograma de la captura sale sin el medidor del devlog (se ve el juego entero) */
