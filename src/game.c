@@ -1411,15 +1411,21 @@ static void coins_tick(float dt)
             const Col *k = &cols[i];
             if (k->type != COL_SPHERE || nrt[k->node].taken || !node_comp(k->node, C_COIN, NULL)) continue;
             if (v3len(v3sub(k->p0, magc)) >= 60.0f + k->r) continue;
-            int ci = coin_spawn(v3sub(k->p0, v3(0, 6, 0)), -3);
+            /* En el original el collider de la moneda del tren esta quieto en la via (donde se cruza con Jake) y
+             * MovingCoin mueve solo su "pivot" (la moneda que se ve, por delante sobre el tren). CoinMagnet.Pull la
+             * atrae desde el pivot, desde donde se ve, y el vuelo dura lo que mide ese camino. Antes salia desde el
+             * collider, mucho mas cerca: la moneda lejana desaparecia y otra llegaba al momento */
+            int pv = gd.nodes[k->node].first_child;
+            V3 from = pv >= 0 ? m34_pos(&nrt[pv].world) : k->p0;
+            int ci = coin_spawn(v3sub(from, v3(0, 6, 0)), -3);
             if (ci < 0) { notify_pickup(k->node); continue; }   /* pool lleno: se recoge al momento */
             nrt[k->node].taken = 1;
             CoinRT *pc = &coins[ci];
             pc->collider = 0;
             pc->pulling = 1;
             pc->pull_t = game_time;
-            pc->pull_from = k->p0;
-            pc->pull_dur = v3len(v3sub(k->p0, cc.pos)) / (MAGNET_PULL * normalized_speed());
+            pc->pull_from = from;
+            pc->pull_dur = v3len(v3sub(from, cc.pos)) / (MAGNET_PULL * normalized_speed());
             if (pc->pull_dur < 0.01f) pc->pull_dur = 0.01f;
 #ifdef AUTOTEST
             dlog("MONEDA de tren en marcha atraida por el iman (vuelo %.2f s)", pc->pull_dur);

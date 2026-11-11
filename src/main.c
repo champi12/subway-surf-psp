@@ -297,6 +297,10 @@ int main(int argc, char **argv)
             if (frame_no % 90 == 26) pr |= PSP_CTRL_DOWN;
         }
 #endif
+#ifdef AT_MAGNET
+        /* prueba: iman cada AT_MAGNET fotogramas (si se esta corriendo) */
+        { extern void game_debug_powerup(int k); if (frame_no % AT_MAGNET == 0) game_debug_powerup(0); }
+#endif
 #ifdef AT_JET
         /* prueba: jetpack en el fotograma AT_JET (si se esta corriendo) */
         { extern void game_debug_powerup(int k); if (frame_no == AT_JET) game_debug_powerup(3); }
