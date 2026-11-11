@@ -1100,7 +1100,14 @@ static void shop_card(int i, float x, float y, int sel)
     float cx = x + CARD_W * 0.5f, cy = y + CARD_H * 0.5f;
     ui_sliced(a_ui, sel ? "button_fill_shopItem_green" : "button_fill_shopItem_gray", cx - 141 * K, y + 2, 278 * K, CARD_H - 4, K, C_WHITE);
     ui_sliced(a_ui, "button_generic_2_outline", cx - 145 * K, y - 1, 290 * K, CARD_H + 3, K, 0xffbfbfbfu);
-    spr_c(shop_items[i].icon, cx - 115 * K, cy - 2, 35 * K * 1.15f, 35 * K * 1.15f, C_WHITE);
+    if (!strcmp(shop_items[i].icon, "ui_booster")) {
+        /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7 por el conversor) */
+        static int tb = -2;
+        if (tb == -2) tb = data_tex_find("ui_booster");
+        float s = 35 * K * 1.15f;
+        if (tb >= 0) r_sprite(tb, cx - 115 * K - s * 0.5f, cy - 2 - s * 0.5f, s, s, 0, 0, 1, 1, C_WHITE);
+        else spr_c("icon_upgrades_doubleScore", cx - 115 * K, cy - 2, s, s, C_WHITE);
+    } else spr_c(shop_items[i].icon, cx - 115 * K, cy - 2, 35 * K * 1.15f, 35 * K * 1.15f, C_WHITE);
     labfit(0, cx - 93 * K, cy - 11, 18, 120, C_UPTITLE, 0, 1, TR(shop_items[i].name, shop_items[i].name_en));
     int am = shop_amount(i), pr = shop_price(i);
     /* precio arriba a la derecha */
@@ -1883,7 +1890,7 @@ static void draw_daily_popup(void)
     }
     /* premio del dia que toca (el de hoy, o el de manana si ya esta hecha) */
     float rx = x + w * 0.79f, ry = y + 82;
-    spr_any("background_splat", rx, ry, 120, 120, C_WHITE);
+    spr_any("background_splat", rx, ry, 120, 120, 0xff00b866u);   /* la mancha verde, como en las misiones */
     daily_reward_icon(next, rx, ry - 6, 1.0f);
     if (daily_prize(next)) {
         snprintf(buf, sizeof(buf), "%d", daily_prize(next));

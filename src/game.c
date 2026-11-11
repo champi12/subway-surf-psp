@@ -3508,7 +3508,7 @@ enum { SK_AMOUNT, SK_TIER, SK_BOX, SK_SKIP };
 const ShopItem shop_items[] = {
     /* nombres en ingles: los de Upgrades.cs del original */
     {"Hoverboard", "Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
-    {"Score Booster", "Score Booster", "icon_upgrades_doubleScore", SK_AMOUNT, 3},   /* 1.7: en lugar del headstart pequeno */
+    {"Score Booster", "Score Booster", "ui_booster", SK_AMOUNT, 3},   /* 1.7: en lugar del headstart pequeno (icono aparte) */
     {"Headstart 1000", "Headstart 1000", "icon_upgrades_headstart2000", SK_AMOUNT, 2},
     {"Caja misteriosa", "Mystery Box", "icon_upgrades_mysteryBox", SK_BOX, 0},
     {"Jetpack", "Jetpack", "icon_upgrades_jetpack", SK_TIER, PW_JETPACK},
