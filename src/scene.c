@@ -1099,6 +1099,22 @@ void track_deactivate_all(void)
     for (int i = 0; i < track_nactive; i++) chunk_deactivate(track_active[i]);
 }
 
+/* fin de carrera: el escenario no se dibuja (la libreta tapa todo), asi que se esconden ahi, unos pocos por fotograma,
+ * los tramos usados en la carrera. Antes se hacia todo al pulsar PLAY (20-30 ms tras carreras largas, un tiron al
+ * empezar la siguiente). Devuelve cuantos quedan por esconder */
+int track_hide_used_step(int max)
+{
+    int left = 0;
+    for (int i = 0; i < nchunks; i++) {
+        if (nrt[chunks[i].node].lpos.y == -1000.0f) continue;
+        if (max <= 0) { left++; continue; }
+        nrt[chunks[i].node].lpos.y = -1000.0f;
+        scene_update_world(chunks[i].node);
+        max--;
+    }
+    return left;
+}
+
 void track_restart(void)
 {
     lay_finish();

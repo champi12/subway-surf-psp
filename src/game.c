@@ -350,7 +350,7 @@ static int play_ci(const ClipInfo *c) { DBG_PHASE(main, "play_ci (sonido)"); ret
 static int board_sel = -1, board_owned;       /* fila de boards.bin; bit i: comprada */
 static int board_applied = -2, board_applied_full, board_base_states = -1, board_mesh_cur = -1, board_mat = -2;
 static uint32_t *hb_mesh_comp, hb_mesh0, hb_mat0;
-static int board_previewing, prev_mesh[16], nprev_mesh;
+static int board_previewing, prev_mesh[32], nprev_mesh;
 static void fx_load(void);
 static void fx_board_crash(void);
 static void fx_update(float dt);
@@ -461,8 +461,15 @@ static void board_apply_mode(int i, int full)
     board_find_mesh_comp();
     if (hb_mesh_comp) {
         if (board_mesh_cur >= 0) {
-            if (board_previewing && !full && nprev_mesh < 16) prev_mesh[nprev_mesh++] = board_mesh_cur;   /* se queda */
-            else { r_wait_idle(); data_mesh_release(board_mesh_cur); }
+            /* en la vista previa se quedan todas cargadas (una vez cada una: antes se apuntaba otra vez en cada paso, la
+             * lista se llenaba tras ~16 pasos y desde ahi cada tabla se soltaba y se volvia a leer de la Memory Stick:
+             * tirones de 50-180 ms y el sonido entrecortado al recorrer el carrusel) */
+            int kept = 0;
+            if (board_previewing && !full) {
+                for (int j = 0; j < nprev_mesh && !kept; j++) kept = prev_mesh[j] == board_mesh_cur;
+                if (!kept && nprev_mesh < 32) { prev_mesh[nprev_mesh++] = board_mesh_cur; kept = 1; }
+            }
+            if (!kept) { r_wait_idle(); data_mesh_release(board_mesh_cur); }
             board_mesh_cur = -1;
         }
         hb_mesh_comp[0] = hb_mesh0; hb_mesh_comp[3] = hb_mat0;
@@ -2599,6 +2606,9 @@ static void die_tick(float dt)
         set_node_active(n_meshSneakers, 0);
         set_node_active(n_meshJetpack, 0);
         set_node_active(n_meshHoverboard, 0);
+        /* si se salta la escena del inspector (X a partir de 0,5 s, como el original) antes de que acabe (0,88 s), su
+         * corrutina seguia y volvia a poner "caught" encima de la pose: de espaldas y sacudiendose en la libreta */
+        gu.catching = 0; gu.hit_train = 0;
         char_pose(ginfo.character);
     }
 }
@@ -3652,6 +3662,11 @@ void game_update(float dt)
     case GS_JETPACK: jetpack_tick(dt); break;
     case GS_DIEFALL: case GS_DIE: die_tick(dt); break;
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
+    case GS_GAMEOVER:
+        /* el escenario ya no se ve: se van escondiendo los tramos de la carrera (2 por fotograma, ~4 ms) mientras se
+         * mira el marcador, para que PLAY no tenga que hacerlo de golpe */
+        if (game_time - state_time > 0.3f) track_hide_used_step(2);
+        break;
     default: break;
     }
     /* mientras cae el personaje (~0,6 s) se leen en segundo plano las texturas de la pantalla de fin; antes se leian

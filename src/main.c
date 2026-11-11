@@ -480,8 +480,15 @@ int main(int argc, char **argv)
         /* y salta cada 40 fotogramas */
         { static int k; if (ginfo.state == GS_RUNNING && ++k % 40 == 0) pr |= PSP_CTRL_UP; }
 #endif
-#if !defined(AT_UI) && !defined(AT_CAUGHT) && !defined(AT_GOSTAY)
+#if defined(AT_GOWAIT)
+        /* se queda 2 s mirando el marcador (como una persona) antes de PLAY */
+        { static int gw; gw = ginfo.state == GS_GAMEOVER ? gw + 1 : 0; if (gw == 60) pr |= PSP_CTRL_CROSS; }
+#elif !defined(AT_UI) && !defined(AT_CAUGHT) && !defined(AT_GOSTAY)
         if (ginfo.state == GS_GAMEOVER) pr |= PSP_CTRL_CROSS;
+#endif
+#ifdef AT_CAUGHT
+        /* salta la escena del inspector a los ~0,55 s (antes de que acabe), como quien pulsa X enseguida */
+        { static int dn; dn = (ginfo.state == GS_DIEFALL || ginfo.state == GS_DIE) ? dn + 1 : 0; if (dn == 17) pr |= PSP_CTRL_CROSS; }
 #endif
         {
             extern void game_debug_powerup(int k);
