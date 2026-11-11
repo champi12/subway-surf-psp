@@ -1781,16 +1781,19 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
         # pantalla de personajes como la de la 1.4 (CharacterModelPreviewFactory): miniaturas del carrusel y, para
         # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
         prev = char_previews(sc14)
-        if prev and sc15 is not None:
-            # los que trae la 1.5.2 de mas (Elf Tricky): con el nombre de su malla, que es como los busca el juego
+        for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6')):
+            if not prev or scx is None:
+                continue
+            # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
+            # los busca el juego
             have = {c['name'] for c in prev[2]}
-            p15 = char_previews(sc15)
+            p15 = char_previews(scx)
             for c in (p15[2] if p15 else []):
                 if c['name'] not in have and c['name'] != 'zombiejake':
                     c = dict(c, name=c['mesh'].read().m_Name)
                     if c['name'] not in have:
                         prev[2].append(c)
-                        print('  miniatura y pose de la 1.5.2: %s' % c['name'])
+                        print('  miniatura y pose de la %s: %s' % (ver, c['name']))
         th = render_char_thumbs(prev) if prev else None
         if th:
             atlases.append({'name': 'CharThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 256, 'pixel': 1.0,
@@ -1819,7 +1822,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
             for c in prev[2]:
                 ex.clips.append(('pose', c['clip'], 'pose_' + c['name']))
         if boards is not None and boards.thumbs is not None:
-            atlases.append({'name': 'BoardThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 128, 'pixel': 1.0,
+            atlases.append({'name': 'BoardThumbs', 'tex': len(ex.textures), 'w': 256, 'h': boards.thumbs[0].size[1], 'pixel': 1.0,
                             'sprites': boards.thumbs[1], 'key': ('gen', 'BoardThumbs')})
             ex.textures.append(('generada', 'ui_boards', boards.thumbs[0], True))
         nb = build_notebook_atlas(sc15) if sc15 is not None else None
@@ -2076,12 +2079,17 @@ def unpack_apk(apk):
 BOARDS_15 = [(3, 'Freestyler', 45000, 2, 0), (1, 'Bouncer', 280000, 2, 1), (0, 'Hoverboard', 0, 0, 0),
              (2, 'Lowrider', 320000, 2, 2), (6, 'Starboard', 0, 1, 0), (4, 'Big Kahuna', 65000, 2, 0),
              (5, 'Superhero', 8000, 2, 0)]
+# la 1.6 anade 4 tablas (Hoverboards.cs de la 1.6), detras de las de la 1.5.2 para no cambiar las partidas guardadas.
+# unlock 3: con monedas, pero solo se compra en su temporada (Liberty: "New York Special", del 1 de diciembre al 1 de
+# febrero); las demas siempre
+BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0), (9, 'Skull Fire', 75000, 2, 0),
+                         (10, 'Liberty', 50000, 3, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
 
 
-def export_boards(sc15, ex, clip_names10):
+def export_boards(sc15, ex, clip_names10, table=None):
     """Las 7 tablas de la 1.5.2 (Hoverboard.hoverboardSelector): malla y textura de cada una (se leen solo mientras
     se usan), sus animaciones del personaje para correr, saltar, rodar... (HoverboardRendering) y boards.bin, la
     tabla que lee el juego. Las animaciones que ya estan en la 1.0 (h_run, h_jump...) no se repiten."""
@@ -2109,7 +2117,7 @@ def export_boards(sc15, ex, clip_names10):
     props = None
     rows = []
     thumb_src = []      # (nombre del sprite, malla) para las miniaturas
-    for btype, name, price, unlock, effect in BOARDS_15:
+    for btype, name, price, unlock, effect in (table or BOARDS_15):
         go = prefabs.get(btype)
         if go is None:
             continue
@@ -2153,7 +2161,7 @@ def export_boards(sc15, ex, clip_names10):
         gen.append(('gen', 'board_props', tex_rgba(props).resize((256, 256), Image.LANCZOS), True))
         # miniaturas para la pantalla de tablas (como las de personajes): de pie e inclinadas, 64x64 cada una
         texa = np.asarray(tex_rgba(props).convert('RGBA'))
-        sheet = Image.new('RGBA', (256, 128), (0, 0, 0, 0))
+        sheet = Image.new('RGBA', (256, 128 if len(thumb_src) <= 8 else 256), (0, 0, 0, 0))   # 4 por fila
         sprites = []
         rot = np.eye(4)
         rot[:3, :3] = quat_mat(np.array(euler_quat(-25.0, 0.0, 62.0)))
@@ -2455,13 +2463,14 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
     msc = sc if level_sc is sc else MultiScene([sc, level_sc])
     ex = Exporter(msc)
+    ex.sc16 = sc16   # contenido de la 1.6 (Tony, tablas) en la interfaz del mundo clasico
     trees = []
     for r in sc.roots('level0'):
         go = sc.go_tree(r)
@@ -2529,7 +2538,29 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         for c in ex.clips:
             if not isinstance(c, tuple):
                 names10.add(c.read_typetree()['m_Name'])
-        boards = export_boards(sc15, ex, names10)
+        # con la 1.6 todas las tablas salen de ella (la misma hoja de texturas para las 11)
+        boards = export_boards(sc16 or sc15, ex, names10, BOARDS_16 if sc16 is not None else BOARDS_15)
+        if boards is not None and sc16 is not None:
+            # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special" del 2 de diciembre al 1 de febrero)
+            for o in sc16.env.objects:
+                if o.type.name != 'SkinnedMeshRenderer':
+                    continue
+                d = o.read_typetree()
+                mo = sc16.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
+                if mo is None or mo.read().m_Name != 'tony':
+                    continue
+                mat = sc16.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
+                tex = None
+                for _, t in (mat.read_typetree()['m_SavedProperties']['m_TexEnvs'] if mat else []):
+                    tt = sc16.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    if tt is not None:
+                        tex = tt.read()
+                        break
+                if tex is not None:
+                    boards.meshes.append(mo)
+                    boards.gen.append(('gen', 'avatar_tony', tex_rgba(tex), True))
+                    print('  personaje de la 1.6: Tony')
+                break
         if boards is not None:
             # Elf Tricky (Characters.cs de la 1.5.2: 95000 monedas, solo en Navidad): con los personajes de la 1.4
             # en chars14.bin (mismo esqueleto de 18 huesos); se lee solo mientras se usa
@@ -2658,22 +2689,25 @@ def main():
     if apk15:
         print('Descomprimiendo el APK de la 1.5.2...')
         sc15 = Scene(unpack_apk(apk15))
+    sc16 = None
+    if apk16:
+        print('Descomprimiendo el APK de la 1.6...')
+        sc16 = Scene(unpack_apk(apk16))
     print('== Mundo clasico (data/)')
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15)
+    # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
     # Tricky siguen saliendo de la 1.5.2
     w16 = os.path.join(outdir, 'w16')
-    if apk16 and os.environ.get('WORLD16', '1') != '0':
-        print('Descomprimiendo el APK de la 1.6...')
-        sc16 = Scene(unpack_apk(apk16))
+    if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
         print('== Mapa de la 1.6 (data/w16/, en pruebas)')
-        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards)
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
     print('Listo.')

@@ -61,6 +61,9 @@ int board_is_owned(int row);
 int board_is_selected(int row);
 int board_effect(int row);
 int board_is_gift(int row);
+int board_step(int row, int dir);   /* siguiente tabla a la venta (salta las de temporada fuera de fecha) */
+int board_is_season(int row);
+int ny_season(void);
 int game_cloud_tex(void);         /* nubes del jetpack */
 int game_fx_get(int i, V3 *pos, float *size, unsigned int *col);   /* particulas del humo de la tabla */      /* la de regalo (FREE GIFT) */
 const char *char_name(int i);

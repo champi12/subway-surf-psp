@@ -363,6 +363,9 @@ static int board_default(void)
 }
 /* la normal es siempre tuya; las de monedas y la de regalo (Starboard, "FREE GIFT") hasta que se compran o se reclaman */
 static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1)); }
+int ny_season(void);
+/* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
+static int board_avail(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_SEASON || board_has(i) || ny_season()); }
 static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
 /* lista de animaciones de una accion: la de la tabla o, si no trae ninguna (Superhero, Starboard), la de la normal */
 static const BoardDef *board_anim_src(int i)
@@ -1932,18 +1935,35 @@ int halloween_season(void)
 #endif
 }
 
+/* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): en el original del 2 de diciembre al 1 de
+ * febrero (Characters.cs / Hoverboards de la 1.6); aqui empieza al acabar la Navidad, el 3 de enero, para no pisarla,
+ * y acaba igual, el 1 de febrero, cada ano */
+int ny_season(void)
+{
+#if defined(AT_NY)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return (t.month == 1 && t.day >= 3) || (t.month == 2 && t.day <= 1);
+#endif
+}
+
 /* segundos que quedan del evento (hasta el 5 de noviembre a las 00:00: el contador "13 days 03:12:34" de la 1.4) y
  * del dia (la palabra del dia cambia a medianoche) */
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
+    return halloween_season() || xmas_season() || ny_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
     int days;                                                  /* dias enteros despues de hoy */
     if (halloween_season()) days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;
     else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 2 : 2 - t.day;   /* hasta el 2 de enero */
+    else if (ny_season()) days = t.month == 1 ? 31 - t.day + 1 : 0;              /* hasta el 1 de febrero */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2795,7 +2815,7 @@ void game_init(void)
         if (board_sel >= 0 && board_sel < gd_nboards && gd_boards[board_sel].unlock == BOARD_FREE) board_owned |= 1 << board_sel;
         if (!board_has(board_sel)) board_sel = board_default();
         board_apply(board_sel);
-        dlog("Tablas de la 1.5.2: %d (elegida %s)", gd_nboards, gd_boards[board_sel].name);
+        dlog("Tablas: %d, %d a la venta (elegida %s)", gd_nboards, board_count(), gd_boards[board_sel].name);
     }
     char_check_selected();
     char_show_model(ginfo.character);   /* game_load ya ha leido el personaje elegido */
@@ -2867,12 +2887,14 @@ static const CharDef chars[] = {
     {"slick", "Prince K", UL_COINS, TK_JAKE, 980000, "", "", NULL, 0, "princek", "avatar_princek"},
     /* 1.5.2: Elf Tricky, solo en Navidad (event 2); comprado se queda */
     {"slick", "Elf Tricky", UL_COINS, TK_JAKE, 95000, "", "", NULL, 2, "xmasTricky", "avatar_trickyXmas"},
+    /* 1.6: Tony, "New York Special" (event 3, temporada de Nueva York); comprado se queda */
+    {"slick", "Tony", UL_COINS, TK_JAKE, 95000, "", "", NULL, 3, "tony", "avatar_tony"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -2885,12 +2907,19 @@ static int is14(int i) { return chars[i].mesh14 != NULL; }
 static int ext_ready(int i) { return slick_skin && ext_mesh[i] >= 0 && ext_mat[i] >= 0; }
 static int owned_14(int i) { return owned14 >> (i - CH_FIRST14) & 1; }
 
-/* sin el APK de la 1.4 no salen; Zombie Jake solo en Halloween o si ya es tuyo */
+/* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
+ * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
 static int char_available(int i)
 {
     if (!is14(i)) return 1;
     if (!ext_ready(i)) return 0;
-    return !chars[i].event || owned_14(i) || (chars[i].event == 1 ? theme_halloween : xmas_season());
+    if (!chars[i].event || owned_14(i)) return 1;
+    switch (chars[i].event) {
+    case 1: return halloween_season();
+    case 2: return xmas_season();
+    case 3: return ny_season();
+    }
+    return 0;
 }
 
 static int ch_unlocked(int i)
@@ -3047,13 +3076,16 @@ static void zombie_init(int slick_node)
     for (int i = 0; i < NCHARS; i++) {
         if (!is14(i)) continue;
         int m = data_mesh_find(chars[i].mesh14), t = data_tex_find(chars[i].tex14);
-        if (m < 0 || t < 0 || slick_mat < 0) continue;
+        if (m < 0 || t < 0 || slick_mat < 0) {
+            dlog("AVISO personaje %s sin %s%s", chars[i].name, m < 0 ? "malla " : "", t < 0 ? "textura" : "");
+            continue;
+        }
         ext_mesh[i] = m;
         ext_mat[i] = data_mat_clone(gd.mats[slick_mat].name, t);
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, theme_halloween ? " (Halloween: Zombie Jake a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -3069,7 +3101,17 @@ static void open_shop(void) { ginfo.shop_sel = 0; change_state(GS_SHOP); ginfo.s
 
 /* ------------------------------------------------------------ pantalla de tablas (BoardScreen de la 1.5.2) */
 static void open_chars(void);
-int board_count(void) { return gd_nboards; }
+int board_count(void) { int n = 0; for (int i = 0; i < gd_nboards; i++) n += board_avail(i); return n; }
+/* la siguiente tabla disponible desde la fila row (dir +1 / -1), saltando las de temporada fuera de fecha */
+int board_step(int row, int dir)
+{
+    for (int k = 0; k < gd_nboards; k++) {
+        row = ((row + dir) % gd_nboards + gd_nboards) % gd_nboards;
+        if (board_avail(row)) return row;
+    }
+    return row;
+}
+int board_is_season(int row) { return row >= 0 && row < gd_nboards && gd_boards[row].unlock == BOARD_SEASON; }
 const char *board_name(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].name : ""; }
 int board_price(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].price : 0; }
 int board_is_owned(int row) { return board_has(row); }
@@ -3124,11 +3166,11 @@ static void open_boards(void)
 }
 static void boards_input(unsigned in, int confirm)
 {
-    int nb = gd_nboards, r = ginfo.board_sel;
+    int r = ginfo.board_sel;
     if (in & IN_LEFT) in |= IN_UP;
     if (in & IN_RIGHT) in |= IN_DOWN;
-    if ((in & IN_UP) && !(in & IN_CROSS)) r = (r + nb - 1) % nb;
-    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) r = (r + 1) % nb;
+    if ((in & IN_UP) && !(in & IN_CROSS)) r = board_step(r, -1);
+    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) r = board_step(r, 1);
     if (r != ginfo.board_sel) { ginfo.board_sel = r; board_preview(r); snd_play(sfx_tap, 0.5f, 1, 0); }
     if (confirm) {
         const BoardDef *d = &gd_boards[r];
@@ -4076,7 +4118,7 @@ void game_load(void)
     if (!v2 && n >= 20 + TK_COUNT) for (int i = 0; i < TK_COUNT; i++) char_tokens[i] = d[20 + i];
     else if (v2) char_tokens[TK_TRICKY] = ginfo.tokens;   /* las fichas sin tipo de la v2 van a Tricky */
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
-    if (!v2 && n >= 32) { owned14 = d[31] & 0xff; hw_popup_year = (d[31] >> 16) & 0xff; xm_popup_year = ((unsigned)d[31] >> 24) & 0xff; }
+    if (!v2 && n >= 32) { owned14 = d[31] & 0xffff; hw_popup_year = (d[31] >> 16) & 0xff; xm_popup_year = ((unsigned)d[31] >> 24) & 0xff; }
     if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }

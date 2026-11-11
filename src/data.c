@@ -544,7 +544,7 @@ int data_theme_init(int need_meshes)
 /* ---- personajes de la 1.4 (chars14.bin): cada malla se lee solo mientras se usa ----
  * La entrada en gd.meshes existe siempre (con el nombre) pero vacia (nparts = nbatches = 0: no se dibuja nada)
  * hasta data_mesh_acquire; data_mesh_release la vacia otra vez y devuelve la memoria (~140 KB cada una). */
-#define MAX_LAZY 16
+#define MAX_LAZY 32   /* mallas de chars14.bin (personajes y tablas: 18 con la 1.6) */
 static FILE *charsfile;
 static struct { int mesh; uint32_t off, len; uint8_t *buf; } lazy[MAX_LAZY];
 static int nlazy;

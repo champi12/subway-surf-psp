@@ -1,7 +1,7 @@
 # Estado del proyecto y plan (para empezar una conversación nueva)
 
 Resumen de lo hecho, lo que está a medias y lo que queda, para retomar el trabajo sin el historial del chat.
-Última actualización: 11 de noviembre de 2026 (1.5.2 terminada).
+Última actualización: 11 de noviembre de 2026 (1.5.2 terminada; contenido de la 1.6 añadido).
 
 ## 1. Qué es
 
@@ -11,8 +11,10 @@ con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
 
 * Repositorio: `github.com/champi12/subway-surf-psp`, rama de trabajo `claude/charming-faraday-j4xh5e`.
 * Base: **1.0** + contenido de la **1.4** (Halloween, personajes, menús) + de la **1.5.2** (tablas, Elf Tricky,
-  pantallas, evento de Navidad y su mapa).
-* Hacen falta los tres APK (1.0, 1.4.0 y 1.5.2) en la carpeta del proyecto; `actualizar.sh` los reconoce por dentro.
+  pantallas, evento de Navidad y su mapa) + de la **1.6** (Tony, tablas Miami, Monster, Skull Fire y Liberty, mapa de
+  Nueva York en `data/w16`).
+* Hacen falta los APK (1.0, 1.4.0, 1.5.2 y, si se quiere lo de la 1.6, 1.6.0) en la carpeta del proyecto;
+  `actualizar.sh` los reconoce por dentro.
 
 ## 2. Reglas de trabajo acordadas
 
@@ -41,6 +43,11 @@ con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
 * `actualizar.sh`: baja cambios, regenera `data/` solo si cambió el extractor, compila y copia `PSP/` al escritorio.
 * El **mapa de la 1.5.2** es el principal (en Halloween se juega el clásico con su tema). `WORLD15=0` deja solo
   el mapa clásico.
+* **Contenido por fecha, no por mapa:** los personajes y tablas de temporada salen en cualquier mapa, pero solo en
+  sus fechas (si no se compran, desaparecen hasta el año siguiente): Zombie Jake del 24 de octubre al 4 de noviembre,
+  Elf Tricky del 1 de diciembre al 2 de enero, Tony y Liberty del 3 de enero al 1 de febrero (en la 1.6 empezaban el
+  2 de diciembre; aquí tras la Navidad para no pisarla). El mapa de la 1.6 sale también solo en su temporada;
+  `WORLD16=1` lo deja siempre (pruebas). La Navidad podría tener más adelante un mapa propio.
 * `DEVLOG=1`: versión de pruebas (devlog.txt, crash.txt, medidor con SELECT, capturas con SELECT+R).
 * `NOANALOG=1`: sin el stick analógico (la consola del usuario lo tiene estropeado).
 
@@ -58,7 +65,8 @@ volver a instalarlos (toolchain de pspdev y PPSSPP compilado como headless con e
 `autotest.sh` compila con `AUTOTEST=1 DEVLOG=1`, juega solo y deja `devlog.txt`, `perf.log` y capturas
 (`sheet.png`). Opciones útiles en `XFLAGS`: `AT_XMAS`, `AT_HALLOWEEN`, `AT_NOTUT`, `AT_CHUNK="nombre"` (forzar un
 tramo), `AT_JET=N` / `AT_MAGNET=N` (jetpack o imán en el fotograma N), `AT_SLOWLOG=ms` (anota fotogramas lentos),
-`AT_STAT1` (triángulos y dibujos por bloque), `AT_RANDHOLD=n` (forzar ambiente de la 1.5.2), `AT_ELF`, `AT_UI`.
+`AT_STAT1` (triángulos y dibujos por bloque), `AT_RANDHOLD=n` (forzar ambiente de la 1.5.2), `AT_ELF`, `AT_UI`,
+`AT_NY` (temporada de Nueva York) con `AT_NYTEST` (compra Tony y recorre las tablas). Con la 1.6: `--apk16 <apk 1.6>`.
 
 ## 4. Mapa del código
 
@@ -130,8 +138,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    independientes (hoy el clásico solo sale en Halloween).
 2. Puntos blancos del mapa clásico.
 3. Reinicio tras carreras largas.
-4. Siguiente versión (1.6): hace falta el APK de la 1.6; mismo método que con la 1.5.2 (decompilar, listar lo
-   nuevo frente a la 1.5.2 y portarlo).
+4. 1.6: hecho Tony, las 4 tablas y su mapa por temporada (en la consola: 1 tirón en 482 s). Queda revisar si la
+   1.6 trae algo más (misiones, pantallas) y el fallo de "letras con líneas negras" en el mapa de la 1.4 (falta
+   captura).
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 

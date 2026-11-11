@@ -179,13 +179,20 @@ int main(int argc, char **argv)
         if (f >= 0) sceIoClose(f);
         if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
+        /* el mapa de la 1.6 (data/w16, la ciudad de Nueva York) sale en su temporada (del 3 de enero al 1 de
+         * febrero, tras la Navidad); make WORLD16=1 lo deja siempre, para probarlo */
+        {
+            extern int ny_season(void);
 #if defined(WORLD16) && WORLD16
-        /* prueba del mapa de la 1.6 (data/w16): con make WORLD16=1 se usa en lugar del de la 1.5.2 */
-        if ((f = sceIoOpen("data/w16/world.bin", PSP_O_RDONLY, 0)) >= 0) {
-            sceIoClose(f);
-            if (!(halloween_season() && has_hw)) wdir = "data/w16";
-        }
+            int ny = 1;
+#else
+            int ny = ny_season();
 #endif
+            if (ny && (f = sceIoOpen("data/w16/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+                sceIoClose(f);
+                if (!(halloween_season() && has_hw)) wdir = "data/w16";
+            }
+        }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* los mapas nuevos (1.5.2, 1.6) */
         dlog("Mundo: %s", !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
@@ -378,6 +385,15 @@ int main(int argc, char **argv)
         if (frame_no == 30) pr |= PSP_CTRL_CROSS;    /* cierra el aviso del evento */
         if (frame_no == 50) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no == 80) pr |= PSP_CTRL_LEFT;
+#elif defined(AT_NYTEST)
+        /* prueba de la 1.6 (con AT_NY): personajes, arriba (Tony), comprarlo; tablas y recorrerlas hasta Liberty */
+        if (frame_no == 30) ginfo.total_coins = 200000;
+        if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 70) pr |= PSP_CTRL_UP;
+        if (frame_no == 110) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 140) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no >= 170 && frame_no < 290 && frame_no % 12 == 0) pr |= PSP_CTRL_RIGHT;
+        if (frame_no == 300) pr |= PSP_CTRL_CROSS;
 #elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;
