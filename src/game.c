@@ -210,6 +210,7 @@ static struct {
     int trackIndex, trackIndexTarget;
     float trackIndexPosition, x, z, verticalSpeed, lastGroundedY;
     int isInsideSubway, trackMovement, trackMovementNext;
+    float subwayMaxY;   /* 1.5.2: techo del tunel en el que se ha entrado (para la camara) */
     float characterRotation, jumpHeight;
     int stumble; float stumble_end;
     int jumping, falling, inAirJump, fallAnim;
@@ -1162,7 +1163,15 @@ static const char *node_name(int n) { return gd.strings[gd.nodes[n].name]; }
 static void on_char_enter(const Col *c)
 {
     int n = c->node;
-    if (c->tag == TAG_SUBWAY) { ch.isInsideSubway = 1; return; }
+    /* 1.5.2 (Character.OnCharacterColliderEnter): el techo de la camara es el del collider del tunel menos 3 */
+    if (c->tag == TAG_SUBWAY) {
+        ch.isInsideSubway = 1;
+        ch.subwayMaxY = c->bmax.y - 3.0f;
+#ifdef AUTOTEST
+        dlog("TUNEL entra en %s: techo de la camara %.1f (camara %.1f)", node_name(c->node), ch.subwayMaxY, cam_pos.y);
+#endif
+        return;
+    }
     if (ch.stopColliding || c->layer == 16) return;
     /* Pickup en el collider o sus hijos */
     for (int k = n, depth = 0; k >= 0 && depth < 1; depth++) {
@@ -2242,9 +2251,17 @@ static void follow_camera(float dt)
     }
     V3 pe = v3add(v3add(v3(sm_x, sm_y, position.z), cam_off), v3(0, od, 0));
     V3 te = v3add(v3add(v3(sm_x, sm_y, position.z), v3(0, aim, 0)), v3(0, od * 0.5f, 0));
+    /* Dentro del tunel la camara no pasa del techo (en la 1.0 no habia limite y al saltar se salia por arriba: lo
+     * anadio la 1.4 con un techo fijo de 72 y la 1.5.2 con el de cada tunel, su collider menos 3). Antes el port usaba
+     * 64 para los dos: en la 1.5.2 los techos de la estacion y de los pilares estan a 59,5 y la camara se metia por
+     * encima. Se baja la camara y el punto al que mira con ella, manteniendo la direccion (Running.cs) */
     if (ch.isInsideSubway) {
-        if (pe.y > 64.0f) pe.y = 64.0f;
-        if (te.y > 64.0f) te.y = 64.0f;
+        /* cada mapa con la regla de su version: en el clasico los colliders "Subway" llegan a 198 (la 1.4 usaba un
+         * techo fijo de 72 por eso); en el de la 1.5.2 miden 75 (metro) y 59,5 (techos de estacion y pilares) */
+        extern int r_light;
+        float maxy = r_light && ch.subwayMaxY > 0 ? ch.subwayMaxY : 72.0f;
+        V3 off = v3sub(te, pe);
+        if (pe.y > maxy) { pe.y = maxy; te = v3add(pe, off); }
     }
     if (from_jetpack) {
         float r = clamp01(from_jet_t / 2.0f);
