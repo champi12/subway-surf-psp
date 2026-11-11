@@ -653,6 +653,9 @@ static void draw_missions_panel(float x, float y, float w)
 {
     char buf[64];
     labfit(1, x, y + 12, 24, w - U(124), C_SCORE, 0, 0, TR("Misiones", "Missions"));
+    /* MissionPopup de la 1.5.2: "MISSION SET Number N" bajo el titulo */
+    snprintf(buf, sizeof(buf), TR("SET DE MISIONES %d", "MISSION SET %d"), mission_set + 1);
+    labc(0, x + 2, y + 31, 12, 0xff8a8a8au, 0, 0, buf);
     /* MissionProgress: barra de las misiones hechas y el multiplicador que se gana */
     int n = 0;
     for (int i = 0; i < 3; i++) n += missions_done(i);
@@ -681,6 +684,9 @@ static void draw_missions_panel(float x, float y, float w)
             labc(0, x + U(40), ry + U(10), 14, C_LIMITED, 0, 0, buf);
         }
     }
+    /* el pie del original: las misiones se pueden saltar en la tienda (Saltar mision 1-3) */
+    labfit(0, x, y + U(54) + 3 * U(42) - U(12), 13, w - 4, 0xff8a8a8au, 0, 0,
+           TR("Las misiones se pueden saltar en la tienda", "Missions can be Skipped in the Shop"));
 }
 
 /* ventana de misiones del menu (triangulo) */
@@ -1198,6 +1204,18 @@ static int box_frame(int sup, int f, float cx, float cy)
     return 1;
 }
 
+static int a_st = -2;   /* hoja Settings15: iconos de SettingsPopup y PrizeListPopup */
+
+/* sprite de una hoja centrado en (cx, cy) y metido en maxw x maxh sin deformarlo */
+static void spr_fit(int ai, const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
+{
+    USprite *sp = find_sprite(ai, name);
+    if (!sp || sp->ow <= 0 || sp->oh <= 0) return;
+    float w = maxw, h = maxw * sp->oh / sp->ow;
+    if (h > maxh) { h = maxh; w = maxh * sp->ow / sp->oh; }
+    ui_sprite_wh(ai, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
+}
+
 static void draw_box_popup(int sup)
 {
     char buf[48];
@@ -1218,6 +1236,18 @@ static void draw_box_popup(int sup)
         labc(1, bx, 186, 30, C_WHITE, 1, 1, TR("abrir (X)", "open (X)"));
         snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
         labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
+        /* MysteryBoxPopup de la 1.5.2: "View Prizes" (boton naranja con la caja) arriba a la izquierda y el contador
+         * de monedas arriba a la derecha */
+        {
+            float px = 12, py = SCR_H - 52, pw = 150, ph = 40;   /* abajo: arriba esta el titulo de la caja */
+            ui_sliced(a_ui, "whitebox", px, py, pw, ph, UIS, 0xff1f8df5u);   /* naranja (button_orange_buy) */
+            ui_sliced(a_ui, "button_generic_3_outline", px - 3, py - 2, pw + 6, ph + 8, UIS, C_WHITE);
+            if (a_st == -2) a_st = ui_atlas("Settings15");
+            spr_fit(a_st, "icon_small_mysteryBox", px + 20, py + ph * 0.5f, 26, 24, C_WHITE);
+            labfit(0, px + 38, py + ph * 0.5f - 6, 16, pw - 44, C_WHITE, 0, 1, TR("Ver premios", "View Prizes"));
+            labc(0, px + 38, py + ph * 0.5f + 10, 12, C_WHITE, 0, 1, TR("cuadrado", "square"));
+        }
+        coin_box(SCR_W - 8, 15);
         return;
     }
     float t = ginfo.time - ginfo.reward_t;
@@ -1245,6 +1275,7 @@ static void draw_box_popup(int sup)
     if (t >= REWARD_REVEAL) {
         unsigned a = t < REWARD_REVEAL + 0.2f ? (unsigned)(255 * (t - REWARD_REVEAL) / 0.2f) : 255;
         labc(0, bx, 178, 18, (a << 24) | 0xffffffu, 1, 1, TR("Has conseguido", "You got"));
+        if (ginfo.reward_trophy) labc(1, bx, 56, 26, (a << 24) | 0x00dbffu, 1, 1, TR("¡NUEVO TROFEO!", "NEW TROPHY!"));
         labfit(1, bx, 204, 30, SCR_W - 40, (a << 24) | 0x00dbffu, 1, 1, ginfo.reward);
         if (t >= REWARD_REVEAL + 0.5f) labc(0, bx, 240, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
     }
@@ -1464,18 +1495,6 @@ void hud_loading(float p)
 }
 
 /* ------------------------------------------------------------ ajustes y lista de premios (1.5.2) */
-static int a_st = -2;   /* hoja Settings15: iconos de SettingsPopup y PrizeListPopup */
-
-/* sprite de una hoja centrado en (cx, cy) y metido en maxw x maxh sin deformarlo */
-static void spr_fit(int ai, const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
-{
-    USprite *sp = find_sprite(ai, name);
-    if (!sp || sp->ow <= 0 || sp->oh <= 0) return;
-    float w = maxw, h = maxw * sp->oh / sp->ow;
-    if (h > maxh) { h = maxh; w = maxh * sp->ow / sp->oh; }
-    ui_sprite_wh(ai, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
-}
-
 /* SettingsPopup de la 1.5.2: sonido (SoundButton) y, mientras dura la Navidad, la temporada (SeasonButton). Los demas
  * botones del original (mensajes, invitar amigos, Game Center, privacidad) necesitan internet: no estan */
 static void draw_settings_popup(void)

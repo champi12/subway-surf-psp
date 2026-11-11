@@ -1,7 +1,7 @@
 # Estado del proyecto y plan (para empezar una conversación nueva)
 
 Resumen de lo hecho, lo que está a medias y lo que queda, para retomar el trabajo sin el historial del chat.
-Última actualización: 11 de noviembre de 2026.
+Última actualización: 11 de noviembre de 2026 (1.5.2 terminada).
 
 ## 1. Qué es
 
@@ -36,10 +36,11 @@ con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
 
     cd ~/subway-surf-psp
     git pull
-    DEVLOG=1 NOANALOG=1 WORLD15=1 ./actualizar.sh subway.apk "/mnt/c/Users/Joan jimenez/Desktop"
+    DEVLOG=1 NOANALOG=1 ./actualizar.sh subway.apk "/mnt/c/Users/Joan jimenez/Desktop"
 
 * `actualizar.sh`: baja cambios, regenera `data/` solo si cambió el extractor, compila y copia `PSP/` al escritorio.
-* `WORLD15=1`: incluye y usa el **mapa de la 1.5.2** (si no, el mapa clásico 1.0/1.4).
+* El **mapa de la 1.5.2** es el principal (en Halloween se juega el clásico con su tema). `WORLD15=0` deja solo
+  el mapa clásico.
 * `DEVLOG=1`: versión de pruebas (devlog.txt, crash.txt, medidor con SELECT, capturas con SELECT+R).
 * `NOANALOG=1`: sin el stick analógico (la consola del usuario lo tiene estropeado).
 
@@ -108,9 +109,8 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   saber si parpadean (rendijas) o están quietos (atlas) y en qué paredes.
 * **Reinicio tras carreras largas:** "quitar tramos" llega a 24-30 ms tras ~2 minutos de carrera (muchos tramos
   usados). Idea: esconder cada tramo cuando sale de la vista durante la carrera, poco a poco.
-* **Publicar la actualización 1.5:** el mapa de la 1.5.2 sigue detrás de `WORLD15=1` (`#if WORLD15` en
-  `main.c` y `WORLD15=0` por defecto en `actualizar.sh`). Para la versión pública hay que hacerlo el mapa por
-  defecto (salvo en Halloween, que usa el clásico).
+* **Hecho:** el mapa de la 1.5.2 ya es el principal (`WORLD15=1` por defecto en `actualizar.sh`, `build_dist.sh` y
+  `main.c`); en Halloween se usa el clásico.
 
 ## 6b. Lo de la 1.5.2 comparado con el port (clases nuevas frente a la 1.4)
 
@@ -119,14 +119,15 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   `IngameScreen`, `UpgradeScreen`, `TrophiesScreen`, `MysteryBoxPopup`, `MissionPopup`), mapa de la 1.5.2.
 * **No aplica en PSP (necesitan internet o tienda):** `FriendsOnlineScreen`, `LeaderboardOnlineScreen`,
   `BragPopup`, `EarnCoinsScreen`, `PrivacyPolicy*`, `RestorePurchaseHelper`, `OfflineScreen`.
-* **Falta:** `SettingsPopup` (ajustes; en Navidad añade un botón de temporada) y `PrizeListPopup` (lista de
-  premios de las cajas, desde la caja, la tienda o el fin de partida). Repasar los menús con la libreta y las cajas
-  misteriosas para que sean exactamente como el original.
+* **Hecho también:** ajustes (START: sonido y Navidad), lista de premios (cuadrado en la caja, la tienda y el fin),
+  reto diario (cuadrado en la portada: palabra, tiempo, premio y racha de 5 días), y el repaso de la libreta
+  (número de set y aviso de saltar misiones) y de las cajas ("Ver premios", monedas, "¡NUEVO TROFEO!").
 
 ## 7. Plan
 
-1. Decidir y preparar la versión pública con el mapa de la 1.5.2 por defecto; añadir lo que falta de la 1.5.2
-   (ajustes y lista de premios).
+1. (Hecho) Versión pública con el mapa de la 1.5.2 por defecto y todo lo de la 1.5.2.
+1b. Más adelante: **selector de mapas** en los ajustes para elegir el mapa clásico y el de Halloween como mapas
+   independientes (hoy el clásico solo sale en Halloween).
 2. Puntos blancos del mapa clásico.
 3. Reinicio tras carreras largas.
 4. Siguiente versión (1.6): hace falta el APK de la 1.6; mismo método que con la 1.5.2 (decompilar, listar lo

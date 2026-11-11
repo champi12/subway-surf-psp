@@ -3385,6 +3385,7 @@ static void mystery_open_type(int super)
                         coins ? (coins >= 1000 ? "Icon_coin_pouch_larger" : "icon_coin_large") :
                         hb ? "icon_upgrades_hoverboard" : h5 ? "icon_upgrades_headstart500" : "icon_upgrades_headstart2000";
     ginfo.reward_super = super;
+    ginfo.reward_trophy = trophy >= 0;
     ginfo.reward_t = game_time;
     snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
     game_save();
@@ -3540,6 +3541,8 @@ void game_input(unsigned in)
             else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) mystery_open();
             else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); game_start_run(); }
         } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
+            /* MysteryBoxPopup de la 1.5.2: "View Prizes" (cuadrado) mientras se espera a abrir la caja */
+            if ((in & IN_SQUARE) && !ginfo.reward[0]) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
             break;
         } else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
         else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }

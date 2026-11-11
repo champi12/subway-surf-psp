@@ -170,8 +170,8 @@ int main(int argc, char **argv)
     /* el mundo (las vias y el escenario): el de la 1.5.2 (data/w15, normal y Navidad) si esta, salvo en Halloween,
      * que es el de la 1.4 sobre el clasico (data/). El nucleo del juego es el mismo en los dos; solo se carga uno */
     const char *wdir = "data";
-#if defined(WORLD15) && WORLD15
-    /* en pruebas: en la consola real iba a ~10 FPS y con el escenario mal; solo con make WORLD15=1 */
+#if !defined(WORLD15) || WORLD15
+    /* el mapa de la 1.5.2 es el principal (30 FPS en la consola); make WORLD15=0 deja solo el clasico */
     {
         extern int halloween_season(void);
         SceUID f = sceIoOpen("data/w15/world.bin", PSP_O_RDONLY, 0);
@@ -303,7 +303,7 @@ int main(int argc, char **argv)
 #endif
 #ifdef AT_POPUP
         /* prueba: abre una ventana del menu (3 ajustes, 4 premios) y, con AT_POPUP_KEY, pulsa X en el fotograma 70 */
-        if (frame_no == 40) ginfo.popup = AT_POPUP;
+        if (frame_no == 40) { if (AT_POPUP == 9) ginfo.missions_open = 1; else ginfo.popup = AT_POPUP; }   /* 9: misiones */
 #ifdef AT_POPUP_KEY
         if (frame_no == 60) ginfo.settings_sel = AT_POPUP_KEY;   /* 0 sonido, 1 temporada */
         if (frame_no == 70) pr |= PSP_CTRL_CROSS;
