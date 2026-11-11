@@ -257,13 +257,19 @@ static void *mip_make(const Texture *tx, const unsigned char *src, int sw, int s
     return dst;
 }
 
+/* mapa sin texturas reducidas (main.c: el de Rio). El original no las tiene; en Rio, con su atlas de colores planos
+ * muy distintos pegados, los niveles reducidos cambiaban el color de las paredes a lo lejos (y el arreglo por trozos
+ * salia peor). Sin ellas el escenario se ve como el original; en la consola, sin bajones notables. Ademas no se
+ * generan: ~85 KB menos de RAM por textura y carga mas corta */
+int r_nomips;
+
 /* src: el nivel 0 en RAM. Si ya habia mipmaps (cambio de tema) se reescriben en los mismos bufferes */
 static void mips_build(int t, const unsigned char *src)
 {
     Texture *tx = &gd.tex[t];
     int had = tex_nmip[t];
     if (!had) tex_nmip[t] = 0;
-    if (MIPMAPS <= 0 || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return;
+    if (MIPMAPS <= 0 || r_nomips || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return;
     int bpp = tx->fmt == TEX_T8 ? 1 : 2, w = tx->w, h = tx->h;
     for (int l = 0; l < MIPMAPS; l++) {
         /* el swizzle necesita filas de 16 bytes y 8 lineas como minimo */
@@ -284,7 +290,7 @@ static int mips_alloc(int t)
 {
     Texture *tx = &gd.tex[t];
     tex_nmip[t] = 0;
-    if (MIPMAPS <= 0 || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return 0;
+    if (MIPMAPS <= 0 || r_nomips || !tex_3d[t] || tx->fmt == TEX_8888 || tx->w < 64 || tx->h < 64) return 0;
     int bpp = tx->fmt == TEX_T8 ? 1 : 2, w = tx->w, h = tx->h, bytes = 0;
     for (int l = 0; l < MIPMAPS; l++) {
         if ((w / 2) * bpp < 16 || h / 2 < 8) break;
@@ -554,12 +560,10 @@ static void tex_filter(void)
 
 /* nivel de mipmap de un trozo a la distancia d (de la camara, en unidades): ~12 texeles del atlas por unidad, y con el
  * campo de vision de la PSP ~514/d pixeles por unidad: un texel por pixel a d ~ 40. Cada nivel, el doble de lejos */
-static int lod_cap = 3;   /* nivel maximo para el trozo que se dibuja (franja estrecha de textura) */
 static void lod_for(float d)
 {
     const float d1 = r_texdbg == 3 ? 200.0f : 100.0f;
     int l = d < d1 ? 0 : d < d1 * 2 ? 1 : d < d1 * 4 ? 2 : 3;
-    if (l > lod_cap) l = lod_cap;
     if (l == part_lod) return;
     part_lod = l;
     if (cur_tex >= 0 && cur_mips) tex_filter();
@@ -1416,15 +1420,7 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             /* el nivel de mipmap por la parte mas cercana del trozo; en el mapa de la 1.5.2 los trozos dispersos son
              * grandes (hasta 256 unidades) y casi todo el trozo esta mas lejos: con el borde cercano el suelo lejano
              * (nieve de Navidad) salia con un nivel demasiado nitido y lineas blancas que se movian */
-            {
-                /* los trozos de color plano (data.c) siempre con el nivel 0: en los reducidos su color se mezclaba con lo
-                 * de al lado del atlas (la pared de los tuneles de Rio se aclaraba a lo lejos; el original no tiene niveles
-                 * reducidos). Leer siempre el mismo texel le cuesta poco al GE. Antes se bajaba el nivel a todo lo
-                 * estirado (casi todo el escenario) y el GE subia hasta 30 ms en la consola */
-                lod_cap = pt->flat ? 0 : 3;
-                lod_for(d0 - (r_light ? 0.5f : 1.0f) * pr);
-                lod_cap = 3;
-            }
+            lod_for(d0 - (r_light ? 0.5f : 1.0f) * pr);
             bind_material(mat, amul);
             /* de lejos (ya en la niebla) la version ligera: los mismos vertices con menos triangulos */
             {

@@ -59,7 +59,6 @@ typedef struct {
     MSkin *skin;
     int lod_ni[2];         /* versiones ligeras para verlo de lejos: otros triangulos sobre los mismos vertices */
     uint16_t *lod_idx[2];
-    int flat;              /* casi todo el trozo es de color plano (cada triangulo toma un solo color del atlas) */
 } MeshPart;
 
 typedef struct {
