@@ -691,20 +691,97 @@ static void draw_missions_panel(float x, float y, float w)
 
 /* ventana de misiones del menu (triangulo) */
 static void challenges_page(int pause);
+static int a_st = -2;   /* hoja Settings15: iconos de SettingsPopup y PrizeListPopup */
+
+/* sprite de una hoja centrado en (cx, cy) y metido en maxw x maxh sin deformarlo */
+static void spr_fit(int ai, const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
+{
+    USprite *sp = find_sprite(ai, name);
+    if (!sp || sp->ow <= 0 || sp->oh <= 0) return;
+    float w = maxw, h = maxw * sp->oh / sp->ow;
+    if (h > maxh) { h = maxh; w = maxh * sp->ow / sp->oh; }
+    ui_sprite_wh(ai, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
+}
+
+/* texto partido por palabras en lineas que caben en maxw (hasta 3), centrado en cy. No se encoge: por debajo de 14
+ * pixeles el texto se dibuja a 14 igualmente (resolve_font) */
+static void lab2(int titan, float x, float cy, float px, float maxw, unsigned int col, const char *s)
+{
+    char ln[3][96];
+    int nl = 0;
+    const char *p = s;
+    while (*p && nl < 3) {
+        int best = -1, k = 0;
+        char tmp[96];
+        for (k = 0; p[k] && k < 95; k++) {
+            if (p[k] != ' ') continue;
+            memcpy(tmp, p, k); tmp[k] = 0;
+            if (labw(titan, px, tmp) <= maxw) best = k; else break;
+        }
+        if (!p[k] && labw(titan, px, p) <= maxw) best = k;   /* lo que queda cabe entero */
+        if (best <= 0 || nl == 2) best = (int)strlen(p) < 95 ? (int)strlen(p) : 95;
+        memcpy(ln[nl], p, best); ln[nl][best] = 0;
+        nl++;
+        p += best;
+        while (*p == ' ') p++;
+    }
+    float lh = px * 1.1f, y0 = cy - (nl - 1) * lh * 0.5f;
+    for (int i = 0; i < nl; i++) labc(titan, x, y0 + i * lh, px, col, 0, 0, ln[i]);
+}
+
+/* MissionPopup de la 1.5.2 (triangulo en el menu): titulo, set, el premio (multiplicador) con su progreso y las tres
+ * misiones. En horizontal: el premio a la izquierda y las misiones a la derecha */
 static void draw_missions_popup(void)
 {
-    /* la hoja de la libreta con el desafio diario y las misiones, sobre el fondo desenfocado (como en la 1.5.2) */
-    if (bg_tex == -2) bg_tex = data_tex_find("ui_bg");
-    if (bg_tex >= 0) { r_sprite(bg_tex, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE); bg_loaded = 1; }
-    if (!notebook_panel()) {
-        r_rect(0, 0, SCR_W, SCR_H, 0x80000000);
-        float w = 300, h = 186, x = (SCR_W - w) * 0.5f, y = 26;
-        panel(x, y, w, h);
-        draw_missions_panel(x + 12, y + 8, w - 24);
-        lab(0, SCR_W * 0.5f, y + h + 10, 14, C_WHITE, 1, 1, TR("X / O cerrar", "X / O close"));
-        return;
+    char buf[96];
+    if (a_st == -2) a_st = ui_atlas("Settings15");
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float x = 14, y = 8, w = SCR_W - 28, h = SCR_H - 16;
+    panel(x, y, w, h);
+    float lx = x + 12, lw = 196;
+    labc(1, lx + lw * 0.5f, y + 24, 30, C_NAVY, 1, 0, TR("Misiones", "Missions"));
+    snprintf(buf, sizeof(buf), TR("SET DE MISIONES Nº %d", "MISSION SET Number %d"), mission_set + 1);
+    labfit(1, lx + lw * 0.5f, y + 48, 15, lw, 0xffb57a1au, 1, 0, buf);
+    /* el recuadro azul del premio, con su piquito abajo a la izquierda */
+    float by = y + 62, bh = 124;
+    ui_sliced(a_ui, "whitebox", lx, by, lw, bh, UIS, 0xffc48029u);
+    spr_c("background_callout_triangle", lx + 26, by + bh + 4, 20, 14, 0xffc48029u);
+    labc(1, lx + 8, by + 16, 17, 0xff00dbffu, 0, 1, TR("PREMIO", "REWARD"));
+    labfit(1, lx + 8, by + 42, 20, lw * 0.55f, C_WHITE, 0, 1, TR("Multiplicador", "Score"));
+    labfit(1, lx + 8, by + 66, 20, lw * 0.55f, C_WHITE, 0, 1, TR("de puntos", "Multiplier"));
+    /* la mancha verde con el multiplicador que se gana */
+    float sx = lx + lw - 46, sy = by + 50;
+    spr_fit(a_st, "background_splat", sx, sy, 92, 92, 0xff00b866u);
+    snprintf(buf, sizeof(buf), "x%d", missions_multiplier() + 1);
+    labc(1, sx, sy - 8, 30, 0xff00dbffu, 1, 1, buf);
+    labc(1, sx, sy + 16, 16, 0xff00dbffu, 1, 1, TR("Puntos", "Score"));
+    /* progreso: cuantas de las tres estan hechas */
+    int n = 0;
+    for (int i = 0; i < 3; i++) n += missions_done(i);
+    float px = lx + 10, pw = lw - 20, py = by + bh - 26;
+    r_rect(px, py, pw, 18, 0xffd8f3fbu);
+    if (n) r_rect(px, py, pw * n / 3, 18, 0xff8acff5u);
+    snprintf(buf, sizeof(buf), TR("%d %%  HECHO", "%d %%  DONE"), n * 100 / 3);
+    labc(1, px + pw * 0.5f, py + 9, 14, C_NAVY, 1, 0, buf);
+    /* las tres misiones */
+    float mx = lx + lw + 18, mw = x + w - 12 - mx;
+    for (int i = 0; i < 3; i++) {
+        float ry = y + 40 + i * 54;
+        int done = missions_done(i);
+        spr_c("checkbox_mission", mx + 17, ry, 34, 34, C_WHITE);
+        if (done) spr_c("checkbox_checked_mission", mx + 21.5f, ry - 2, 41, 34, C_WHITE);
+        else {
+            snprintf(buf, sizeof(buf), "%d", i + 1);
+            labc(1, mx + 17, ry, 22, 0xff543a08u, 1, 0, buf);
+        }
+        char t[64];
+        missions_text(i, t, sizeof(t));
+        if (done) snprintf(buf, sizeof(buf), TR("%s. ¡Hecha!", "%s. Done!"), t);
+        else snprintf(buf, sizeof(buf), TR("%s. Faltan %d", "%s. %d left"), t, missions_goal(i) - missions_progress(i));
+        lab2(0, mx + 44, ry, 17, mw - 46, C_NAVY, buf);
     }
-    challenges_page(0);
+    lab2(0, mx, y + h - 36, 14, mw, C_NAVY, TR("Las misiones se pueden saltar en la tienda", "Missions can be Skipped in the Shop"));
+    labc(0, x + w - 14, y + h - 12, 13, 0xff8a8a8au, 2, 0, TR("O: cerrar", "O: close"));
 }
 
 /* ------------------------------------------------------------ menu principal (FrontUI) */
@@ -987,6 +1064,7 @@ static void draw_boards(void)
     lab(0, 14, 8, 30, C_NAME, 0, 0, board_name(i));
     int fx = board_effect(i);
     if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : TR("Va agachado", "Stays Low"));
+    else if (board_is_season(i)) lab(0, 16, 40, 15, C_LIMITED, 0, 0, TR("Especial de Nueva York", "New York Special"));
     if (board_is_gift(i) && !board_is_owned(i)) {
         /* BoardScreen: pegatina "FREE GIFT" mientras la de regalo no se ha reclamado */
         float sx = 14 + labw(0, 30, board_name(i)) + U(36), sy = 26;
@@ -1013,7 +1091,8 @@ static void draw_boards(void)
     spr_c("background_superglow", cx, cy, 92, 92, 0x60ffffffu);
     for (int k = -2; k <= 2 && a_bthumbs >= 0; k++) {
         if (nb < 5 && (k < -(nb - 1) / 2 || k > nb / 2)) continue;
-        int j = ((i + k) % nb + nb) % nb;
+        int j = i;
+        for (int m = 0; m < (k < 0 ? -k : k); m++) j = board_step(j, k < 0 ? -1 : 1);
         float sc = k ? 0.78f : 1.0f, w = 64 * sc, x = cx + k * step;
         snprintf(buf, sizeof(buf), "board_%d", j);
         USprite *sp = find_sprite(a_bthumbs, buf);
@@ -1053,7 +1132,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 2 ? TR("Especial de Navidad", "Holiday Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 3 ? TR("Especial de Nueva York", "New York Special")
+                                                   : limited == 2 ? TR("Especial de Navidad", "Holiday Special")
                                                               : TR("Especial de Halloween", "Halloween Special"));
     if (limited && !un && secs > 0) {
         /* pegatina naranja "10 DAYS LEFT" / "LAST DAY" */
@@ -1202,18 +1282,6 @@ static int box_frame(int sup, int f, float cx, float cy)
              (s->ox + s->ow) / a->w, (s->oy + s->oh) / a->h, C_WHITE);
     boxes_loaded = 1;
     return 1;
-}
-
-static int a_st = -2;   /* hoja Settings15: iconos de SettingsPopup y PrizeListPopup */
-
-/* sprite de una hoja centrado en (cx, cy) y metido en maxw x maxh sin deformarlo */
-static void spr_fit(int ai, const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
-{
-    USprite *sp = find_sprite(ai, name);
-    if (!sp || sp->ow <= 0 || sp->oh <= 0) return;
-    float w = maxw, h = maxw * sp->oh / sp->ow;
-    if (h > maxh) { h = maxh; w = maxh * sp->ow / sp->oh; }
-    ui_sprite_wh(ai, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
 }
 
 static void draw_box_popup(int sup)
@@ -1457,13 +1525,12 @@ static int loading_15(float p)
     } else r_rect(x0, y0 + 6, x1 - x0, SCR_H - y0, 0xfff0f0f0u);
     labc(1, SCR_W * 0.5f, y0 + 34, 26, C_NAVY, 1, 0, TR("¡Un consejo!", "Here's a tip!"));
     labfit(0, SCR_W * 0.5f, y0 + 62, 16, x1 - x0 - 30, C_NAVY, 1, 0, TR(tips_es[splash_tip], tips_en[splash_tip]));
-    /* barra de carga celeste con el borde amarillo a la izquierda */
+    /* barra de carga amarilla sobre fondo crema, como la del original */
     float bw = x1 - x0 - 50, bx = (SCR_W - bw) * 0.5f, by = SCR_H - 30;
     if (p < 0) p = 0;
     if (p > 1) p = 1;
-    r_rect(bx, by, bw, 18, 0xfff5cf8eu);
-    r_rect(bx, by, bw * p, 18, 0xffe8b060u);
-    r_rect(bx, by, 3, 18, 0xff00cff5u);
+    r_rect(bx, by, bw, 18, 0xffd8f3fbu);
+    r_rect(bx, by, bw * p, 18, 0xff00cff5u);
     labc(0, SCR_W * 0.5f, by + 9, 13, C_NAVY, 1, 1, TR("CARGANDO...", "LOADING..."));
     return 1;
 }
@@ -1476,7 +1543,8 @@ void hud_loading(float p)
     r_begin_frame(hw ? 0xff301028 : 0xff6a3a10);   /* morado de Halloween o azul */
     hud_fonts();
     r_begin_2d();
-    if (!hw && loading_15(p)) {
+    /* la pantalla de carga de la 1.5.2 en todos los mapas, tambien en Halloween (la morada solo si falta) */
+    if (loading_15(p)) {
         r_end_frame();
         if (p >= 1.0f && splash_tex >= 0) { r_wait_idle(); r_tex_unload(splash_tex); }
         return;
