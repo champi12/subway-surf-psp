@@ -20,6 +20,7 @@
 #include "data.h"
 #include "hud.h"
 #include "missions.h"
+static void game_save_bg(void);   /* guardar en segundo plano (al acabar la carrera, mapa de la 1.5.2) */
 
 GameInfo ginfo;
 float game_time;
@@ -2079,10 +2080,24 @@ static void game_start_run(void)
     }
     currentLevelSpeed = Speed(0);
     start_time = game_time;
+#if DEVLOG
+    unsigned int rt0 = sceKernelGetSystemTimeLow();
+#endif
     character_restart();
     spawn_restart();
+#if DEVLOG
+    unsigned int rt1 = sceKernelGetSystemTimeLow();
+#endif
     track_restart();
+#if DEVLOG
+    unsigned int rt2 = sceKernelGetSystemTimeLow();
+#endif
     track_lay_chunks(0, track_ahead_distance(), 0);
+#if DEVLOG
+    unsigned int rt3 = sceKernelGetSystemTimeLow();
+    dlog("REINICIO %.1f ms: personaje %.1f | quitar tramos %.1f | tramos nuevos %.1f", (rt3 - rt0) / 1000.0f,
+         (rt1 - rt0) / 1000.0f, (rt2 - rt1) / 1000.0f, (rt3 - rt2) / 1000.0f);
+#endif
     anim_crossfade(&anim_cam, "startPan", 0.2f);
     anim_crossfade(&anim_char, "introRun", 0.2f);
     /* el principio de la carrera es lo mas pesado (entorno del menu, inspector y perro y toda la via por delante):
@@ -2536,7 +2551,7 @@ static void die_tick(float dt)
         ginfo.gameover_coins = coins_run;
         ginfo.reward[0] = 0;
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
-        game_save();
+        if (r_light) game_save_bg(); else game_save();
         change_state(GS_GAMEOVER);
         ginfo.state = GS_GAMEOVER;
         /* de pie en el fin de partida, como en la 1.5.2, sin los objetos de los power-ups de la carrera (el iman se
@@ -3542,6 +3557,16 @@ void game_update(float dt)
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
     default: break;
     }
+    /* mapa de la 1.5.2: mientras cae el personaje (~0,6 s) se leen en segundo plano las texturas de la pantalla de
+     * fin; antes se leian de golpe al aparecer (~110 ms de Memory Stick en la consola, un tiron). Se pide una cada
+     * fotograma: el cargador lleva una a la vez */
+    if (r_light && (state == GS_DIEFALL || state == GS_DIE)) {
+        static const char *const fin_tex[] = {"ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
+        for (int i = 0; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++) {
+            int t = data_tex_find(fin_tex[i]);
+            if (t >= 0 && !r_tex_request(t)) break;   /* esta se esta leyendo: las demas, despues */
+        }
+    }
     DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) mods_update(dt);
     update_powerup_times(dt);
@@ -3890,11 +3915,9 @@ int game_cloud_tex(void)
 
 /* ------------------------------------------------------------ partida guardada */
 #define SAVE_MAGIC 0x53535033   /* v3: + fichas por personaje (v2 sin ellas se sigue leyendo) */
-void game_save(void)
+/* los datos de save.dat (dos bloques: el de la 1.0 y el de la 1.4) en buf; devuelve los bytes */
+static int save_fill(unsigned char *buf)
 {
-    save_pending = 0;
-    FILE *f = fopen("save.dat", "wb");
-    if (!f) return;
     int d[32] = {SAVE_MAGIC, ginfo.highscore, ginfo.total_coins, ginfo.hoverboards, ginfo.hs500, ginfo.hs2000,
                  ginfo.boxes_pending, ginfo.boxes_opened, upgrade_tier[PW_JETPACK], upgrade_tier[PW_SNEAKERS],
                  upgrade_tier[PW_MAGNET], upgrade_tier[PW_DOUBLE], tutorial_completed, mission_set, ginfo.tokens,
@@ -3903,11 +3926,71 @@ void game_save(void)
     d[30] = trophies_mask;
     d[31] = owned14 | (hw_popup_year & 0xff) << 16 | (unsigned)(xm_popup_year & 0xff) << 24;
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
-    fwrite(d, sizeof(d), 1, f);
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
     int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned};
-    fwrite(e, sizeof(e), 1, f);
+    memcpy(buf, d, sizeof(d));
+    memcpy(buf + sizeof(d), e, sizeof(e));
+    return (int)(sizeof(d) + sizeof(e));
+}
+
+static void save_write(const unsigned char *buf, int n)
+{
+    FILE *f = fopen("save.dat", "wb");
+    if (!f) return;
+    fwrite(buf, 1, n, f);
     fclose(f);
+}
+
+/* Guardar en segundo plano (mapa de la 1.5.2, al acabar la carrera): escribir save.dat en la Memory Stick son ~50 ms
+ * y se hacia justo al aparecer la pantalla de fin (un tiron). Los datos se copian al momento y los escribe otro hilo;
+ * game_save() espera a que termine antes de escribir, asi nunca se escriben dos a la vez */
+static unsigned char save_bg_buf[256];
+static int save_bg_len;
+static volatile int save_bg_busy;
+static SceUID save_bg_sema = -1;
+
+static int save_bg_thread(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    for (;;) {
+        if (sceKernelWaitSema(save_bg_sema, 1, NULL) < 0) return 0;
+        save_write(save_bg_buf, save_bg_len);
+        save_bg_busy = 0;
+    }
+    return 0;
+}
+
+static void save_bg_wait(void)
+{
+    while (save_bg_busy) sceKernelDelayThread(1000);
+}
+
+void game_save(void)
+{
+    save_pending = 0;
+    save_bg_wait();
+    unsigned char buf[256];
+    int n = save_fill(buf);
+    save_write(buf, n);
+}
+
+static void game_save_bg(void)
+{
+    if (save_bg_sema < 0) {
+        save_bg_sema = sceKernelCreateSema("save_bg", 0, 0, 1, NULL);
+        SceUID th = save_bg_sema >= 0 ? sceKernelCreateThread("save_bg", save_bg_thread, 0x30, 0x4000, PSP_THREAD_ATTR_USER, NULL) : -1;
+        if (th < 0 || sceKernelStartThread(th, 0, NULL) < 0) {
+            if (save_bg_sema >= 0) sceKernelDeleteSema(save_bg_sema);
+            save_bg_sema = -1;
+            game_save();   /* sin hilo: como siempre */
+            return;
+        }
+    }
+    save_pending = 0;
+    save_bg_wait();
+    save_bg_len = save_fill(save_bg_buf);
+    save_bg_busy = 1;
+    sceKernelSignalSema(save_bg_sema, 1);
 }
 
 void game_load(void)

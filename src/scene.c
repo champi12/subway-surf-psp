@@ -1104,6 +1104,10 @@ void track_restart(void)
     lay_finish();
     scene_randhold_init();
     for (int i = 0; i < nchunks; i++) {
+        /* mapa de la 1.5.2: solo los que se colocaron en la carrera anterior (unos 10 de ~50); los demas ya estan
+         * escondidos y con su arbol al dia. Recalcular los ~50 arboles enteros eran ~40 ms de CPU en la consola al
+         * reiniciar (un tiron en la intro) */
+        if (r_light && nrt[chunks[i].node].lpos.y == -1000.0f) continue;
         nrt[chunks[i].node].lpos.y = -1000.0f;
         scene_update_world(chunks[i].node);
     }
