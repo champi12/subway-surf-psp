@@ -1212,7 +1212,7 @@ static void draw_boards(void)
     int i = ginfo.board_sel, nb = board_count();
     lab(0, 14, 8, 30, C_NAME, 0, 0, board_name(i));
     int fx = board_effect(i);
-    if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : fx == 3 ? TR("Más velocidad (en pruebas)", "Speed Boost (test)")
+    if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : fx == 3 ? TR("Más velocidad", "Speed Boost")
                                                                      : TR("Va agachado", "Stays Low"));
     else if (board_is_season(i)) lab(0, 16, 40, 15, C_LIMITED, 0, 0, board_is_season(i) == 2 ? TR("Especial de Río", "Rio Special")
                                                                                              : TR("Especial de Nueva York", "New York Special"));
