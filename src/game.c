@@ -3793,6 +3793,10 @@ void game_update(float dt)
     case GS_DIEFALL: case GS_DIE: die_tick(dt); break;
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
     case GS_GAMEOVER: {
+        /* las cajas misteriosas de la carrera se abren antes (MysteryBoxPopup encima del fin): la cuenta de monedas
+         * espera a que se cierren, y empieza (1,2 s despues) con el marcador ya a la vista. Antes sonaba debajo de la
+         * caja */
+        if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) ginfo.gameover_t = ginfo.time;
         /* ScoreCounterSoundPlayer: mientras cuentan las monedas, su sonido cada 1/16 s subiendo de tono (2^avance) y
          * uno ultimo a tono 2 al acabar */
         static float next_t; static int counting;
