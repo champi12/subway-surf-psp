@@ -47,6 +47,8 @@ enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, PO
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
+int game_booster_on(void);        /* Score Booster activo en esta carrera */
+float game_booster_time(void);    /* ginfo.time al activarlo */
 float gameover_count(void);      /* CountUpCoins: 0 antes de contar, sube a 1 (suavizado) mientras pasan las monedas */
 int game_boards_used(void);
 int board_is_new(int row);       /* tabla nueva de la 1.6 aun no vista (pegatina NEW) */

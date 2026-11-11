@@ -259,7 +259,17 @@ static int music_thread(SceSize args, void *argp)
         }
         if (handle < 0) { sceKernelDelayThread(10000); continue; }
         DBG_PHASE(music, "leyendo el MP3 de la Memory Stick");
-        if (sceMp3CheckStreamDataNeeded(handle) > 0) fill_stream(fd, handle);
+        {
+            /* tras el modo reposo el archivo de la musica esta cerrado: se vuelve a abrir en el mismo sitio */
+            extern volatile int io_resume_gen;
+            static int mgen;
+            if (mgen != io_resume_gen && fd >= 0) {
+                mgen = io_resume_gen;
+                sceIoClose(fd);
+                fd = sceIoOpen(mus_req_path, PSP_O_RDONLY, 0);
+            }
+        }
+        if (fd >= 0 && sceMp3CheckStreamDataNeeded(handle) > 0) fill_stream(fd, handle);
         short *buf;
         DBG_PHASE(music, "sceMp3Decode");
         int bytes = sceMp3Decode(handle, &buf);

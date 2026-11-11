@@ -343,6 +343,9 @@ static float jump_length(float speed, float h) { return speed * 2.0f * jump_vs(h
 /* Score Booster de la 1.7 (PlayerInfo.scoreMultiplier): +5 al multiplicador durante la carrera en que se activa; las
  * monedas al final siguen contando con el multiplicador sin el (CoinToScoreConversion usa rawMultiplier) */
 static int booster_on;
+static float booster_t;   /* ginfo.time al activarlo (la cuenta del multiplicador en el marcador) */
+int game_booster_on(void) { return booster_on; }
+float game_booster_time(void) { return booster_t; }
 static int score_multiplier(void) { return (missions_multiplier() + (booster_on ? 5 : 0)) * (double_score ? 2 : 1); }
 static int mod_active(int m) { return mods[m].active; }
 static float bell(float x) { return smoothstepf(0, 1, 1.0f - fabsf(x - 0.5f) / 0.5f); }
@@ -3552,21 +3555,24 @@ int shop_amount(int i)
     return ginfo.boxes_pending;
 }
 
-/* MysteryBox.Roll de la 1.4: tablas de premios con peso (_lootTables) para la caja normal y la super. Las tres primeras
- * cajas normales dan 1000 monedas, una ficha de Tricky y 3 hoverboards. Random.Range con enteros no incluye el maximo */
-enum { LT_TOKEN, LT_TROPHY, LT_COINS, LT_HOVER, LT_HS500, LT_HS2000 };
+/* MysteryBox.Roll: tablas de premios con peso (_lootTables) para la caja normal y la super, las de la 1.7 (la ultima
+ * version portada): sin el headstart pequeno, con el Score Booster y algo mas de fichas, hoverboards y Mega Headstart.
+ * Las tres primeras cajas normales dan 1000 monedas, una ficha de Tricky y 3 hoverboards. Random.Range con enteros no
+ * incluye el maximo */
+enum { LT_TOKEN, LT_TROPHY, LT_COINS, LT_HOVER, LT_HS500, LT_HS2000, LT_BOOSTER };
 typedef struct { int type; float weight; int min, max; } Loot;
 static const Loot loot_normal[] = {
-    {LT_TOKEN, 40, 1, 1}, {LT_TROPHY, 2, 1, 1}, {LT_COINS, 18, 200, 300}, {LT_HS500, 10.15f, 1, 1},
-    {LT_COINS, 11, 500, 500}, {LT_HOVER, 7, 2, 2}, {LT_COINS, 3, 1000, 1000}, {LT_COINS, 2, 1500, 1500},
-    {LT_HOVER, 1, 3, 9}, {LT_HS2000, 3, 1, 1}, {LT_COINS, 1, 2500, 2500}, {LT_HOVER, 0.8f, 10, 10},
-    {LT_COINS, 0.5f, 5000, 5000}, {LT_HS2000, 0.5f, 3, 3}, {LT_COINS, 0.05f, 100000, 100000},
+    {LT_TOKEN, 43, 1, 1}, {LT_TROPHY, 2, 1, 1}, {LT_COINS, 20, 200, 300}, {LT_COINS, 10.65f, 500, 500},
+    {LT_HOVER, 9.8f, 2, 2}, {LT_COINS, 4, 1000, 1000}, {LT_COINS, 2, 1500, 1500}, {LT_HOVER, 1, 3, 9},
+    {LT_HS2000, 4.5f, 1, 1}, {LT_COINS, 1, 2500, 2500}, {LT_BOOSTER, 1, 1, 1}, {LT_HOVER, 0.2f, 10, 10},
+    {LT_COINS, 0.3f, 5000, 5000}, {LT_HS2000, 0.3f, 2, 2}, {LT_HS2000, 0.2f, 3, 3}, {LT_COINS, 0.05f, 100000, 100000},
 };
 static const Loot loot_super[] = {
-    {LT_TOKEN, 25, 3, 3}, {LT_HS500, 12, 3, 3}, {LT_COINS, 25, 1500, 1500}, {LT_HOVER, 10, 4, 8},
-    {LT_COINS, 10, 3000, 3000}, {LT_HS2000, 3, 2, 2}, {LT_COINS, 8, 4000, 4000}, {LT_HOVER, 1, 9, 19},
-    {LT_HS2000, 2, 3, 3}, {LT_HOVER, 1, 20, 20}, {LT_COINS, 1, 8000, 8000}, {LT_HS2000, 1, 5, 5},
-    {LT_HOVER, 0.5f, 40, 40}, {LT_COINS, 0.4f, 50000, 50000}, {LT_COINS, 0.1f, 300000, 300000},
+    {LT_TOKEN, 35, 3, 3}, {LT_HS2000, 4, 1, 1}, {LT_COINS, 13, 1500, 1500}, {LT_HOVER, 11, 4, 8},
+    {LT_COINS, 9, 2000, 2000}, {LT_COINS, 8, 3000, 3000}, {LT_BOOSTER, 3, 1, 1}, {LT_HS2000, 3, 2, 2},
+    {LT_HOVER, 2.2f, 10, 20}, {LT_COINS, 3, 5000, 5000}, {LT_HS2000, 2, 3, 3}, {LT_BOOSTER, 2, 2, 2},
+    {LT_COINS, 1.6f, 8000, 8000}, {LT_BOOSTER, 1, 3, 3}, {LT_HS2000, 1, 5, 5}, {LT_HOVER, 0.8f, 40, 40},
+    {LT_COINS, 0.3f, 50000, 50000}, {LT_COINS, 0.1f, 300000, 300000},
 };
 
 static const Loot *loot_roll(int super)
@@ -3585,7 +3591,7 @@ static void mystery_open_type(int super)
 {
     if (super) { if (ginfo.sboxes_pending <= 0) return; ginfo.sboxes_pending--; ginfo.sboxes_opened++; }
     else { if (ginfo.boxes_pending <= 0) return; ginfo.boxes_pending--; ginfo.boxes_opened++; }
-    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1;
+    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1, bst = 0;
     Loot first = {LT_COINS, 0, 0, 0};
     const Loot *l = &first;
     if (!super && ginfo.boxes_opened == 1) first.min = 1000;
@@ -3598,6 +3604,7 @@ static void mystery_open_type(int super)
     case LT_HOVER: hb = amount; break;
     case LT_HS500: h5 = amount; break;
     case LT_HS2000: h20 = amount; break;
+    case LT_BOOSTER: bst = amount; break;
     case LT_TROPHY:
         trophy = trophy_roll();
         if (trophy < 0) coins = 500;          /* TROPHY_CONSOLATION_REWARD */
@@ -3616,6 +3623,7 @@ static void mystery_open_type(int super)
         break;
     }
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
+    ginfo.boosters += bst;
     if (coins) missions_did(M_EARNCOIN, coins);
     if (tok) missions_did(M_TOKENS, tok);
     if (trophy >= 0) {
@@ -3626,12 +3634,14 @@ static void mystery_open_type(int super)
     else if (coins) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d monedas", "%d coins"), coins);
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 250", h5);
+    else if (bst) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Score Booster", bst);
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
     /* el objeto que sale de la caja (MysteryBoxRewardLabelTemplate): un sprite del atlas de la interfaz, que ya esta
      * cargado; nada de memoria aparte */
     ginfo.reward_icon = trophy >= 0 ? trophies[trophy].sprite : tok ? chars[tc].tok_sprite :
                         coins ? (coins >= 1000 ? "Icon_coin_pouch_larger" : "icon_coin_large") :
-                        hb ? "icon_upgrades_hoverboard" : h5 ? "icon_upgrades_headstart500" : "icon_upgrades_headstart2000";
+                        hb ? "icon_upgrades_hoverboard" : h5 ? "icon_upgrades_headstart500" : bst ? "ui_booster" :
+                        "icon_upgrades_headstart2000";
     ginfo.reward_super = super;
     ginfo.reward_trophy = trophy >= 0;
     ginfo.reward_t = game_time;
@@ -3679,6 +3689,7 @@ static void use_booster(void)
     if (state != GS_RUNNING || game_time > ginfo.headstart_until || ginfo.boosters <= 0 || booster_on) return;
     ginfo.boosters--;
     booster_on = 1;   /* GameStats.scoreBoosterActivated */
+    booster_t = ginfo.time;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.2f, 0);
     dlog("SCORE BOOSTER activado: multiplicador x%d", score_multiplier());
     game_save();

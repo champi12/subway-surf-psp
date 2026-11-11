@@ -422,26 +422,33 @@ static int loader_thread(SceSize args, void *argp)
     (void)args; (void)argp;
     char path[256], open_path[256] = "";
     SceUID fd = -1;
+    extern volatile int io_resume_gen;
+    int gen = io_resume_gen;
     for (;;) {
         if (sceKernelWaitSema(ld_sema, 1, NULL) < 0) break;
         int t = ld_tex;
         if (t < 0) continue;
         Texture *tx = &gd.tex[t];
         data_tex_path(t, path, sizeof(path));
-        if (fd < 0 || strcmp(path, open_path)) {
-            if (fd >= 0) sceIoClose(fd);
-            fd = sceIoOpen(path, PSP_O_RDONLY, 0);
-            strcpy(open_path, path);
-        }
-        int ok = fd >= 0 && sceIoLseek32(fd, tx->file_off, PSP_SEEK_SET) == (int)tx->file_off;
-        if (ok && tx->palbytes) ok = sceIoRead(fd, ld_pal, tx->palbytes) == (int)tx->palbytes;
-        /* por trozos de 32 KB cediendo entre uno y otro: de golpe (257 KB) la musica, que tambien se lee de la Memory
-         * Stick, se quedaba sin datos y el audio tartamudeaba */
-        for (unsigned int done = 0; ok && done < tx->databytes;) {
-            unsigned int n = tx->databytes - done > 32768 ? 32768 : tx->databytes - done;
-            ok = sceIoRead(fd, (char *)ld_data + done, n) == (int)n;
-            done += n;
-            sceKernelDelayThread(2000);
+        int ok = 0;
+        for (int tries = 0; tries < 2 && !ok; tries++) {
+            /* tras el modo reposo (o un fallo de lectura) se vuelve a abrir el archivo */
+            if (fd < 0 || strcmp(path, open_path) || gen != io_resume_gen || tries) {
+                if (fd >= 0) sceIoClose(fd);
+                fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+                strcpy(open_path, path);
+                gen = io_resume_gen;
+            }
+            ok = fd >= 0 && sceIoLseek32(fd, tx->file_off, PSP_SEEK_SET) == (int)tx->file_off;
+            if (ok && tx->palbytes) ok = sceIoRead(fd, ld_pal, tx->palbytes) == (int)tx->palbytes;
+            /* por trozos de 32 KB cediendo entre uno y otro: de golpe (257 KB) la musica, que tambien se lee de la
+             * Memory Stick, se quedaba sin datos y el audio tartamudeaba */
+            for (unsigned int done = 0; ok && done < tx->databytes;) {
+                unsigned int n = tx->databytes - done > 32768 ? 32768 : tx->databytes - done;
+                ok = sceIoRead(fd, (char *)ld_data + done, n) == (int)n;
+                done += n;
+                sceKernelDelayThread(2000);
+            }
         }
         /* los mipmaps tambien aqui (en sus bufferes ya reservados): elegir el color de cada 2x2 cuesta */
         if (ok && tex_nmip[t] > 0) mips_build(t, ld_data);

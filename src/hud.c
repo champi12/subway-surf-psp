@@ -357,11 +357,22 @@ static void draw_ingame(void)
     float x1 = SCR_W - 4, y = 4;
     ui_sliced(a_ui, "background_ingame_beatThis", x1 - bw, y, bw, bh, UIS, BOX_COL);
     ui_text(f_big, x1 - 8 * UIS, y + 3 * UIS, LBL, 0xffffffff, 2, buf);
-    /* multiplicador */
-    snprintf(buf, sizeof(buf), "x%d", ginfo.multiplier);
+    /* multiplicador. Con el Score Booster (IngameScreen de la 1.7) el numero sube de uno en uno hasta el nuevo valor
+     * y luego late de blanco a azul electrico mientras dura la carrera */
+    int mshow = ginfo.multiplier;
+    unsigned mcol = 0xff00dbffu;
+    if (game_booster_on()) {
+        float e = ginfo.time - game_booster_time();
+        int steps = (int)(e / 0.12f);
+        if (steps < 5) mshow = ginfo.multiplier - (5 - steps);
+        float k = 0.5f + 0.5f * sinf(ginfo.time * 6.0f);
+        unsigned r = (unsigned)(255 + (30 - 255) * k), gg = (unsigned)(255 + (144 - 255) * k), b = 255;
+        mcol = 0xff000000u | b << 16 | gg << 8 | r;
+    }
+    snprintf(buf, sizeof(buf), "x%d", mshow);
     float mw = 40 * UIS;
     ui_sliced(a_ui, "background_ingame_beatThis", x1 - bw - 4 - mw, y, mw, bh, UIS, BOX_COL);
-    ui_text(f_big, x1 - bw - 4 - mw * 0.5f, y + 3 * UIS, LBL, 0xff00dbff, 1, buf);
+    ui_text(f_big, x1 - bw - 4 - mw * 0.5f, y + 3 * UIS, LBL, mcol, 1, buf);
     /* monedas */
     snprintf(buf, sizeof(buf), "%d", ginfo.coins);
     tw = ui_text_width(f_big, LBL, buf);
@@ -397,8 +408,15 @@ static void draw_ingame(void)
         /* SlideinPowerupHelper de la 1.7: Score Booster (L) y Mega Headstart (R) */
         if (ginfo.boosters > 0) {
             ui_sliced(a_ui, "background_ingame_transparent_withStroke", hx, hy, 60 * UIS, 74 * UIS, UIS, 0xc0000000);
-            spr_c("icon_upgrades_doubleScore", hx + 30 * UIS, hy + 30 * UIS, 44 * UIS, 44 * UIS, 0xffffffff);
-            text_shadow(f_titan, hx + 30 * UIS, hy + 56 * UIS, 22.0f / fnt[f_titan].size, 0xffffffff, 1, "+5");
+            /* el icono del original (icon_upgrades_scorebooster, sacado de la hoja de la 1.7 por el conversor); sin el,
+             * una ficha azul con "+5" */
+            static int t_boost = -2;
+            if (t_boost == -2) t_boost = data_tex_find("ui_booster");
+            if (t_boost >= 0) r_sprite(t_boost, hx + 4 * UIS, hy + 6 * UIS, 52 * UIS, 52 * UIS, 0, 0, 1, 1, 0xffffffffu);
+            else {
+                ui_sliced(a_ui, "whitebox", hx + 8 * UIS, hy + 10 * UIS, 44 * UIS, 44 * UIS, UIS, 0xffff9a28u);
+                text_shadow(f_titan, hx + 30 * UIS, hy + 32 * UIS, 26.0f / fnt[f_titan].size, 0xffffffff, 1, "+5");
+            }
             snprintf(buf, sizeof(buf), "L  x%d", ginfo.boosters);
             text_shadow(f_small, hx + 30 * UIS, hy + 76 * UIS, 0.6f, 0xffffffff, 1, buf);
             hx += 70 * UIS;
@@ -1343,6 +1361,14 @@ static int a_rewards = -2, rewards_loaded;
 /* w < 0: dado la vuelta (el reves del premio mientras gira) */
 static void reward_spr(const char *name, const char *fallback, float cx, float cy, float k, float wk, unsigned int col)
 {
+    if (!strcmp(name, "ui_booster")) {
+        /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7) */
+        static int tb = -2;
+        if (tb == -2) tb = data_tex_find("ui_booster");
+        float w = 70 * k * (wk < 0 ? -wk : wk), hh = 70 * k;
+        if (tb >= 0) { r_sprite(tb, (int)(cx - w * 0.5f), (int)(cy - hh * 0.5f), w, hh, 0, 0, 1, 1, col); return; }
+        name = fallback = "icon_upgrades_doubleScore";
+    }
     USprite *s = find_sprite(a_rewards, name);
     if (s) {
         UAtlas *a = &atl[a_rewards];

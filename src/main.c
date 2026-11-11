@@ -34,11 +34,23 @@ unsigned int rnd_u32(void)
 }
 
 static int exit_cb(int a1, int a2, void *c) { running = 0; return 0; }
+/* al volver del modo reposo la consola cierra los archivos abiertos de la Memory Stick: quien tenga uno abierto
+ * (texturas, personajes, musica) lo vuelve a abrir al ver que cambio io_resume_gen. Antes se seguian usando: "Error
+ * leyendo la textura" y la consola se quedaba congelada al poco */
+volatile int io_resume_gen;
+static int power_cb(int unknown, int flags, void *arg)
+{
+    (void)unknown; (void)arg;
+    if (flags & PSP_POWER_CB_RESUME_COMPLETE) io_resume_gen++;
+    return 0;
+}
 static int cb_thread(SceSize a, void *p)
 {
     fpu_no_exceptions();
     int id = sceKernelCreateCallback("exit", exit_cb, NULL);
     sceKernelRegisterExitCallback(id);
+    int pid = sceKernelCreateCallback("power", power_cb, NULL);
+    if (pid >= 0) scePowerRegisterCallback(-1, pid);
     sceKernelSleepThreadCB();
     return 0;
 }
@@ -532,6 +544,9 @@ int main(int argc, char **argv)
 #ifdef AT_CAUGHT
         /* salta la escena del inspector a los ~0,55 s (antes de que acabe), como quien pulsa X enseguida */
         { static int dn; dn = (ginfo.state == GS_DIEFALL || ginfo.state == GS_DIE) ? dn + 1 : 0; if (dn == 17) pr |= PSP_CTRL_CROSS; }
+#endif
+#ifdef AT_BOOSTER
+        if (ginfo.state == GS_RUNNING && frame_no % 30 == 0) pr |= PSP_CTRL_LTRIGGER;   /* prueba: Score Booster */
 #endif
 #ifdef AT_BOARDUSE
         if (ginfo.state == GS_RUNNING && frame_no % 450 == 150) pr |= PSP_CTRL_SQUARE;   /* usar la tabla cada 15 s */

@@ -261,6 +261,18 @@ static int load_meshes(void)
 }
 
 static FILE *texfile, *hwtexfile, *xmtexfile;
+static char texpath[256], hwtexpath[256], xmtexpath[256];
+extern volatile int io_resume_gen;
+static int tex_gen;
+/* vuelve a abrir los archivos de texturas (tras el modo reposo los cierra la consola) */
+static void tex_files_reopen(void)
+{
+    if (texfile) { fclose(texfile); texfile = texpath[0] ? fopen(texpath, "rb") : NULL; }
+    if (hwtexfile) { fclose(hwtexfile); hwtexfile = hwtexpath[0] ? fopen(hwtexpath, "rb") : NULL; }
+    if (xmtexfile) { fclose(xmtexfile); xmtexfile = xmtexpath[0] ? fopen(xmtexpath, "rb") : NULL; }
+    tex_gen = io_resume_gen;
+    dlog("REPOSO: archivos de texturas abiertos de nuevo");
+}
 
 /* directorio de un archivo SST1: llama a cb con la cabecera de cada textura */
 static int read_tex_dir(FILE *f, void (*cb)(int i, const char *name, int w, int h, int fmt, int alpha,
@@ -300,6 +312,7 @@ static int load_textures(void)
     char path[256];
     snprintf(path, sizeof(path), "%s/tex.bin", basedir);
     texfile = fopen(path, "rb");
+    snprintf(texpath, sizeof(texpath), "%s", path);
     if (!texfile) { snprintf(errbuf, sizeof(errbuf), "No se encuentra %s", path); return -1; }
     uint8_t h[8];
     fread(h, 1, 8, texfile);
@@ -324,11 +337,16 @@ void data_tex_path(int i, char *out, int n)
 int data_tex_read(int i, void *pal, void *data)
 {
     Texture *t = &gd.tex[i];
-    FILE *f = t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
-    if (!f) return -1;
-    fseek(f, t->file_off, SEEK_SET);
-    if (t->palbytes && fread(pal, 1, t->palbytes, f) != t->palbytes) return -1;
-    return fread(data, 1, t->databytes, f) == t->databytes ? 0 : -1;
+    if (tex_gen != io_resume_gen) tex_files_reopen();
+    for (int tries = 0; tries < 2; tries++) {
+        FILE *f = t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
+        if (!f) return -1;
+        if (fseek(f, t->file_off, SEEK_SET) == 0 && (!t->palbytes || fread(pal, 1, t->palbytes, f) == t->palbytes) &&
+            fread(data, 1, t->databytes, f) == t->databytes)
+            return 0;
+        tex_files_reopen();   /* un fallo de lectura: se reabre y se prueba otra vez */
+    }
+    return -1;
 }
 
 int data_tex_load(int i)
@@ -409,6 +427,7 @@ int data_theme_init_tex(void)
     tex_nbase = n0;
     snprintf(path, sizeof(path), "%s/xm_tex.bin", basedir);
     xmtexfile = fopen(path, "rb");
+    snprintf(xmtexpath, sizeof(xmtexpath), "%s", path);
     if (xmtexfile) {
         int nx = read_tex_dir(xmtexfile, xm_dir_cb), k = 0;
         for (int t = 0; t < n0; t++) k += tex_src[2][t].data != 0;
@@ -418,6 +437,7 @@ int data_theme_init_tex(void)
     /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
     snprintf(path, sizeof(path), "data/hw_tex.bin");
     hwtexfile = fopen(path, "rb");
+    snprintf(hwtexpath, sizeof(hwtexpath), "%s", path);
     if (!hwtexfile) return 0;
     int nt = read_tex_dir(hwtexfile, hw_dir_cb);
     data_hw_ok = nt > 0;
@@ -547,6 +567,8 @@ int data_theme_init(int need_meshes)
  * hasta data_mesh_acquire; data_mesh_release la vacia otra vez y devuelve la memoria (~140 KB cada una). */
 #define MAX_LAZY 32   /* mallas de chars14.bin (personajes y tablas: 18 con la 1.6) */
 static FILE *charsfile;
+static char charspath[64] = "data/chars14.bin";
+static int chars_gen;
 static struct { int mesh; uint32_t off, len; uint8_t *buf; } lazy[MAX_LAZY];
 static int nlazy;
 
@@ -590,8 +612,13 @@ int data_mesh_acquire(int mesh)
         if (lazy[i].buf) return 0;
         uint8_t *b = memalign(64, lazy[i].len + 16);
         if (!b) { dlog_error("Sin memoria para la malla %s (%d KB)", gd.meshes[mesh].name, (int)(lazy[i].len / 1024)); return -1; }
-        fseek(charsfile, lazy[i].off, SEEK_SET);
-        if (fread(b, 1, lazy[i].len, charsfile) != lazy[i].len) { free(b); return -1; }
+        if (chars_gen != io_resume_gen && charsfile) { fclose(charsfile); charsfile = fopen(charspath, "rb"); chars_gen = io_resume_gen; }
+        int ok = 0;
+        for (int tries = 0; tries < 2 && !ok; tries++) {
+            ok = charsfile && fseek(charsfile, lazy[i].off, SEEK_SET) == 0 && fread(b, 1, lazy[i].len, charsfile) == lazy[i].len;
+            if (!ok && tries == 0) { if (charsfile) fclose(charsfile); charsfile = fopen(charspath, "rb"); }
+        }
+        if (!ok) { free(b); return -1; }
         lazy[i].buf = b;
         parse_mesh(b, &gd.meshes[mesh]);
         return 0;

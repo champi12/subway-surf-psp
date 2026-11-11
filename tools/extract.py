@@ -1136,6 +1136,58 @@ SETTINGS_SPRITES = tuple(('LowResAtlas', n) for n in (
     'background_splat'))
 
 
+def sprite_from_raw_atlas(scx, name, small=False):
+    """Un dibujo de las hojas de la interfaz (UIAtlas de NGUI) de una version de Unity 4 (la 1.7), cuya lista de
+    dibujos no se puede leer con su tipo: se busca el nombre en los datos del UIAtlas y detras van sus rectangulos
+    (outer x, y, ancho, alto). La hoja sale del material (lo primero tras el nombre del componente). Devuelve la imagen
+    del mayor que encuentre (la hoja de alta resolucion; con small, el de la normal) o None"""
+    import struct
+    best = None
+    byfile = {}
+    for o in scx.env.objects:
+        byfile.setdefault(o.assets_file.name, {})[o.path_id] = o
+    key_ = name.encode() + b'\0'
+    for o in scx.env.objects:
+        if o.type.name != 'MonoBehaviour':
+            continue
+        try:
+            raw = o.get_raw_data()
+        except Exception:
+            continue
+        i = raw.find(key_)
+        if i < 0 or len(raw) < 1000 or raw[i - 4:i] != struct.pack('<i', len(name)):
+            continue
+        try:
+            p = 8 + 4 + 8
+            n = struct.unpack_from('<i', raw, p)[0]
+            p = (p + 4 + n + 3) & ~3
+            fid, pid = struct.unpack_from('<ii', raw, p)
+            x, y, w, h = struct.unpack_from('<4f', raw, i + ((len(name) + 3) & ~3))
+            if fid == 0:
+                mat = byfile[o.assets_file.name].get(pid)
+            else:
+                ext = o.assets_file.externals[fid - 1].path.split('/')[-1]
+                mat = next((v.get(pid) for k, v in byfile.items() if k.lower() == ext.lower()), None)
+            if mat is None:
+                continue
+            md = mat.read()
+            tex = None
+            for _, t in md.m_SavedProperties.m_TexEnvs:
+                try:
+                    tex = t.m_Texture.read()
+                    break
+                except Exception:
+                    pass
+            if tex is None:
+                continue
+            im = tex_rgba(tex).crop((int(x), int(y), int(x + w), int(y + h)))
+            if best is None or (im.size[0] < best.size[0] if small else im.size[0] > best.size[0]):
+                best = im
+        except Exception:
+            continue
+    return best
+
+
 def build_notebook_atlas(sc15, sprite_list=None, W=512, H=256, what='la libreta de la 1.5.2'):
     """Interfaz de la 1.5.2: la hoja de libreta (newbackground, espiral y dibujo de fondo, del GenericAtlas) y los
     botones nuevos de la portada (FRIENDS / ME / SHOP), en una hoja de 512x256 (u otra lista de sprites en otra hoja).
@@ -1839,6 +1891,13 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
                             'sprites': st[1], 'key': ('gen', 'Settings15')})
             ex.textures.append(('generada', 'ui_settings', st[0], True))
             print('  ajustes y premios de la 1.5.2: %d sprites en 256x256' % len(st[1]))
+        # icono del Score Booster de la 1.7 (su hoja de interfaz es de Unity 4): el de la hoja normal (35x35), a 32x32
+        sc17_ = getattr(ex, 'sc17', None)
+        if sc17_ is not None:
+            ic = sprite_from_raw_atlas(sc17_, 'icon_upgrades_scorebooster', small=True)
+            if ic is not None:
+                ex.textures.append(('generada', 'ui_booster', ic.resize((32, 32), Image.LANCZOS), True))
+                print('  icono del Score Booster de la 1.7: %dx%d' % ic.size)
         mb = find_texture(sc15, 'mysterybox_bg') if sc15 is not None else None
         if mb is not None:
             # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256
