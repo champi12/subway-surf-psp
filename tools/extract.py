@@ -2549,10 +2549,12 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     print('Exportando texturas...')
     # mapa de la 1.5.2: trains y main con paleta (8 bits) como environment y props: 256 KB en vez de 512, y asi caben
     # las cuatro en la VRAM (el GE las lee mucho mas deprisa que de la RAM). Error medio de color 3,8/255 (con 16 bits
-    # 1,8). El clasico (1.0/1.4) como antes: trains y main de 16 bits y enemies a su tamano
+    # 1,8). El clasico (1.0/1.4): main de 16 bits y enemies a su tamano
     global SMALL_TEX_ON
     SMALL_TEX_ON = not classic
-    hq = ('main', 'trains', 'FontAtlas') if classic else ('FontAtlas',)
+    # mapa clasico: main (su escenario) sigue en 16 bits; los trenes con paleta para que quepan los dos en la VRAM con
+    # la tercera imagen (960 KB)
+    hq = ('main', 'FontAtlas') if classic else ('FontAtlas',)
     tex = export_textures(ex, hq=hq)
     print('Exportando animaciones...')
     anim = export_anims(ex)

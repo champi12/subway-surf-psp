@@ -2557,7 +2557,7 @@ static void die_tick(float dt)
         ginfo.gameover_coins = coins_run;
         ginfo.reward[0] = 0;
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
-        if (r_light) game_save_bg(); else game_save();
+        game_save_bg();   /* en segundo plano (todos los mapas) */
         change_state(GS_GAMEOVER);
         ginfo.state = GS_GAMEOVER;
         /* de pie en el fin de partida, como en la 1.5.2, sin los objetos de los power-ups de la carrera (el iman se
@@ -3563,10 +3563,10 @@ void game_update(float dt)
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
     default: break;
     }
-    /* mapa de la 1.5.2: mientras cae el personaje (~0,6 s) se leen en segundo plano las texturas de la pantalla de
-     * fin; antes se leian de golpe al aparecer (~110 ms de Memory Stick en la consola, un tiron). Se pide una cada
-     * fotograma: el cargador lleva una a la vez */
-    if (r_light && (state == GS_DIEFALL || state == GS_DIE)) {
+    /* mientras cae el personaje (~0,6 s) se leen en segundo plano las texturas de la pantalla de fin; antes se leian
+     * de golpe al aparecer (~110 ms de Memory Stick en la consola, un tiron). Se pide una cada fotograma: el cargador
+     * lleva una a la vez */
+    if (state == GS_DIEFALL || state == GS_DIE) {
         static const char *const fin_tex[] = {"ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
         for (int i = 0; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++) {
             int t = data_tex_find(fin_tex[i]);

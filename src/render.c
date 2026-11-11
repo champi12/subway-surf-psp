@@ -160,8 +160,12 @@ static void *vram_alloc(int bytes)
  * carrera. Antes solo entraban las de 16 bits, por orden de carga: los trenes y "main" (que en la 1.5.2 solo usan la
  * sombra, efectos y el cielo) llenaban la VRAM y las de paleta del escenario (vias, paredes, objetos) se leian de la
  * RAM. Cada una entra solo si deja sitio a las de delante que aun no se han cargado */
-static const char *const vram_prio[] = {"environment", "props", "trains", "enemies", "main", "train_start"};
-#define NVRAM_PRIO ((int)(sizeof(vram_prio) / sizeof(vram_prio[0])))
+static const char *const vram_prio15[] = {"environment", "props", "trains", "enemies", "main", "train_start"};
+/* mapa clasico: "main" es su escenario (vias, paredes, edificios) y despues los trenes (con paleta: con la tercera
+ * imagen quedan 960 KB y los dos de 16 bits, 1024 KB, no cabian) */
+static const char *const vram_prio10[] = {"main", "trains"};
+#define vram_prio (r_light ? vram_prio15 : vram_prio10)
+#define NVRAM_PRIO (r_light ? (int)(sizeof(vram_prio15) / sizeof(vram_prio15[0])) : (int)(sizeof(vram_prio10) / sizeof(vram_prio10[0])))
 static int vram_rank(const char *name)
 {
     for (int i = 0; i < NVRAM_PRIO; i++) if (!strcmp(name, vram_prio[i])) return i;
@@ -365,11 +369,10 @@ static int tex_ensure(int t)
     mips_build(t, tx->data);   /* desde la copia en RAM, antes de que el nivel 0 pase a la VRAM */
     /* las texturas de 16 bits del escenario van a la VRAM si caben (solo las de los modelos 3D: la letra de la
      * interfaz se carga antes, en la pantalla de carga, y si no dejaria fuera a la de los trenes) */
-    /* mapa clasico: como antes (las de 16 bits, por orden de carga) */
-    int rank = r_light ? vram_rank(tx->name) : -1;
+    /* las de la lista por orden de prioridad (cada una si deja sitio a las de delante); las demas de 16 bits si sobra */
+    int rank = vram_rank(tx->name);
     if (t < 64 && tex_3d[t] && (rank >= 0 || tx->fmt != TEX_T8)) {
-        void *v = !r_light ? vram_alloc(tx->databytes) :
-                  vram_free_bytes() - (int)tx->databytes >= vram_reserve(rank, t) ? vram_alloc(tx->databytes) : NULL;
+        void *v = vram_free_bytes() - (int)tx->databytes >= vram_reserve(rank, t) ? vram_alloc(tx->databytes) : NULL;
         if (v) {
             memcpy((void *)((unsigned)v | 0x40000000), tx->data, tx->databytes);
             free(tx->data);
@@ -442,7 +445,7 @@ static int async_ok(int t)
 {
     const Texture *tx = &gd.tex[t];
     /* las que pueden ir a la VRAM (las del escenario) siguen el camino normal */
-    return !(t < 64 && tex_3d[t] && (tx->fmt != TEX_T8 || (r_light && vram_rank(tx->name) >= 0)));
+    return !(t < 64 && tex_3d[t] && (tx->fmt != TEX_T8 || vram_rank(tx->name) >= 0));
 }
 
 static int ld_mipbytes;
@@ -534,8 +537,9 @@ static void tex_filter(void)
 #else
     if (cur_mips) {
         /* mapa clasico: el GE elige el nivel, como antes (alli no salian lineas) */
-        if (!r_light) sceGuTexLevelMode(use ? GU_TEXTURE_AUTO : GU_TEXTURE_CONST, 0.0f);
-        else sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
+        /* nivel elegido por la CPU en todos los mapas: con el automatico del GE (GU_TEXTURE_AUTO) salian lineas en las
+         * paredes de los tuneles y en las paredes rojas del mapa clasico en la consola */
+        sceGuTexLevelMode(GU_TEXTURE_CONST, use ? (float)(part_lod < cur_mips ? part_lod : cur_mips) : 0.0f);
     }
 #endif
     sceGuTexFilter(min, mag);
@@ -696,7 +700,7 @@ static void ge_signal_cb(int id);
 #endif
 void r_init(void)
 {
-    nfb = r_light ? 3 : 2;   /* el mapa clasico como siempre */
+    nfb = 3;   /* tres imagenes en todos los mapas */
     for (int i = 0; i < nfb; i++) fbp[i] = (void *)(FB_BYTES * i);
     zbp = (void *)(FB_BYTES * nfb);
     vram_base = FB_BYTES * (nfb + 1);
@@ -1393,7 +1397,10 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
              * (puntos blancos en las paredes en la consola). De lejos la diferencia no llega a un pixel */
             if (me->nparts == 1 && pr <= 20.0f && d0 > APPROX_MIN_D) { approx_bones(&mv, d0, kx, ky); bones_mesh = -1; }
             else if (bones_mesh != 1) { exact_bones(&mv, me, kx, ky); bones_mesh = 1; }
-            lod_for(d0 - pr);
+            /* el nivel de mipmap por la parte mas cercana del trozo; en el mapa de la 1.5.2 los trozos dispersos son
+             * grandes (hasta 256 unidades) y casi todo el trozo esta mas lejos: con el borde cercano el suelo lejano
+             * (nieve de Navidad) salia con un nivel demasiado nitido y lineas blancas que se movian */
+            lod_for(d0 - (r_light ? 0.5f : 1.0f) * pr);
             bind_material(mat, amul);
             /* de lejos (ya en la niebla) la version ligera: los mismos vertices con menos triangulos */
             {
