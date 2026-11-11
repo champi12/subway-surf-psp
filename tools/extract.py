@@ -2643,7 +2643,7 @@ def main():
                 i = sys.argv.index(o)
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         return None
-    apk14, apk15 = opt('--apk14', '--halloween'), opt('--apk15', '--world')
+    apk14, apk15, apk16 = opt('--apk14', '--halloween'), opt('--apk15', '--world'), opt('--apk16')
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
@@ -2666,6 +2666,16 @@ def main():
         export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
+    # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
+    # Tricky siguen saliendo de la 1.5.2
+    w16 = os.path.join(outdir, 'w16')
+    if apk16 and os.environ.get('WORLD16', '1') != '0':
+        print('Descomprimiendo el APK de la 1.6...')
+        sc16 = Scene(unpack_apk(apk16))
+        print('== Mapa de la 1.6 (data/w16/, en pruebas)')
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards)
+    elif os.path.isdir(w16):
+        shutil.rmtree(w16, True)
     print('Listo.')
 
 

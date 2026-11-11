@@ -179,8 +179,15 @@ int main(int argc, char **argv)
         if (f >= 0) sceIoClose(f);
         if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
-        { extern int r_light; r_light = !strcmp(wdir, "data/w15"); }
-        dlog("Mundo: %s", has15 && !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
+#if defined(WORLD16) && WORLD16
+        /* prueba del mapa de la 1.6 (data/w16): con make WORLD16=1 se usa en lugar del de la 1.5.2 */
+        if ((f = sceIoOpen("data/w16/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+            sceIoClose(f);
+            if (!(halloween_season() && has_hw)) wdir = "data/w16";
+        }
+#endif
+        { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        dlog("Mundo: %s", !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
