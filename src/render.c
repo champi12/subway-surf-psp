@@ -122,6 +122,9 @@ static float band_gxn, band_gyn, band_igl, band_igll, band_ilx, band_ily;
 #define SEAM_GROW_PX 0.75f      /* cuanto se ensancha lo recortado por CPU para tapar la junta con el GE */
 #endif
 static float pix_x, pix_y;      /* pixeles por unidad de x/d e y/d (dependen de la proyeccion) */
+/* prueba (devlog: SELECT + ARRIBA en la consola): cuanto se ensancha lo recortado por CPU, para ver si tapa la linea
+ * discontinua de las paredes de Rio (0,75 / 1,5 / 2,5 px) */
+float r_seam_grow = SEAM_GROW_PX;
 /* Mipmaps: en la consola, dejar que el GE elija el nivel (GU_TEXTURE_AUTO) llenaba las texturas del escenario de lineas
  * negras y blancas (bordes de las piezas del atlas), sobre todo con el de Navidad; sin mipmaps salian bien pero el GE no
  * llegaba (35 ms) y la distancia de dibujo bajaba mucho. El nivel lo elige la CPU para cada trozo segun su distancia
@@ -1054,7 +1057,7 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
                 float px = (sx - cx) * pix_x, py = (sy - cy) * pix_y;   /* en pixeles */
                 float l2 = px * px + py * py;
                 if (l2 < 1e-4f) continue;
-                float g = SEAM_GROW_PX / sqrtf(l2);
+                float g = r_seam_grow / sqrtf(l2);
                 in[k].x += px * g / pix_x * in[k].d;
                 in[k].y += py * g / pix_y * in[k].d;
             }

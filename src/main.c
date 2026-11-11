@@ -298,6 +298,16 @@ int main(int argc, char **argv)
             dlog("PRUEBA %s", tn[r_texdbg]);
             hud_slide("PRUEBA (SELECT+L)", tn[r_texdbg]);
         }
+        /* SELECT + ARRIBA: cuanto se ensanchan las juntas de lo recortado por CPU (render.c, r_seam_grow) */
+        if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_UP)) {
+            extern float r_seam_grow;
+            r_seam_grow = r_seam_grow < 1.0f ? 1.5f : r_seam_grow < 2.0f ? 2.5f : 0.75f;
+            pr &= ~PSP_CTRL_UP;
+            char t[40];
+            snprintf(t, sizeof(t), "Juntas: %.2f px", r_seam_grow);
+            dlog("PRUEBA %s", t);
+            hud_slide("PRUEBA (SELECT+ARRIBA)", t);
+        }
 #if defined(AUTOTEST) && defined(AT_SHOTBMP)
         if (frame_no == 400) shot_pending = 1;   /* prueba de la captura */
 #endif
