@@ -26,6 +26,7 @@ typedef struct {
     float headstart_until;        /* botones de headstart visibles hasta este momento */
     char reward[64]; float reward_t;
     int gameover_coins;
+    int boosters;                 /* Score Boosters (1.7): +5 al multiplicador en una carrera */
     float gameover_t;             /* ginfo.time al llegar al fin de partida (CountUpCoins) */
     int gameover_score0;          /* puntos sin las monedas (de ahi sube hasta final_score) */
     int tokens, character;        /* tokens: fichas de personaje recogidas (total); character: personaje elegido */
@@ -42,7 +43,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
@@ -73,6 +74,7 @@ int board_is_gift(int row);
 int board_step(int row, int dir);   /* siguiente tabla a la venta (salta las de temporada fuera de fecha) */
 int board_is_season(int row);
 int ny_season(void);
+int rio_season(void);
 int game_cloud_tex(void);         /* nubes del jetpack */
 int game_fx_get(int i, V3 *pos, float *size, unsigned int *col);   /* particulas del humo de la tabla */      /* la de regalo (FREE GIFT) */
 const char *char_name(int i);

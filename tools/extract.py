@@ -1784,7 +1784,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
         # pantalla de personajes como la de la 1.4 (CharacterModelPreviewFactory): miniaturas del carrusel y, para
         # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
         prev = char_previews(sc14)
-        for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6')):
+        for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7')):
             if not prev or scx is None:
                 continue
             # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
@@ -2089,7 +2089,8 @@ BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0),
                          (10, 'Liberty', 50000, 3, 0)]
 # la 1.7 (EN PRUEBAS): Daredevil (speedboard, 11), que acelera el juego mientras dura (effect 3). Para probarla sale
 # desbloqueada (unlock 0, como la normal); en el original cuesta 85000 monedas
-BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 0, 3)]
+# Toucan (12, "Rio Special": unlock 4, solo en la temporada de Rio) y Lumberjack (13, "Treehugger" en el codigo)
+BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 0, 3), (12, 'Toucan', 50000, 4, 0), (13, 'Lumberjack', 4000, 2, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2469,6 +2470,31 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
+def add_guard_clips(ex, scx):
+    """FollowingGuard de la 1.7: animaciones nuevas del inspector y el perro (esquivar a cada lado, rodar y el perro en
+    el aire). Se anaden a sus Animation (guard_prefab / dog_prefab) en todos los mapas; mismo esqueleto."""
+    want = {'guard_prefab': ['Guard_Roll', 'Guard_dodgeLeft', 'Guard_dodgeRight'],
+            'dog_prefab': ['Dog_dodgeLeft', 'Dog_dodgeRight', 'Dog_hangtime']}
+    found = {}
+    for o in scx.env.objects:
+        if o.type.name != 'AnimationClip':
+            continue
+        try:
+            n = o.read(check_read=False).m_Name
+        except Exception:
+            continue
+        if any(n in v for v in want.values()) and n not in found:
+            found[n] = o
+    got = []
+    for go, names in want.items():
+        ids = [ex.clip_id(found[n]) for n in names if n in found]
+        if ids:
+            ex.extra_anim[go] = ex.extra_anim.get(go, []) + ids
+            got += [n for n in names if n in found]
+    if got:
+        print('  animaciones nuevas del inspector y el perro: %s' % ', '.join(got))
+
+
 def swap_guard16(ex, sc16):
     """Mapa de la 1.6: el inspector y el perro de Nueva York (policia de azul con placa y perro marron). Sus mallas
     (normal_polySurface9 / normal_dog) tienen los mismos huesos en el mismo orden que las de la 1.0, asi que se cambian
@@ -2512,6 +2538,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     msc = sc if level_sc is sc else MultiScene([sc, level_sc])
     ex = Exporter(msc)
     ex.sc16 = sc16   # contenido de la 1.6 (Tony, tablas) en la interfaz del mundo clasico
+    ex.sc17 = sc17   # y de la 1.7 (Carmen)
     trees = []
     for r in sc.roots('level0'):
         go = sc.go_tree(r)
@@ -2540,6 +2567,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             continue
         seen.add(key(o))
         trees.append(msc.go_tree(o))
+    # las animaciones nuevas del inspector y el perro de la 1.7 en todos los mapas (mismo esqueleto en todas las
+    # versiones; solo cambia que animacion suena)
+    if sc17 is not None:
+        add_guard_clips(ex, sc17)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -2584,26 +2615,35 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         bsrc = sc17 or sc16 or sc15
         boards = export_boards(bsrc, ex, names10, BOARDS_17 if sc17 is not None else
                                BOARDS_16 if sc16 is not None else BOARDS_15)
-        if boards is not None and sc16 is not None:
-            # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special" del 2 de diciembre al 1 de febrero)
-            for o in sc16.env.objects:
+        # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special") y Carmen (la 1.7: 95000, "Rio Special"):
+        # mismo esqueleto que Jake, a chars14.bin como los de la 1.4
+        extra_chars = []
+        if sc16 is not None or sc17 is not None:
+            extra_chars.append((sc16 or sc17, 'tony', 'avatar_tony', '1.6'))
+        if sc17 is not None:
+            extra_chars.append((sc17, 'carmen', 'avatar_carmen', '1.7'))
+        for scx, mname, tname, ver in (extra_chars if boards is not None else []):
+            for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':
                     continue
-                d = o.read_typetree()
-                mo = sc16.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
-                if mo is None or mo.read().m_Name != 'tony':
+                try:
+                    d = o.read_typetree()
+                except Exception:
                     continue
-                mat = sc16.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
+                mo = scx.resolve(o.assets_file, d['m_Mesh']['m_FileID'], d['m_Mesh']['m_PathID'])
+                if mo is None or mo.read(check_read=False).m_Name != mname:
+                    continue
+                mat = scx.resolve(o.assets_file, d['m_Materials'][0]['m_FileID'], d['m_Materials'][0]['m_PathID'])
                 tex = None
                 for _, t in (mat.read_typetree()['m_SavedProperties']['m_TexEnvs'] if mat else []):
-                    tt = sc16.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+                    tt = scx.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
                     if tt is not None:
                         tex = tt.read()
                         break
                 if tex is not None:
                     boards.meshes.append(mo)
-                    boards.gen.append(('gen', 'avatar_tony', tex_rgba(tex), True))
-                    print('  personaje de la 1.6: Tony')
+                    boards.gen.append(('gen', tname, tex_rgba(tex), True))
+                    print('  personaje de la %s: %s' % (ver, mname))
                 break
         if boards is not None:
             # Elf Tricky (Characters.cs de la 1.5.2: 95000 monedas, solo en Navidad): con los personajes de la 1.4
@@ -2750,7 +2790,7 @@ def main():
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
@@ -2758,7 +2798,7 @@ def main():
     w16 = os.path.join(outdir, 'w16')
     if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
         print('== Mapa de la 1.6 (data/w16/, en pruebas)')
-        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16)
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
     # mapa de la 1.7 (data/w17/, EN PRUEBAS: Rio de Janeiro, se juega con WORLD17=1). Mismo trazado que el de la 1.6;
@@ -2766,7 +2806,8 @@ def main():
     w17 = os.path.join(outdir, 'w17')
     if sc17 is not None:
         print('== Mapa de la 1.7 (data/w17/, en pruebas)')
-        export_set(sc, sc17, sc14, w17, classic=False, boards_ui=exc.boards, sc16=sc17)
+        # la interfaz (libreta, ME, SHOP, manchas...) de la 1.5.2: la de la 1.7 es de Unity 4 y no se lee entera
+        export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17)
     elif os.path.isdir(w17):
         shutil.rmtree(w17, True)
     print('Listo.')

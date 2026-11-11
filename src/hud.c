@@ -12,6 +12,7 @@
 #include "missions.h"
 #include "devlog.h"
 #include "lang.h"
+static void spr_c(const char *name, float cx, float cy, float w, float h, unsigned int col);
 
 typedef struct { char name[32]; float ox, oy, ow, oh, ix, iy, iw, ih; } USprite;
 typedef struct { char name[32]; int tex, w, h; float pixel; int nsp; USprite *sp; } UAtlas;
@@ -393,10 +394,12 @@ static void draw_ingame(void)
     /* headstarts al empezar (UIHeadStartHelper) */
     if (ginfo.time < ginfo.headstart_until) {
         float hx = 6, hy = SCR_H - 100 * UIS;
-        if (ginfo.hs500 > 0) {
+        /* SlideinPowerupHelper de la 1.7: Score Booster (L) y Mega Headstart (R) */
+        if (ginfo.boosters > 0) {
             ui_sliced(a_ui, "background_ingame_transparent_withStroke", hx, hy, 60 * UIS, 74 * UIS, UIS, 0xc0000000);
-            ui_sprite_wh(a_ui, "button_ingame_headStart500", hx + 8 * UIS, hy + 4 * UIS, 44 * UIS, 66 * UIS, 0xffffffff);
-            snprintf(buf, sizeof(buf), "L  x%d", ginfo.hs500);
+            spr_c("icon_upgrades_doubleScore", hx + 30 * UIS, hy + 30 * UIS, 44 * UIS, 44 * UIS, 0xffffffff);
+            text_shadow(f_titan, hx + 30 * UIS, hy + 56 * UIS, 22.0f / fnt[f_titan].size, 0xffffffff, 1, "+5");
+            snprintf(buf, sizeof(buf), "L  x%d", ginfo.boosters);
             text_shadow(f_small, hx + 30 * UIS, hy + 76 * UIS, 0.6f, 0xffffffff, 1, buf);
             hx += 70 * UIS;
         }
@@ -815,6 +818,7 @@ static void draw_halloween_popup(void);
 static void draw_xmas_popup(void);
 static void draw_boards_popup(void);
 static void draw_ny_popup(void);
+static void draw_rio_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -886,6 +890,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
         if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
         if (ginfo.popup == POPUP_NY) draw_ny_popup();
+        if (ginfo.popup == POPUP_RIO) draw_rio_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -904,6 +909,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
     if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
     if (ginfo.popup == POPUP_NY) draw_ny_popup();
+    if (ginfo.popup == POPUP_RIO) draw_rio_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -995,6 +1001,35 @@ static void draw_ny_popup(void)
         {"Subway Surfers World Tour", "Subway Surfers World Tour", "¡Explora el metro de Nueva York!", "Explore the New York City Subway!"},
         {"¡Conoce a Tony!", "Meet the cool kid, Tony!", "Disponible por tiempo LIMITADO", "Available for a LIMITED time"},
         {"¡Amplía tu colección de tablas!", "Boost your board collection!", "4 TABLAS NUEVAS en la pantalla de tablas", "4 NEW BOARDS in the Board Shop"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* WelcomePopup de la 1.7: aviso de la temporada de Rio (Carmen, las tablas nuevas y el Score Booster). Misma
+ * disposicion que los demas avisos de temporada, con el verde de Rio */
+static void draw_rio_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_RIO = 0xff3da12bu;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_RIO);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_RIO);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Río!", "to Rio!"));
+    static const char *const lines[3][4] = {
+        {"Recorre el metro de Río", "Run through Rio's subway", "Nuevo mapa en febrero", "New map in February"},
+        {"Conoce a Carmen", "Meet Carmen", "Solo por tiempo LIMITADO", "LIMITED time only"},
+        {"Tablas y Score Booster nuevos", "New boards and Score Booster", "Toucan, Lumberjack y Daredevil", "Toucan, Lumberjack and Daredevil"},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {
@@ -1161,7 +1196,8 @@ static void draw_boards(void)
     int fx = board_effect(i);
     if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : fx == 3 ? TR("Más velocidad (en pruebas)", "Speed Boost (test)")
                                                                      : TR("Va agachado", "Stays Low"));
-    else if (board_is_season(i)) lab(0, 16, 40, 15, C_LIMITED, 0, 0, TR("Especial de Nueva York", "New York Special"));
+    else if (board_is_season(i)) lab(0, 16, 40, 15, C_LIMITED, 0, 0, board_is_season(i) == 2 ? TR("Especial de Río", "Rio Special")
+                                                                                             : TR("Especial de Nueva York", "New York Special"));
     if (board_is_gift(i) && !board_is_owned(i)) {
         /* BoardScreen: pegatina "FREE GIFT" mientras la de regalo no se ha reclamado */
         float sx = 14 + labw(0, 30, board_name(i)) + U(36), sy = 26;
@@ -1237,7 +1273,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 3 ? TR("Especial de Nueva York", "New York Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 4 ? TR("Especial de Río", "Rio Special")
+                                                   : limited == 3 ? TR("Especial de Nueva York", "New York Special")
                                                    : limited == 2 ? TR("Especial de Navidad", "Holiday Special")
                                                               : TR("Especial de Halloween", "Halloween Special"));
     if (limited && !un && secs > 0) {

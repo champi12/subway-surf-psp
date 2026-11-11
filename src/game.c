@@ -340,7 +340,10 @@ static float Speed(float t)
 static float normalized_speed(void) { return currentSpeed / SPEED_MIN; }
 static float jump_vs(float h) { return sqrtf(2.0f * h * GRAVITY); }
 static float jump_length(float speed, float h) { return speed * 2.0f * jump_vs(h) / GRAVITY; }
-static int score_multiplier(void) { return missions_multiplier() * (double_score ? 2 : 1); }
+/* Score Booster de la 1.7 (PlayerInfo.scoreMultiplier): +5 al multiplicador durante la carrera en que se activa; las
+ * monedas al final siguen contando con el multiplicador sin el (CoinToScoreConversion usa rawMultiplier) */
+static int booster_on;
+static int score_multiplier(void) { return (missions_multiplier() + (booster_on ? 5 : 0)) * (double_score ? 2 : 1); }
 static int mod_active(int m) { return mods[m].active; }
 static float bell(float x) { return smoothstepf(0, 1, 1.0f - fabsf(x - 0.5f) / 0.5f); }
 
@@ -379,7 +382,14 @@ static int board_seen;                 /* bit i: tabla vista en el carrusel */
 static int hb_used, hb_runs, hb_should, hb_shown, hb_fixed;   /* hb_fixed: partida ya con las 3 tablas iniciales */
 static void hb_run_completed(void);
 /* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
-static int board_avail(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_SEASON || board_has(i) || ny_season()); }
+int rio_season(void);
+static int board_avail(int i)
+{
+    if (i < 0 || i >= gd_nboards) return 0;
+    int u = gd_boards[i].unlock;
+    if (board_has(i)) return 1;
+    return u == BOARD_SEASON ? ny_season() : u == BOARD_SEASON_RIO ? rio_season() : 1;
+}
 static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
 /* lista de animaciones de una accion: la de la tabla o, si no trae ninguna (Superhero, Starboard), la de la normal */
 static const BoardDef *board_anim_src(int i)
@@ -718,6 +728,25 @@ static void guard_jump(void)
     gu.jump_at = game_time + gu.dist / (currentSpeed > 1 ? currentSpeed : 1);
 }
 
+/* FollowingGuard de la 1.7: el inspector y el perro esquivan y ruedan como el personaje (sus animaciones nuevas solo
+ * salen de la 1.7 y van en todos los mapas; sin el APK de la 1.7 no hay y no se hace nada, como antes). Solo cambia que animacion suena:
+ * mismo modelo y mismos huesos, sin coste de dibujo */
+static void guard_react(const char *g, const char *d)
+{
+    if (!gu.enabled || gu.catching) return;
+    AnimState *s;
+    if (g && anim_find(&anim_guard, g) >= 0) {
+        if ((s = anim_get(&anim_guard, g))) s->speed = normalized_speed();
+        anim_crossfade(&anim_guard, g, 0.1f);
+        anim_crossfade_queued(&anim_guard, "Guard_Run", 0.2f);
+    }
+    if (d && anim_find(&anim_dog, d) >= 0) {
+        if ((s = anim_get(&anim_dog, d))) s->speed = normalized_speed();
+        anim_crossfade(&anim_dog, d, 0.1f);
+        anim_crossfade_queued(&anim_dog, "Dog_Fast Run", 0.2f);
+    }
+}
+
 static void guard_catch_player(float pos)
 {
     guard_mute();
@@ -911,6 +940,7 @@ static void change_track_start(int move, float duration)
         if ((s = anim_get(&anim_char, "dodgeRight"))) s->speed = normalized_speed();
         if ((s = anim_get(&anim_char, "dodgeLeft"))) s->speed = normalized_speed();
         anim_crossfade(&anim_char, da, 0.02f);
+        guard_react(dir < 0 ? "Guard_dodgeLeft" : "Guard_dodgeRight", dir < 0 ? "Dog_dodgeLeft" : "Dog_dodgeRight");
     }
     if (!ch.jumping) anim_crossfade_queued(&anim_char, an.run, mods[MOD_HOVERBOARD].active ? 0.4f : 0.02f);
     if (newIdx < 0 || newIdx >= 3) {
@@ -1033,6 +1063,7 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
+    guard_react("Guard_Roll", NULL);   /* la 1.7 no trae voltereta del perro */
     run_rolls++;
     missions_reset(M_NOROLLSBEFORESCORE);
     missions_did(M_ROLL, 1);
@@ -1993,6 +2024,21 @@ int halloween_season(void)
 #endif
 }
 
+/* Rio de la 1.7 (Carmen, la tabla Toucan y su mapa): en el original del 28 de enero al 28 de febrero a las 00:00
+ * (Characters.cs / Hoverboards.cs de la 1.7); aqui empieza al acabar Nueva York, el 1 de febrero, y acaba igual, el 27 */
+int rio_season(void)
+{
+#if defined(AT_RIO)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return t.month == 2 && t.day <= 27;
+#endif
+}
+
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): en el original del 2 de diciembre al 1 de
  * febrero a las 00:00 (Characters.cs / Hoverboards.cs de la 1.6: ultimo dia el 31 de enero); aqui empieza al acabar
  * la Navidad, el 2 de enero, para no pisarla, y acaba igual, el 31 de enero, cada ano */
@@ -2014,7 +2060,7 @@ int ny_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() || ny_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
+    return halloween_season() || xmas_season() || ny_season() || rio_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
@@ -2022,6 +2068,7 @@ int season_seconds_left(void)
     if (halloween_season()) days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;
     else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 1 : 1 - t.day;   /* hasta el 1 de enero */
     else if (ny_season()) days = 31 - t.day;                                     /* hasta el 31 de enero */
+    else if (rio_season()) days = 27 - t.day;                                    /* hasta el 27 de febrero */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2082,9 +2129,24 @@ static void xmas_popup_check(void)
 /* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
-static int ny_popup_year;
+static int ny_popup_year, rio_popup_year;
 int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16 o 17 */
 static int tony_ready(void);
+/* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
+static int carmen_ready(void);
+static void rio_popup_check(void)
+{
+    if (!rio_season() || ginfo.popup || !carmen_ready() || game_world != 17) return;
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (console_date(&t) >= 0) y = t.year - 2000;
+#endif
+    if (rio_popup_year == y) return;
+    rio_popup_year = y;
+    ginfo.popup = POPUP_RIO;
+    game_save();
+}
 static void ny_popup_check(void)
 {
     /* con el mapa de Rio de pruebas (WORLD17) no: decia "Bienvenido a Nueva York" corriendo por Rio */
@@ -2237,7 +2299,10 @@ static void intro_tick(void)
     guard_on_enable();
     if (track_running_tutorial) { guard_reset_catch_up(); ch.stumble = 0; }
     running_begin();
-    ginfo.headstart_until = (ginfo.hs500 > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
+    /* SlideinPowerupHelper de la 1.7: al empezar, 5 s con Score Booster (L) y Mega Headstart (R) si se tienen. El
+     * headstart pequeno ya no sale (la 1.7 lo quito de la tienda y de la carrera) */
+    booster_on = 0;
+    ginfo.headstart_until = (ginfo.boosters > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
     run_jumps = run_rolls = run_pickups = 0;
     memset(run_pk, 0, sizeof(run_pk));
     lane_t = game_time;
@@ -2982,12 +3047,14 @@ static const CharDef chars[] = {
     {"slick", "Elf Tricky", UL_COINS, TK_JAKE, 95000, "", "", NULL, 2, "xmasTricky", "avatar_trickyXmas"},
     /* 1.6: Tony, "New York Special" (event 3, temporada de Nueva York); comprado se queda */
     {"slick", "Tony", UL_COINS, TK_JAKE, 95000, "", "", NULL, 3, "tony", "avatar_tony"},
+    /* 1.7: Carmen, "Rio Special" (event 4, temporada de Rio); comprada se queda */
+    {"slick", "Carmen", UL_COINS, TK_JAKE, 95000, "", "", NULL, 4, "carmen", "avatar_carmen"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -3000,7 +3067,9 @@ static int is14(int i) { return chars[i].mesh14 != NULL; }
 static int ext_ready(int i) { return slick_skin && ext_mesh[i] >= 0 && ext_mat[i] >= 0; }
 static int owned_14(int i) { return owned14 >> (i - CH_FIRST14) & 1; }
 #define CH_TONY 17
+#define CH_CARMEN 18
 static int tony_ready(void) { return CH_TONY < NCHARS && ext_ready(CH_TONY); }
+static int carmen_ready(void) { return CH_CARMEN < NCHARS && ext_ready(CH_CARMEN); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3013,6 +3082,7 @@ static int char_available(int i)
     case 1: return halloween_season();
     case 2: return xmas_season();
     case 3: return ny_season();
+    case 4: return rio_season();
     }
     return 0;
 }
@@ -3180,7 +3250,7 @@ static void zombie_init(int slick_node)
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -3206,11 +3276,15 @@ int board_step(int row, int dir)
     }
     return row;
 }
-int board_is_season(int row) { return row >= 0 && row < gd_nboards && gd_boards[row].unlock == BOARD_SEASON; }
+/* 1: de Nueva York (Liberty), 2: de Rio (Toucan) */
+int board_is_season(int row)
+{
+    if (row < 0 || row >= gd_nboards) return 0;
+    return gd_boards[row].unlock == BOARD_SEASON ? 1 : gd_boards[row].unlock == BOARD_SEASON_RIO ? 2 : 0;
+}
 int board_is_new(int row)
 {
-    return row >= BOARD_FIRST16 && row < gd_nboards && row < 32 && gd_boards[row].unlock != BOARD_SEASON &&
-           !(board_seen >> row & 1);
+    return row >= BOARD_FIRST16 && row < gd_nboards && row < 32 && !board_is_season(row) && !(board_seen >> row & 1);
 }
 int board_new_count(void) { int n = 0; for (int i = 0; i < gd_nboards; i++) n += board_is_new(i); return n; }
 /* GameOverScreen.CountUpCoins (1.5.2 y 1.6): 1,2 s quieto y luego las monedas pasan a los puntos (y a la hucha) en
@@ -3431,7 +3505,7 @@ enum { SK_AMOUNT, SK_TIER, SK_BOX, SK_SKIP };
 const ShopItem shop_items[] = {
     /* nombres en ingles: los de Upgrades.cs del original */
     {"Hoverboard", "Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
-    {"Headstart 250", "Headstart 250", "icon_upgrades_headstart500", SK_AMOUNT, 1},
+    {"Score Booster", "Score Booster", "icon_upgrades_doubleScore", SK_AMOUNT, 3},   /* 1.7: en lugar del headstart pequeno */
     {"Headstart 1000", "Headstart 1000", "icon_upgrades_headstart2000", SK_AMOUNT, 2},
     {"Caja misteriosa", "Mystery Box", "icon_upgrades_mysteryBox", SK_BOX, 0},
     {"Jetpack", "Jetpack", "icon_upgrades_jetpack", SK_TIER, PW_JETPACK},
@@ -3445,7 +3519,7 @@ const ShopItem shop_items[] = {
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
 static const char *const shop_descs[][2] = {
     {"Te protege de un choque durante 30 s (cuadrado).", "Protect yourself from crashing for 30 seconds (Square)."},
-    {"Avanza 250 metros al empezar.", "Skip ahead 250 meters in a run."},
+    {"+5 al multiplicador en una carrera (L al empezar).", "+5 to your multiplier for one run (L at start)."},
     {"Avanza 1000 metros al empezar.", "Skip ahead 1000 meters in a run."},
     {"Monedas, hoverboards, fichas y trofeos.", "Coins, hoverboards, tokens and trophies."},
     {"Dura más el jetpack del spray.", "Increases the duration of the Spray Can Jetpack pickup."},
@@ -3464,7 +3538,7 @@ int shop_price(int i)
     const ShopItem *it = &shop_items[i];
     if (it->kind == SK_BOX) return 500;
     if (it->kind == SK_SKIP) return missions_done(it->idx) ? -1 : missions_skip_price();
-    if (it->kind == SK_AMOUNT) return it->idx == 0 ? 300 : it->idx == 1 ? 400 : 2000;
+    if (it->kind == SK_AMOUNT) return it->idx == 0 ? 300 : it->idx == 1 ? 400 : it->idx == 3 ? 3000 : 2000;
     int t = upgrade_tier[it->idx];
     return t >= 5 ? -1 : tier_prices[t + 1];
 }
@@ -3472,7 +3546,7 @@ int shop_price(int i)
 int shop_amount(int i)
 {
     const ShopItem *it = &shop_items[i];
-    if (it->kind == SK_AMOUNT) return it->idx == 0 ? ginfo.hoverboards : it->idx == 1 ? ginfo.hs500 : ginfo.hs2000;
+    if (it->kind == SK_AMOUNT) return it->idx == 0 ? ginfo.hoverboards : it->idx == 1 ? ginfo.hs500 : it->idx == 3 ? ginfo.boosters : ginfo.hs2000;
     if (it->kind == SK_TIER) return upgrade_tier[it->idx];
     if (it->kind == SK_SKIP) return missions_done(it->idx);
     return ginfo.boxes_pending;
@@ -3590,6 +3664,7 @@ static void shop_buy(int i)
     if (it->kind == SK_AMOUNT) {
         if (it->idx == 0) ginfo.hoverboards++;
         else if (it->idx == 1) ginfo.hs500++;
+        else if (it->idx == 3) ginfo.boosters++;
         else ginfo.hs2000++;
     } else if (it->kind == SK_TIER) upgrade_tier[it->idx]++;
     else if (it->kind == SK_SKIP) missions_skip(it->idx);
@@ -3599,6 +3674,15 @@ static void shop_buy(int i)
 }
 
 /* ------------------------------------------------------------ entradas */
+static void use_booster(void)
+{
+    if (state != GS_RUNNING || game_time > ginfo.headstart_until || ginfo.boosters <= 0 || booster_on) return;
+    ginfo.boosters--;
+    booster_on = 1;   /* GameStats.scoreBoosterActivated */
+    snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.2f, 0);
+    dlog("SCORE BOOSTER activado: multiplicador x%d", score_multiplier());
+    game_save();
+}
 static void use_headstart(int big)
 {
     if (state != GS_RUNNING || game_time > ginfo.headstart_until) return;
@@ -3742,7 +3826,7 @@ void game_input(unsigned in)
          * la pulsacion, el personaje saltaria, rodaria o cambiaria de via nada mas empezar a correr */
         break;
     default:
-        if (in & IN_L) use_headstart(0);
+        if (in & IN_L) use_booster();
         if (in & IN_R) use_headstart(1);
         in_left |= (in & IN_LEFT) != 0;
         in_right |= (in & IN_RIGHT) != 0;
@@ -3769,7 +3853,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -4193,9 +4277,12 @@ static int save_fill(unsigned char *buf)
                 (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0) | (ny_popup_year & 0xff) << 8,
                 (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18 |
                 hb_fixed << 30};
+    /* de la 1.7: Score Boosters, tablas vistas (todas) y el ano del aviso de Rio */
+    int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
-    return (int)(sizeof(d) + sizeof(e));
+    memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
+    return (int)(sizeof(d) + sizeof(e) + sizeof(e2));
 }
 
 static void save_write(const unsigned char *buf, int n)
@@ -4262,18 +4349,23 @@ void game_load(void)
 {
     FILE *f = fopen("save.dat", "rb");
     /* partida nueva: PlayerInfo.ResetPlayerData empieza con 3 tablas (la del tutorial es una de ellas) */
-    if (!f) { ginfo.hoverboards = 3; hb_fixed = 1; return; }
+    if (!f) { ginfo.hoverboards = 3; ginfo.boosters = 3; hb_fixed = 1; return; }
     int d[32];
     memset(d, 0, sizeof(d));
     int n = fread(d, 4, 32, f);
-    int e[8];
-    memset(e, 0, sizeof(e));
+    int e[8], e2[8];
+    memset(e, 0, sizeof(e)); memset(e2, 0, sizeof(e2));
     int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
+    int ne2 = ne == 8 ? (int)fread(e2, 4, 8, f) : 0;
     fclose(f);
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
     if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; ny_popup_year = (e[6] >> 8) & 0xff; }
+    /* Score Booster: las partidas de antes empiezan con 3, como en la 1.7 (PlayerInfo: si no lo tiene, 3) */
+    ginfo.boosters = ne2 >= 1 && (e2[0] >> 30 & 1) ? e2[0] & 0xffff : 3;
+    if (ne2 >= 3) rio_popup_year = e2[2];
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }
+    if (ne2 >= 2) board_seen = e2[1];
     audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;

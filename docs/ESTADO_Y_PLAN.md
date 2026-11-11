@@ -148,11 +148,13 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    del servidor. El guardia de las demás versiones: 1.0 = 1.4 = 1.5.2 (verde); Halloween (zombi) y Navidad (Papá
    Noel) ya tenían sus mallas y texturas. Queda el fallo de "letras con líneas negras" en el mapa de la 1.4 (falta
    captura).
-4b. 1.7 (Río) EN PRUEBAS: su mapa en data/w17 (`--apk17`, se juega con `WORLD17=1`; mismo trazado que Nueva York,
-   13 % menos triángulos, mismas llamadas) y la tabla Daredevil desbloqueada (acelera de 110-220 a 160-240 y abre la
-   cámara mientras dura, como Game.ActivateHighSpeed). Pendiente de decidir tras probarlo: Carmen, Toucan, Lumberjack,
-   Score Booster, botones al empezar la carrera, cajas de la 1.7, aviso de bienvenida, guardia rodando y fechas de
-   Río (propuesta: 1-28 de febrero).
+4b. 1.7 (Río): su mapa en data/w17 (`--apk17`) del 1 al 27 de febrero (tras Nueva York; `WORLD17=1` lo deja
+   siempre), sin texturas reducidas (como el original: en Río cambiaban el color de las paredes a lo lejos), con su
+   inspector y la interfaz de la 1.5.2 (la de la 1.7 es de Unity 4 y no se lee entera). Carmen y Toucan por fecha
+   (temporada de Río), Lumberjack y Daredevil (acelera y abre la cámara; desbloqueada para probarla), Score Booster
+   (+5 al multiplicador una carrera: L al empezar, en la tienda en lugar del headstart pequeño, 3 al empezar),
+   aviso de bienvenida de Río y las animaciones nuevas del inspector y el perro (esquivar y rodar) en todos los
+   mapas. Pendiente: tabla de premios de las cajas de la 1.7.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 

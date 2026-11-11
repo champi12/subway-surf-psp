@@ -193,14 +193,24 @@ int main(int argc, char **argv)
                 if (!(halloween_season() && has_hw)) wdir = "data/w16";
             }
         }
+        /* el mapa de la 1.7 (Rio de Janeiro, data/w17) en su temporada (1-27 de febrero, tras Nueva York); make
+         * WORLD17=1 lo deja siempre, para probarlo */
+        {
+            extern int rio_season(void);
 #if defined(WORLD17) && WORLD17
-        /* EN PRUEBAS: el mapa de la 1.7 (Rio de Janeiro, data/w17) siempre, con make WORLD17=1 */
-        if ((f = sceIoOpen("data/w17/world.bin", PSP_O_RDONLY, 0)) >= 0) { sceIoClose(f); wdir = "data/w17"; }
+            int rio = 1;
+#else
+            int rio = rio_season();
 #endif
+            if (rio && (f = sceIoOpen("data/w17/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+                sceIoClose(f);
+                if (!(halloween_season() && has_hw)) wdir = "data/w17";
+            }
+        }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }
         { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17"); }   /* Rio: sin texturas reducidas, como el original */
         { extern int game_world; game_world = !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
-        dlog("Mundo: %s", !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17, en pruebas)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
+        dlog("Mundo: %s", !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
