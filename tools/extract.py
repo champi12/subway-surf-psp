@@ -445,7 +445,9 @@ CLUSTER = float(os.environ.get('SS_CLUSTER', 64))       # tamano de celda para t
 
 
 def mesh_triangles(mo, h):
-    """Triangulos por submalla. En Unity 3.5 cada submalla dice si es tira (isTriStrip != 0) o lista."""
+    """Triangulos por submalla. En Unity 3.5 cada submalla dice si es tira (isTriStrip != 0) o lista; en Unity 4 (la
+    1.7) no hay isTriStrip sino topology (0: lista de triangulos, 1: tira). Antes las de Unity 4 se leian como tiras:
+    unas 2,5 veces mas triangulos, casi todos falsos."""
     tt = mo.read_typetree()
     ib = list(h.m_IndexBuffer or [])
     use16 = getattr(h, 'm_Use16BitIndices', True)
@@ -455,7 +457,8 @@ def mesh_triangles(mo, h):
         cnt = sm['indexCount']
         idx = ib[first:first + cnt]
         tris = []
-        if sm.get('isTriStrip', 1) == 0:
+        strip = sm['isTriStrip'] != 0 if 'isTriStrip' in sm else sm.get('topology', 0) == 1
+        if not strip:
             for i in range(0, len(idx) - 2, 3):
                 tris.append((idx[i], idx[i + 1], idx[i + 2]))
         else:
@@ -2470,12 +2473,18 @@ def swap_guard16(ex, sc16):
     want = {'polySurface9': 'normal_polySurface9', 'dog': 'normal_dog'}
     new_mesh, new_tex = {}, None
     for o in sc16.env.objects:
+        if o.type.name not in ('Mesh', 'Texture2D'):
+            continue
+        try:
+            # la 1.7 (Unity 4.0) trae alguna malla que UnityPy no lee entera: solo hace falta el nombre
+            n = o.read(check_read=False).m_Name
+        except Exception:
+            continue
         if o.type.name == 'Mesh':
-            n = o.read().m_Name
             for k, v in want.items():
                 if n == v and k not in new_mesh:
                     new_mesh[k] = o
-        elif o.type.name == 'Texture2D' and new_tex is None and o.read().m_Name == 'enemies':
+        elif new_tex is None and n == 'enemies':
             new_tex = o
     ex.mesh_names = [m.read().m_Name for m in ex.meshes]
     done = []
