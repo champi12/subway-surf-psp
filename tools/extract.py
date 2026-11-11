@@ -2080,8 +2080,8 @@ BOARDS_15 = [(3, 'Freestyler', 45000, 2, 0), (1, 'Bouncer', 280000, 2, 1), (0, '
              (2, 'Lowrider', 320000, 2, 2), (6, 'Starboard', 0, 1, 0), (4, 'Big Kahuna', 65000, 2, 0),
              (5, 'Superhero', 8000, 2, 0)]
 # la 1.6 anade 4 tablas (Hoverboards.cs de la 1.6), detras de las de la 1.5.2 para no cambiar las partidas guardadas.
-# unlock 3: con monedas, pero solo se compra en su temporada (Liberty: "New York Special", del 1 de diciembre al 1 de
-# febrero); las demas siempre
+# unlock 3: con monedas, pero solo se compra en su temporada (Liberty: "New York Special"; en el juego, del 2 al 31
+# de enero, tras la Navidad); las demas siempre
 BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0), (9, 'Skull Fire', 75000, 2, 0),
                          (10, 'Liberty', 50000, 3, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',

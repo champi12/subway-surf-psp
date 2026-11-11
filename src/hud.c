@@ -898,7 +898,7 @@ static void draw_xmas_popup(void)
     static const char *const lines[3][4] = {
         {"¡Consigue a Elf Tricky!", "Get Elf Tricky!", "Solo en Personajes por tiempo LIMITADO", "In Characters for a LIMITED time only"},
         {"¡La ciudad se llena de NIEVE!", "The city is covered in SNOW!", "Vías, trenes y guardia de Navidad", "Holiday tracks, trains and inspector"},
-        {"¡Hasta el 2 de enero!", "Until January 2!", "Después vuelve el aspecto de siempre", "Then the usual look comes back"},
+        {"¡Hasta el 1 de enero!", "Until January 1!", "Después vuelve el aspecto de siempre", "Then the usual look comes back"},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {

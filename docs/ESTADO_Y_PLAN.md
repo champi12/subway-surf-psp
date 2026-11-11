@@ -45,8 +45,10 @@ con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
   el mapa clásico.
 * **Contenido por fecha, no por mapa:** los personajes y tablas de temporada salen en cualquier mapa, pero solo en
   sus fechas (si no se compran, desaparecen hasta el año siguiente): Zombie Jake del 24 de octubre al 4 de noviembre,
-  Elf Tricky del 1 de diciembre al 2 de enero, Tony y Liberty del 3 de enero al 1 de febrero (en la 1.6 empezaban el
-  2 de diciembre; aquí tras la Navidad para no pisarla). El mapa de la 1.6 sale también solo en su temporada;
+  Elf Tricky del 18 de diciembre al 1 de enero, Tony y Liberty del 2 al 31 de enero (en la 1.6 empezaban el
+  2 de diciembre; aquí tras la Navidad para no pisarla). Los APK no traen fecha de inicio (lo encendía el servidor):
+  solo el fin (Halloween 5 nov 00:00, Navidad 2 ene 00:00, Tony/Liberty 1 feb 00:00); el inicio es una semana antes
+  de la fiesta (31 de octubre, 25 de diciembre). El mapa de la 1.6 sale también solo en su temporada;
   `WORLD16=1` lo deja siempre (pruebas). La Navidad podría tener más adelante un mapa propio.
 * `DEVLOG=1`: versión de pruebas (devlog.txt, crash.txt, medidor con SELECT, capturas con SELECT+R).
 * `NOANALOG=1`: sin el stick analógico (la consola del usuario lo tiene estropeado).

@@ -1905,8 +1905,10 @@ int theme_halloween, theme_xmas;
 static int theme_available = -1;
 #define FOG_XMAS 0xfff85e8au        /* (0.541, 0.369, 0.973), ThemeAssets "xmas" de la 1.5.2 */
 
-/* Navidad de la 1.5.2 (PlayerInfo.Season.xmas): del 1 de diciembre al 2 de enero, cada ano. Como Halloween, el
- * contenido se queda en el juego y vuelve cada temporada */
+/* Navidad de la 1.5.2 (PlayerInfo.Season.xmas). El APK no trae inicio (lo encendia el servidor) y acaba el 2 de enero
+ * a las 00:00 (Globals.DEFAULT_ENDSEASON_DATETIME): ultimo dia el 1 de enero. Como Halloween (una semana antes del 31
+ * de octubre), empieza una semana antes del 25 de diciembre: del 18 de diciembre al 1 de enero, cada ano. El contenido
+ * se queda en el juego y vuelve cada temporada */
 int xmas_season(void)
 {
 #if defined(AT_XMAS)
@@ -1916,7 +1918,7 @@ int xmas_season(void)
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
-    return t.month == 12 || (t.month == 1 && t.day <= 2);
+    return (t.month == 12 && t.day >= 18) || (t.month == 1 && t.day <= 1);
 #endif
 }
 #define FOG_NORMAL 0xfff6e6bcu      /* (0.737, 0.902, 0.965), RenderSettings de la 1.0 */
@@ -1936,8 +1938,8 @@ int halloween_season(void)
 }
 
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): en el original del 2 de diciembre al 1 de
- * febrero (Characters.cs / Hoverboards de la 1.6); aqui empieza al acabar la Navidad, el 3 de enero, para no pisarla,
- * y acaba igual, el 1 de febrero, cada ano */
+ * febrero a las 00:00 (Characters.cs / Hoverboards.cs de la 1.6: ultimo dia el 31 de enero); aqui empieza al acabar
+ * la Navidad, el 2 de enero, para no pisarla, y acaba igual, el 31 de enero, cada ano */
 int ny_season(void)
 {
 #if defined(AT_NY)
@@ -1947,7 +1949,7 @@ int ny_season(void)
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
-    return (t.month == 1 && t.day >= 3) || (t.month == 2 && t.day <= 1);
+    return t.month == 1 && t.day >= 2;
 #endif
 }
 
@@ -1962,8 +1964,8 @@ int season_seconds_left(void)
     if (console_date(&t) < 0) return 0;
     int days;                                                  /* dias enteros despues de hoy */
     if (halloween_season()) days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;
-    else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 2 : 2 - t.day;   /* hasta el 2 de enero */
-    else if (ny_season()) days = t.month == 1 ? 31 - t.day + 1 : 0;              /* hasta el 1 de febrero */
+    else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 1 : 1 - t.day;   /* hasta el 1 de enero */
+    else if (ny_season()) days = 31 - t.day;                                     /* hasta el 31 de enero */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2004,7 +2006,7 @@ static void halloween_popup_check(void)
 }
 
 /* ChangelogThemePopup (1.5.2): ChangeLogStarter lo pone en cola al llegar a la portada si la temporada es la de
- * Navidad. Aqui, la primera vez que se abre el menu en cada temporada (la de diciembre y el 1-2 de enero cuentan
+ * Navidad. Aqui, la primera vez que se abre el menu en cada temporada (la de diciembre y el 1 de enero cuentan
  * como la misma) */
 static int xm_popup_year;            /* ano - 2000 de la temporada en que ya se enseno */
 static void xmas_popup_check(void)

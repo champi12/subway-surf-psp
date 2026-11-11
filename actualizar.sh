@@ -56,7 +56,7 @@ else
     if [ -n "$APK14" ] && [ -f "$APK14" ]; then echo "Con el contenido de la 1.4 de $APK14"; OPTS+=(--apk14 "$APK14"); fi
     # de la 1.5.2: las tablas, Elf Tricky y su mapa (el principal; WORLD15=0 deja solo el clasico)
     if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el contenido de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
-    # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 3 de enero al 1 de febrero)
+    # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 2 al 31 de enero)
     if [ -n "$APK16" ] && [ -f "$APK16" ]; then echo "Con el contenido de la 1.6 de $APK16"; OPTS+=(--apk16 "$APK16"); fi
     export WORLD15=${WORLD15:-1}
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
@@ -68,7 +68,7 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
-if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 3 de enero al 1 de febrero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
+if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 2 al 31 de enero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
 if [ -f data/hw_tex.bin ]; then
     echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"
     echo "segun la fecha de la consola: compruebala en Ajustes del sistema > Fecha y hora)"

@@ -179,8 +179,8 @@ int main(int argc, char **argv)
         if (f >= 0) sceIoClose(f);
         if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
-        /* el mapa de la 1.6 (data/w16, la ciudad de Nueva York) sale en su temporada (del 3 de enero al 1 de
-         * febrero, tras la Navidad); make WORLD16=1 lo deja siempre, para probarlo */
+        /* el mapa de la 1.6 (data/w16, la ciudad de Nueva York) sale en su temporada (del 2 al 31 de enero,
+         * tras la Navidad); make WORLD16=1 lo deja siempre, para probarlo */
         {
             extern int ny_season(void);
 #if defined(WORLD16) && WORLD16
