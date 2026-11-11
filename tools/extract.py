@@ -2087,6 +2087,9 @@ BOARDS_15 = [(3, 'Freestyler', 45000, 2, 0), (1, 'Bouncer', 280000, 2, 1), (0, '
 # de enero, tras la Navidad); las demas siempre
 BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0), (9, 'Skull Fire', 75000, 2, 0),
                          (10, 'Liberty', 50000, 3, 0)]
+# la 1.7 (EN PRUEBAS): Daredevil (speedboard, 11), que acelera el juego mientras dura (effect 3). Para probarla sale
+# desbloqueada (unlock 0, como la normal); en el original cuesta 85000 monedas
+BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 0, 3)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2501,7 +2504,7 @@ def swap_guard16(ex, sc16):
     print('  inspector y perro de la 1.6: %s' % (', '.join(done) or 'AVISO: no encontrados'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
@@ -2577,7 +2580,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             if not isinstance(c, tuple):
                 names10.add(c.read_typetree()['m_Name'])
         # con la 1.6 todas las tablas salen de ella (la misma hoja de texturas para las 11)
-        boards = export_boards(sc16 or sc15, ex, names10, BOARDS_16 if sc16 is not None else BOARDS_15)
+        # con la 1.7 (en pruebas) las tablas salen de ella: trae las de la 1.6 y Daredevil
+        bsrc = sc17 or sc16 or sc15
+        boards = export_boards(bsrc, ex, names10, BOARDS_17 if sc17 is not None else
+                               BOARDS_16 if sc16 is not None else BOARDS_15)
         if boards is not None and sc16 is not None:
             # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special" del 2 de diciembre al 1 de febrero)
             for o in sc16.env.objects:
@@ -2715,6 +2721,7 @@ def main():
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         return None
     apk14, apk15, apk16 = opt('--apk14', '--halloween'), opt('--apk15', '--world'), opt('--apk16')
+    apk17 = opt('--apk17')
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
@@ -2733,9 +2740,13 @@ def main():
     if apk16:
         print('Descomprimiendo el APK de la 1.6...')
         sc16 = Scene(unpack_apk(apk16))
+    sc17 = None
+    if apk17:
+        print('Descomprimiendo el APK de la 1.7 (en pruebas)...')
+        sc17 = Scene(unpack_apk(apk17))
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
@@ -2750,6 +2761,14 @@ def main():
         export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
+    # mapa de la 1.7 (data/w17/, EN PRUEBAS: Rio de Janeiro, se juega con WORLD17=1). Mismo trazado que el de la 1.6;
+    # su inspector y su perro (de Rio) se cambian igual que los de Nueva York
+    w17 = os.path.join(outdir, 'w17')
+    if sc17 is not None:
+        print('== Mapa de la 1.7 (data/w17/, en pruebas)')
+        export_set(sc, sc17, sc14, w17, classic=False, boards_ui=exc.boards, sc16=sc17)
+    elif os.path.isdir(w17):
+        shutil.rmtree(w17, True)
     print('Listo.')
 
 

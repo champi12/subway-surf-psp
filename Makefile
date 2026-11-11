@@ -18,6 +18,9 @@ endif
 ifdef WORLD16
 CFLAGS += -DWORLD16=$(WORLD16)
 endif
+ifdef WORLD17
+CFLAGS += -DWORLD17=$(WORLD17)
+endif
 ifdef NOANALOG
 CFLAGS += -DNO_ANALOG=$(NOANALOG)
 endif

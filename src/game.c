@@ -376,7 +376,7 @@ int ny_season(void);
 static int board_seen;                 /* bit i: tabla vista en el carrusel */
 /* TutorialHoverboardPopup (PlayerInfo.RunCompleted de la 1.5.2/1.6): tablas usadas en total, carreras desde el ultimo
  * aviso y si toca / ya se enseno */
-static int hb_used, hb_runs, hb_should, hb_shown;
+static int hb_used, hb_runs, hb_should, hb_shown, hb_fixed;   /* hb_fixed: partida ya con las 3 tablas iniciales */
 static void hb_run_completed(void);
 /* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
 static int board_avail(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_SEASON || board_has(i) || ny_season()); }
@@ -399,6 +399,30 @@ static const char *bpick(int a, const char *def)
     return anim_find(&anim_char, n) >= 0 ? n : def;
 }
 static int board_fx(int fx) { const BoardDef *d = board_def(); return d && d->effect == fx && mods[MOD_HOVERBOARD].active; }
+
+/* Game.ActivateHighSpeed / DeactivateHighSpeed de la 1.7 (EN PRUEBAS): con Daredevil (effect 3) la velocidad pasa en
+ * 0,5 s (trasitionTime) de speed (110-220) a highSpeedInfo (160-240), con la misma rampa, y la camara se abre: FOV de
+ * 40 a 50 en el original (aqui el 50 de la PSP se escala igual, x1,25). Al acabar la tabla vuelve igual de deprisa */
+extern float r_fov;
+#define HS_MIN 160.0f
+#define HS_MAX 240.0f
+#define HS_TRANSITION 0.5f
+#define FOV_RUN 50.0f
+static float hs_blend;
+static void high_speed_update(float dt, float t)
+{
+    int on = (state == GS_RUNNING) && board_fx(3) && !mods[MOD_HOVERBOARD].paused;
+    static int was_on;
+    if (on != was_on) { dlog("DAREDEVIL velocidad alta %s a %d m", on ? "SI" : "NO", ginfo.meters); was_on = on; }
+    float step = dt / HS_TRANSITION;
+    hs_blend = on ? fminf(1.0f, hs_blend + step) : fmaxf(0.0f, hs_blend - step);
+    if (hs_blend > 0) {
+        float mn = SPEED_MIN + (HS_MIN - SPEED_MIN) * hs_blend, mx = SPEED_MAX + (HS_MAX - SPEED_MAX) * hs_blend;
+        currentLevelSpeed = t < SPEED_RAMP ? mn + (mx - mn) * t / SPEED_RAMP : mx;
+    }
+    r_fov = FOV_RUN * (1.0f + 0.25f * hs_blend);
+}
+static void high_speed_reset(void) { hs_blend = 0; r_fov = FOV_RUN; }
 
 static void board_find_mesh_comp(void)
 {
@@ -2116,8 +2140,10 @@ void game_theme_check(int boot)
 }
 
 
+static void high_speed_reset(void);
 static void game_top_menu(void)
 {
+    high_speed_reset();
     char_pose(-1);   /* el del fin de partida, de pie mirando a la camara: vuelve a pintar */
     game_theme_check(0);
     daily_word_check();
@@ -2169,6 +2195,7 @@ static void game_start_run(void)
         gu.vol = GUARD_VOLUME;
     }
     currentLevelSpeed = Speed(0);
+    high_speed_reset();
     start_time = game_time;
 #if DEVLOG
     unsigned int rt0 = sceKernelGetSystemTimeLow();
@@ -2299,7 +2326,9 @@ static void handle_controls_running(void)
     if (in_down) character_roll();
     if (in_board && !mods[MOD_HOVERBOARD].active) {
         /* en el tutorial la tabla se prueba gratis, pero solo desde su aviso (allowHoverboard) */
-        if (track_running_tutorial) { if (tut_board_ok) { ginfo.hoverboards++; mod_add(MOD_HOVERBOARD); } }
+        /* en el tutorial se usa una de las 3 del principio (TutorialEvent.allowHoverboard, como el original); solo si no
+         * queda ninguna se regala para poder seguir */
+        if (track_running_tutorial) { if (tut_board_ok) { if (ginfo.hoverboards <= 0) ginfo.hoverboards++; mod_add(MOD_HOVERBOARD); } }
         else if (ginfo.hoverboards > 0) mod_add(MOD_HOVERBOARD);
     }
     in_left = in_right = in_up = in_down = in_board = 0;
@@ -2872,6 +2901,9 @@ void game_init(void)
     if (data_boards_load() > 0) {
         /* partidas de antes: la de regalo contaba como tuya sin reclamarla; si estaba elegida, se queda */
         if (board_sel >= 0 && board_sel < gd_nboards && gd_boards[board_sel].unlock == BOARD_FREE) board_owned |= 1 << board_sel;
+#ifdef AT_BOARDSEL
+        board_sel = AT_BOARDSEL;   /* prueba: esta tabla elegida (p. ej. 11, Daredevil de la 1.7) */
+#endif
         if (!board_has(board_sel)) board_sel = board_default();
         board_apply(board_sel);
         dlog("Tablas: %d, %d a la venta (elegida %s)", gd_nboards, board_count(), gd_boards[board_sel].name);
@@ -3748,6 +3780,7 @@ void game_update(float dt)
     scene_char_z = ch.z;
     float t = game_time - start_time;
     currentLevelSpeed = Speed(t);
+    high_speed_update(dt, t);
     /* colisiones de los tramos activos y del entorno inicial */
     extra_cols[0] = n_intro_env;
     DBG_PHASE(main, "game_update: phys_build");
@@ -4152,7 +4185,8 @@ static int save_fill(unsigned char *buf)
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
     int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned,
                 (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0) | (ny_popup_year & 0xff) << 8,
-                (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18};
+                (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18 |
+                hb_fixed << 30};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     return (int)(sizeof(d) + sizeof(e));
@@ -4221,7 +4255,8 @@ static void game_save_bg(void)
 void game_load(void)
 {
     FILE *f = fopen("save.dat", "rb");
-    if (!f) return;
+    /* partida nueva: PlayerInfo.ResetPlayerData empieza con 3 tablas (la del tutorial es una de ellas) */
+    if (!f) { ginfo.hoverboards = 3; hb_fixed = 1; return; }
     int d[32];
     memset(d, 0, sizeof(d));
     int n = fread(d, 4, 32, f);
@@ -4232,7 +4267,7 @@ void game_load(void)
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
     if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; ny_popup_year = (e[6] >> 8) & 0xff; }
-    if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; }
+    if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }
     audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;
@@ -4250,6 +4285,15 @@ void game_load(void)
     if (!v2 && n >= 31) trophies_mask = d[30] & ((1 << NTROPHIES) - 1);
     if (!v2 && n >= 32) { owned14 = d[31] & 0xffff; hw_popup_year = (d[31] >> 16) & 0xff; xm_popup_year = ((unsigned)d[31] >> 24) & 0xff; }
     if (!v2 && n >= 20 && d[19]) { dw_day = (unsigned)d[19] >> 12; dw_paid = d[19] >> 11 & 1; dw_mask = d[19] & 0x7ff; }
+    if (!hb_fixed) {
+        /* partidas de antes del arreglo: empezaban con 0 tablas y el tutorial regalaba la suya, asi que tras el
+         * tutorial (1 usada, 0 quedan) el aviso "Out of Boards?" se daba por visto sin salir nunca. Se les dan las 3 del
+         * principio, no cuenta la del tutorial y el aviso vuelve a estar pendiente */
+        ginfo.hoverboards += 3;
+        if (hb_used > 0) hb_used--;
+        hb_shown = 0; hb_should = 0; hb_runs = 0;
+        hb_fixed = 1;
+    }
     /* el personaje elegido se comprueba en game_init, cuando ya se sabe si esta Zombie Jake */
 }
 
