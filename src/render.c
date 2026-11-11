@@ -1414,7 +1414,20 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
             /* el nivel de mipmap por la parte mas cercana del trozo; en el mapa de la 1.5.2 los trozos dispersos son
              * grandes (hasta 256 unidades) y casi todo el trozo esta mas lejos: con el borde cercano el suelo lejano
              * (nieve de Navidad) salia con un nivel demasiado nitido y lineas blancas que se movian */
-            lod_for(d0 - (r_light ? 0.5f : 1.0f) * pr);
+            {
+                /* y por lo estirada que va su textura: el nivel 0 sirve mientras haya menos de un texel por pixel. Con
+                 * ~12 texeles por unidad (lo normal del atlas) es como antes; una franja estrecha estirada en una pared
+                 * larga (tuneles de Rio) usa el nivel 0 tambien de lejos. Los niveles reducidos la mezclaban con lo de al
+                 * lado del atlas: la pared se aclaraba a lo lejos (el original no tiene niveles reducidos). Solo baja el
+                 * nivel, nunca lo sube */
+                float dl = d0 - (r_light ? 0.5f : 1.0f) * pr;
+                const MatFile *mf = mat >= 0 && mat < gd.nmats ? &gd.mats[mat] : NULL;
+                if (pt->uvd > 0 && mf && mf->tex >= 0 && mf->tex < gd.ntex && sc > 1e-4f) {
+                    float tpu = pt->uvd * gd.tex[mf->tex].w * fabsf(mf->st[0]) / sc;   /* texeles por unidad del mundo */
+                    if (tpu < 12.0f) dl *= tpu / 12.0f;
+                }
+                lod_for(dl);
+            }
             bind_material(mat, amul);
             /* de lejos (ya en la niebla) la version ligera: los mismos vertices con menos triangulos */
             {

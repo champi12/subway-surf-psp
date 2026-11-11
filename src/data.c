@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <stdint.h>
 #include <malloc.h>
 #include "data.h"
@@ -148,6 +149,21 @@ static void parse_mesh(uint8_t *p, Mesh *m)
             pt->idx = (uint16_t *)p;
             p += ni * 2;
             if (ni & 1) p += 2;
+            {
+                /* densidad de textura del trozo: raiz de (area en la textura / area en el modelo). Una pared con una
+                 * franja estrecha del atlas estirada a lo largo da muy poca: a esa no le hacen falta los niveles reducidos */
+                double ua = 0, wa = 0;
+                const MVert *V = pt->verts;
+                for (uint32_t t = 0; t + 2 < ni; t += 3) {
+                    const MVert *a = &V[pt->idx[t]], *b = &V[pt->idx[t + 1]], *c = &V[pt->idx[t + 2]];
+                    float u1 = b->u - a->u, v1 = b->v - a->v, u2 = c->u - a->u, v2 = c->v - a->v;
+                    ua += fabsf(u1 * v2 - u2 * v1);
+                    float x1 = b->x - a->x, y1 = b->y - a->y, z1 = b->z - a->z, x2 = c->x - a->x, y2 = c->y - a->y, z2 = c->z - a->z;
+                    float cx = y1 * z2 - z1 * y2, cy = z1 * x2 - x1 * z2, cz = x1 * y2 - y1 * x2;
+                    wa += sqrtf(cx * cx + cy * cy + cz * cz);
+                }
+                pt->uvd = wa > 1e-6 ? (float)sqrt(ua / wa) : 0.0f;
+            }
             if (m->skinned) { pt->skin = (MSkin *)p; p += nv * sizeof(MSkin); }
             for (int l = 0; l < nlod; l++) {
                 uint32_t li = rd32(p); p += 4;
