@@ -1049,9 +1049,13 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
          * negras en las paredes rojas de arcos de la 1.5.2, blancas en los tuneles). Lo que se solapa es la misma
          * superficie, asi que no se nota */
         {
-            float cx = 0, cy = 0;
-            for (int k = 0; k < cnt; k++) { cx += in[k].x / in[k].d; cy += in[k].y / in[k].d; }
-            cx /= cnt; cy /= cnt;
+            /* la textura no se estira con el borde: sus coordenadas se acercan al centro del poligono en la misma
+             * proporcion en que el borde se aleja. Antes el ensanche repetia los texeles del mismo borde del trozo del
+             * atlas, que en Rio son oscuros: la "linea negra" discontinua de las paredes, mas gruesa cuanto mas se
+             * ensanchaba */
+            float cx = 0, cy = 0, cu = 0, cv = 0;
+            for (int k = 0; k < cnt; k++) { cx += in[k].x / in[k].d; cy += in[k].y / in[k].d; cu += in[k].u; cv += in[k].v; }
+            cx /= cnt; cy /= cnt; cu /= cnt; cv /= cnt;
             for (int k = 0; k < cnt; k++) {
                 float sx = in[k].x / in[k].d, sy = in[k].y / in[k].d;
                 float px = (sx - cx) * pix_x, py = (sy - cy) * pix_y;   /* en pixeles */
@@ -1060,6 +1064,9 @@ static void batch_tris(Batch *b, const uint16_t *src, int n, int skip_inside)
                 float g = r_seam_grow / sqrtf(l2);
                 in[k].x += px * g / pix_x * in[k].d;
                 in[k].y += py * g / pix_y * in[k].d;
+                float ui = g / (1.0f + g);   /* el texel que antes quedaba en el borde original */
+                in[k].u += (cu - in[k].u) * ui;
+                in[k].v += (cv - in[k].v) * ui;
             }
         }
         int base = b->nv;
