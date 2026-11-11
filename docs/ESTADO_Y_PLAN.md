@@ -1,0 +1,128 @@
+# Estado del proyecto y plan (para empezar una conversación nueva)
+
+Resumen de lo hecho, lo que está a medias y lo que queda, para retomar el trabajo sin el historial del chat.
+Última actualización: 11 de noviembre de 2026.
+
+## 1. Qué es
+
+Port nativo a PSP de Subway Surfers clásico (Android, Unity). El código C# del juego (`Assembly-CSharp.dll`) se
+decompiló y se tradujo a C; modelos, texturas, animaciones, sonidos y tramos se **extraen del APK de cada usuario**
+con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
+
+* Repositorio: `github.com/champi12/subway-surf-psp`, rama de trabajo `claude/charming-faraday-j4xh5e`.
+* Base: **1.0** + contenido de la **1.4** (Halloween, personajes, menús) + de la **1.5.2** (tablas, Elf Tricky,
+  pantallas, evento de Navidad y su mapa).
+* Hacen falta los tres APK (1.0, 1.4.0 y 1.5.2) en la carpeta del proyecto; `actualizar.sh` los reconoce por dentro.
+
+## 2. Reglas de trabajo acordadas
+
+* Hablar siempre en **español**.
+* **Como el original**: ante cualquier duda, mirar el C# decompilado y hacerlo igual. Si un fallo también está en el
+  original, se deja; si una versión posterior lo arregló, se usa ese arreglo (p. ej. el techo de la cámara en los
+  túneles).
+* **No romper lo que ya funciona.** Los cambios arriesgados de dibujo solo en el mapa de la 1.5.2 (`r_light`); al
+  mapa clásico solo se pasa lo que ya está comprobado en la consola.
+* **30 FPS estables en la consola real** (PSP-1000/2000/3000). El emulador no sirve para medir tiempos de la consola:
+  los datos buenos son los del devlog de la consola.
+* Nunca subir recursos del juego (`data/`, APK, capturas). No crear pull requests salvo que se pidan.
+* Commits con `git -c user.name="champi12" -c user.email="joanchampi11@gmail.com" commit`, mensaje en español
+  explicando el porqué, terminado con las líneas de atribución que indique la sesión. Push a la rama de trabajo.
+* Antes de subir: compilar las cuatro variantes (`make`, `make WORLD15=1`, `make WORLD15=1 DEVLOG=1 NOANALOG=1`,
+  `make DEVLOG=1`) y probar en el emulador estricto.
+
+## 3. Cómo se compila y se prueba
+
+### El usuario (en su PC, WSL)
+
+    cd ~/subway-surf-psp
+    git pull
+    DEVLOG=1 NOANALOG=1 WORLD15=1 ./actualizar.sh subway.apk "/mnt/c/Users/Joan jimenez/Desktop"
+
+* `actualizar.sh`: baja cambios, regenera `data/` solo si cambió el extractor, compila y copia `PSP/` al escritorio.
+* `WORLD15=1`: incluye y usa el **mapa de la 1.5.2** (si no, el mapa clásico 1.0/1.4).
+* `DEVLOG=1`: versión de pruebas (devlog.txt, crash.txt, medidor con SELECT, capturas con SELECT+R).
+* `NOANALOG=1`: sin el stick analógico (la consola del usuario lo tiene estropeado).
+
+### En una sesión de Claude (nube)
+
+El kit de PSP (`pspdev`) y el emulador sin pantalla (`PPSSPPHeadless`, compilado con `tools/ppsspp_estricto.patch`)
+se instalaron a mano en una carpeta temporal y **no se conservan** entre sesiones: en una sesión nueva hay que
+volver a instalarlos (toolchain de pspdev y PPSSPP compilado como headless con ese parche). Luego:
+
+    export PSPDEV=<ruta>/pspdev PATH=$PSPDEV/bin:$PATH PPSSPP_HEADLESS=<ruta>/PPSSPPHeadless
+    WORLD15=1 python3 tools/extract.py <apk 1.0> <datos> --apk14 <apk 1.4> --apk15 <apk 1.5.2>
+    PPSSPP_STRICT_FPU=1 PPSSPP_STRICT_ALIGN=1 PPSSPP_STRICT_MEM=1 \
+      XFLAGS='-DWORLD15=1 -DAT_NOTUT=1 -DAT_NOPERF=1' SHOT=150 tools/autotest.sh 60 <salida> <datos>
+
+`autotest.sh` compila con `AUTOTEST=1 DEVLOG=1`, juega solo y deja `devlog.txt`, `perf.log` y capturas
+(`sheet.png`). Opciones útiles en `XFLAGS`: `AT_XMAS`, `AT_HALLOWEEN`, `AT_NOTUT`, `AT_CHUNK="nombre"` (forzar un
+tramo), `AT_JET=N` / `AT_MAGNET=N` (jetpack o imán en el fotograma N), `AT_SLOWLOG=ms` (anota fotogramas lentos),
+`AT_STAT1` (triángulos y dibujos por bloque), `AT_RANDHOLD=n` (forzar ambiente de la 1.5.2), `AT_ELF`, `AT_UI`.
+
+## 4. Mapa del código
+
+| Archivo | Qué hace |
+|---|---|
+| `src/main.c` | Arranque, elección de mundo (clásico / `data/w15` según fecha y `WORLD15`), bucle, `dt`, capturas |
+| `src/game.c` | Lógica del juego (Character, Running, Jetpack, power-ups, guardia, cámara, tienda, guardado) |
+| `src/scene.c` | Tramos (TrackChunk), selectores, monedas, trenes y monedas en marcha, colocar/quitar tramos |
+| `src/render.c` | Motor gráfico (GE): curvatura del mundo, recortes, mipmaps, VRAM, tres imágenes, cronómetro del GE |
+| `src/hud.c` | Interfaz (menús de la 1.4/1.5.2, libreta, cajas misteriosas, marcador) |
+| `src/data.c` | Carga de `data/` (mallas por bloques, texturas, temas Halloween/Navidad) |
+| `src/physics.c`, `anim.c`, `audio.c`, `missions.c`, `spawn.c` | Física, animación, sonido, misiones, power-ups |
+| `src/devlog.c` | Devlog: STAT, PERFIL, GE ms, DIBUJO, TIRON, REINICIO... |
+| `tools/extract.py` | Conversor de los APK a `data/` (y `data/w15` con `WORLD15=1`) |
+| `docs/RENDIMIENTO.md` | Cómo leer el medidor y el devlog |
+
+**Interruptor `r_light`** (`render.c`, se pone en `main.c`): 1 en el mapa de la 1.5.2. Activa solo ahí lo
+agresivo: recorte en la niebla (>90 %), monedas lejanas ligeras, sin bilineal a lo lejos, monedas y brillos por
+lotes, prioridad de VRAM de la 1.5.2, tramos lejanos colocados por partes, nivel de mipmap de trozos grandes por su
+mitad y el techo de cámara de la 1.5.2 en los túneles.
+
+## 5. Lo que ya está hecho (resumen)
+
+* Juego completo de la 1.0 con lo de la 1.4 y la 1.5.2: tablas (con sonidos y humo), Elf Tricky (Navidad, en el
+  selector), pantallas de la 1.5.2, misiones y palabra del día por temporada, Halloween (1.4) y Navidad (1.5.2) por
+  fecha de la consola, cajas misteriosas.
+* **Mapa de la 1.5.2** (`WORLD15=1`): seis ambientes (RandomizerHold), Navidad con sus mallas propias.
+* **Rendimiento (resultado en la consola):** el mapa de la 1.5.2 pasó de ~5 tirones por minuto a **0 tirones en
+  carrera** en las últimas sesiones (puente, trenes en marcha). Claves:
+  * texturas del escenario con paleta en la VRAM, monedas por lotes, distancia de dibujo fija como el original;
+  * trozos del escenario de la 1.5.2 agrupados según sus vértices (de ~408 a ~300 dibujos por fotograma);
+  * **tres imágenes** y cambio de imagen sin esperar al refresco (`SETBUF_NEXTFRAME`): un fotograma de 34 ms ya no
+    baja a 20 FPS;
+  * reinicio más ligero (solo se esconden los tramos usados), texturas de la pantalla de fin en segundo plano
+    durante la caída, `save.dat` guardado en otro hilo.
+* **Probado y descartado:** versiones ligeras (LOD) del escenario (huecos en los túneles) y tiras de triángulos
+  (los modelos de la 1.5.2 no comparten vértices: 2,8 por triángulo, no compensa).
+* **Mapa clásico:** recibió ya lo comprobado (tres imágenes, reinicio ligero, nivel de mipmap por la CPU: sin las
+  líneas de los túneles y paredes rojas) y los trenes con paleta para que quepan en la VRAM con la tercera imagen.
+* **Arreglos recientes de lógica (todos los mapas):** imán con las monedas de los trenes en marcha como el original
+  (salen desde donde se ven); cámara con el techo de los túneles del original (1.4 en el clásico, 1.5.2 en el suyo).
+
+## 6. Lo que está a medias
+
+* **Puntos blancos en las paredes del mapa clásico** (solo en la consola, no salen en capturas ni en el emulador).
+  Posibles causas: rendijas de un píxel entre piezas (ver "Los puntos blancos en el escenario" en
+  `docs/RENDIMIENTO.md`) o el nivel de mipmap elegido por la CPU leyendo píxeles vecinos del atlas. Siguiente paso:
+  saber si parpadean (rendijas) o están quietos (atlas) y en qué paredes.
+* **Reinicio tras carreras largas:** "quitar tramos" llega a 24-30 ms tras ~2 minutos de carrera (muchos tramos
+  usados). Idea: esconder cada tramo cuando sale de la vista durante la carrera, poco a poco.
+* **Publicar la actualización 1.5:** el mapa de la 1.5.2 sigue detrás de `WORLD15=1` (`#if WORLD15` en
+  `main.c` y `WORLD15=0` por defecto en `actualizar.sh`). Para la versión pública hay que hacerlo el mapa por
+  defecto (salvo en Halloween, que usa el clásico).
+
+## 7. Plan
+
+1. Decidir y preparar la versión pública con el mapa de la 1.5.2 por defecto.
+2. Puntos blancos del mapa clásico.
+3. Reinicio tras carreras largas.
+4. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
+   misteriosas como el original (casi hechos), texturas por paquetes.
+
+## 8. Cómo pasar información a Claude
+
+* El **devlog** de la versión de pruebas (`devlog.txt`, y `devlog_prev.txt` de la sesión anterior) es lo más útil:
+  dice dónde y por qué baja (CPU o GE, y en qué bloque).
+* Capturas con **SELECT + R** (`captura_NNN.bmp`), salen sin el medidor.
+* Decir qué mapa (clásico o 1.5.2), si era Halloween/Navidad y qué se estaba haciendo.
