@@ -112,12 +112,26 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   `main.c` y `WORLD15=0` por defecto en `actualizar.sh`). Para la versión pública hay que hacerlo el mapa por
   defecto (salvo en Halloween, que usa el clásico).
 
+## 6b. Lo de la 1.5.2 comparado con el port (clases nuevas frente a la 1.4)
+
+* **Hecho:** tablas (`Hoverboard*`, `BoardScreen`, sonidos y humo), Elf Tricky, Navidad (mallas, texturas, cielo,
+  nieve en la portada, `ChangelogThemePopup`), pantallas de la 1.5.2 (`NotebookScreen`, `GameOverScreen`,
+  `IngameScreen`, `UpgradeScreen`, `TrophiesScreen`, `MysteryBoxPopup`, `MissionPopup`), mapa de la 1.5.2.
+* **No aplica en PSP (necesitan internet o tienda):** `FriendsOnlineScreen`, `LeaderboardOnlineScreen`,
+  `BragPopup`, `EarnCoinsScreen`, `PrivacyPolicy*`, `RestorePurchaseHelper`, `OfflineScreen`.
+* **Falta:** `SettingsPopup` (ajustes; en Navidad añade un botón de temporada) y `PrizeListPopup` (lista de
+  premios de las cajas, desde la caja, la tienda o el fin de partida). Repasar los menús con la libreta y las cajas
+  misteriosas para que sean exactamente como el original.
+
 ## 7. Plan
 
-1. Decidir y preparar la versión pública con el mapa de la 1.5.2 por defecto.
+1. Decidir y preparar la versión pública con el mapa de la 1.5.2 por defecto; añadir lo que falta de la 1.5.2
+   (ajustes y lista de premios).
 2. Puntos blancos del mapa clásico.
 3. Reinicio tras carreras largas.
-4. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
+4. Siguiente versión (1.6): hace falta el APK de la 1.6; mismo método que con la 1.5.2 (decompilar, listar lo
+   nuevo frente a la 1.5.2 y portarlo).
+5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
 ## 8. Cómo pasar información a Claude
