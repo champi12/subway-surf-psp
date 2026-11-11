@@ -293,14 +293,18 @@ static int score, coins_run, meters;
  * power-ups, uno de cada power-up) y el momento del ultimo cambio de carril (StayInOneLane) */
 static int run_jumps, run_rolls, run_pickups, run_pk[4];
 static float lane_t;
-/* GameStats.CalculateScore / AddScoreForPickup */
+/* GameStats.CalculateScore / AddScoreForPickup de la 1.6: las misiones "sin monedas / saltos / rodar / power-ups"
+ * pasaron de "X puntos ANTES de la primera" (1.5.2: tras la primera ya no contaban) a "X puntos SIN" (WithoutScore):
+ * los puntos se suman siempre y cada moneda, salto, voltereta o power-up pone la cuenta a cero (RemoveProgressForThis).
+ * La de power-ups suma mientras no hay ninguno activo (la tabla no cuenta) */
+static int powerup_active_no_board(void);
 static void score_missions(int num, int from_meters)
 {
     missions_did(M_SCORE, num);
-    if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
-    if (run_rolls <= 0) missions_did(M_NOROLLSBEFORESCORE, num);
-    if (run_jumps <= 0) missions_did(M_NOJUMPSBEFORESCORE, num);
-    if (from_meters && run_pickups <= 0) missions_did(M_NOPOWERUPSBEFORESCORE, num);
+    missions_did(M_NOCOINSBEFORESCORE, num);
+    missions_did(M_NOROLLSBEFORESCORE, num);
+    missions_did(M_NOJUMPSBEFORESCORE, num);
+    if (from_meters && !powerup_active_no_board()) missions_did(M_NOPOWERUPSBEFORESCORE, num);
 }
 /* power-up recogido: jetpack, zapatillas, iman, multiplicador (OneOfEachPowerup: el producto de los cuatro) */
 static void powerup_picked(int k)
@@ -309,6 +313,7 @@ static void powerup_picked(int k)
     dlog("POWERUP %s cogido", k >= 0 && k < 4 ? kn[k] : "?");
     (void)kn;
     run_pickups++;
+    missions_reset(M_NOPOWERUPSBEFORESCORE);   /* 1.6: la racha "sin power-ups" vuelve a cero */
     if (k >= 0) run_pk[k]++;
     missions_did(M_ONEOFEACHPOWERUP, run_pk[0] * run_pk[1] * run_pk[2] * run_pk[3]);
 }
@@ -806,7 +811,9 @@ static float trigger_powerup(int type, int pw_type)
         int num = score_multiplier() * 50;
         score += num;
         missions_did(M_SCORE, num);
-        if (coins_run <= 0) missions_did(M_NOCOINSBEFORESCORE, num);
+        missions_did(M_NOCOINSBEFORESCORE, num);   /* _AddScoreForPickup de la 1.6 (power-up: no la de power-ups) */
+        missions_did(M_NOROLLSBEFORESCORE, num);
+        missions_did(M_NOJUMPSBEFORESCORE, num);
     }
     if (type != PT_HEADSTART) missions_did(M_POWERUPS, 1);   /* GameStats.usePowerups */
     return pw_left[type];
@@ -825,6 +832,10 @@ static void update_powerup_times(float dt)
 }
 
 static void clear_powerups(void) { for (int i = 0; i < PT_COUNT; i++) pw_on[i] = 0; }
+static int powerup_active_no_board(void)
+{
+    return pw_on[PT_JETPACK] || pw_on[PT_SNEAKERS] || pw_on[PT_MAGNET] || pw_on[PT_DOUBLE];
+}
 
 /* ------------------------------------------------------------ Character */
 static void char_set_pos(V3 p) { cc.pos = p; nrt[n_character].lpos = p; }
@@ -966,6 +977,7 @@ static void character_jump(void)
         }
         if (gu.enabled) guard_jump();
         run_jumps++;
+        missions_reset(M_NOJUMPSBEFORESCORE);
         missions_did(M_JUMP, 1);
     } else if (ch.verticalSpeed < 0) ch.inAirJump = 1;
 }
@@ -998,6 +1010,7 @@ static void character_roll(void)
     ch.rolling = 1;
     ch.roll_started = 0;
     run_rolls++;
+    missions_reset(M_NOROLLSBEFORESCORE);
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
 }
@@ -1395,6 +1408,7 @@ static void pickup_coin_effect(float y)
 static void collect_coin(int i)
 {
     coins_run++;
+    missions_reset(M_NOCOINSBEFORESCORE);
     missions_did(M_EARNCOIN, 1);
     if (coins[i].pulling && mods[MOD_MAGNET].active) missions_did(M_COINSWITHMAGNET, 1);
     pickup_coin_effect(coins[i].pos.y);
@@ -1692,6 +1706,7 @@ static void notify_pickup(int node)
         /* moneda suelta de la escena (la de MovingCoin, encima de los trenes en marcha): Coin.OnPickup.
          * Antes no hacia nada: ni sonaba ni sumaba */
         coins_run++;
+        missions_reset(M_NOCOINSBEFORESCORE);
         missions_did(M_EARNCOIN, 1);
         pickup_coin_effect(m34_pos(&nrt[node].world).y);
         nrt[node].taken = 1;
@@ -2037,6 +2052,25 @@ static void xmas_popup_check(void)
     if (xm_popup_year == y) return;
     xm_popup_year = y;
     ginfo.popup = POPUP_XMAS;
+    game_save();
+}
+
+/* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
+ * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
+ * esta el contenido de la 1.6 (Tony) */
+static int ny_popup_year;
+static int tony_ready(void);
+static void ny_popup_check(void)
+{
+    if (!ny_season() || ginfo.popup || !tony_ready()) return;
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (console_date(&t) >= 0) y = t.year - 2000;
+#endif
+    if (ny_popup_year == y) return;
+    ny_popup_year = y;
+    ginfo.popup = POPUP_NY;
     game_save();
 }
 
@@ -2605,6 +2639,8 @@ static void die_tick(float dt)
         ginfo.final_score = score + coins_run * 2 * missions_multiplier();
         ginfo.total_coins += coins_run;
         ginfo.gameover_coins = coins_run;
+        ginfo.gameover_score0 = score;
+        ginfo.gameover_t = ginfo.time;
         ginfo.reward[0] = 0;
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
         hb_run_completed();
@@ -2929,6 +2965,8 @@ static int char_tex(int i);
 static int is14(int i) { return chars[i].mesh14 != NULL; }
 static int ext_ready(int i) { return slick_skin && ext_mesh[i] >= 0 && ext_mat[i] >= 0; }
 static int owned_14(int i) { return owned14 >> (i - CH_FIRST14) & 1; }
+#define CH_TONY 17
+static int tony_ready(void) { return CH_TONY < NCHARS && ext_ready(CH_TONY); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3141,6 +3179,17 @@ int board_is_new(int row)
            !(board_seen >> row & 1);
 }
 int board_new_count(void) { int n = 0; for (int i = 0; i < gd_nboards; i++) n += board_is_new(i); return n; }
+/* GameOverScreen.CountUpCoins (1.5.2 y 1.6): 1,2 s quieto y luego las monedas pasan a los puntos (y a la hucha) en
+ * 0,3-2 s segun cuantas (100 o mas: 2 s), con Mathf.SmoothStep */
+float gameover_count(void)
+{
+    float ct = 0.3f + 1.7f * fminf(1.0f, ginfo.gameover_coins / 100.0f);
+    float f = (ginfo.time - ginfo.gameover_t - 1.2f) / ct;
+    if (f <= 0) return 0;
+    if (f >= 1) return 1;
+    return f * f * (3 - 2 * f);
+}
+
 int game_board_guideline(void)
 {
 #ifdef AT_HBPOPUP
@@ -3686,7 +3735,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -3710,7 +3759,21 @@ void game_update(float dt)
     case GS_JETPACK: jetpack_tick(dt); break;
     case GS_DIEFALL: case GS_DIE: die_tick(dt); break;
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
-    case GS_GAMEOVER:
+    case GS_GAMEOVER: {
+        /* ScoreCounterSoundPlayer: mientras cuentan las monedas, su sonido cada 1/16 s subiendo de tono (2^avance) y
+         * uno ultimo a tono 2 al acabar */
+        static float next_t; static int counting;
+        float ct = 0.3f + 1.7f * fminf(1.0f, ginfo.gameover_coins / 100.0f);
+        float raw = (ginfo.time - ginfo.gameover_t - 1.2f) / ct;
+        if (raw > 0 && raw < 1) {
+            if (!counting || ginfo.time >= next_t) {
+                snd_play(snd_coin.sfx, 0.3f, powf(2.0f, raw), 0);
+                next_t = ginfo.time + 0.0625f;
+            }
+            counting = 1;
+        } else if (raw >= 1 && counting) { counting = 0; snd_play(snd_coin.sfx, 0.3f, 2.0f, 0); }
+        else if (raw <= 0) counting = 0;
+    }
         /* el escenario ya no se ve: se van escondiendo los tramos de la carrera (2 por fotograma, ~4 ms) mientras se
          * mira el marcador, para que PLAY no tenga que hacerlo de golpe */
         if (game_time - state_time > 0.3f) track_hide_used_step(2);
@@ -4088,7 +4151,7 @@ static int save_fill(unsigned char *buf)
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
     int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned,
-                (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0),
+                (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0) | (ny_popup_year & 0xff) << 8,
                 (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
@@ -4168,7 +4231,7 @@ void game_load(void)
     fclose(f);
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
-    if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; }
+    if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; ny_popup_year = (e[6] >> 8) & 0xff; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; }
     audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }

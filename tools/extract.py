@@ -2463,6 +2463,35 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
+def swap_guard16(ex, sc16):
+    """Mapa de la 1.6: el inspector y el perro de Nueva York (policia de azul con placa y perro marron). Sus mallas
+    (normal_polySurface9 / normal_dog) tienen los mismos huesos en el mismo orden que las de la 1.0, asi que se cambian
+    la malla y la textura enemies manteniendo el esqueleto y las animaciones de siempre (como las de Navidad)."""
+    want = {'polySurface9': 'normal_polySurface9', 'dog': 'normal_dog'}
+    new_mesh, new_tex = {}, None
+    for o in sc16.env.objects:
+        if o.type.name == 'Mesh':
+            n = o.read().m_Name
+            for k, v in want.items():
+                if n == v and k not in new_mesh:
+                    new_mesh[k] = o
+        elif o.type.name == 'Texture2D' and new_tex is None and o.read().m_Name == 'enemies':
+            new_tex = o
+    ex.mesh_names = [m.read().m_Name for m in ex.meshes]
+    done = []
+    for i, m in enumerate(ex.meshes):
+        nm = ex.mesh_names[i]
+        if nm in new_mesh:
+            ex.meshes[i] = new_mesh[nm]
+            done.append(nm)
+    if new_tex is not None:
+        for i, t in enumerate(ex.textures):
+            if not isinstance(t, tuple) and t.read().m_Name == 'enemies':
+                ex.textures[i] = new_tex
+                done.append('enemies')
+    print('  inspector y perro de la 1.6: %s' % (', '.join(done) or 'AVISO: no encontrados'))
+
+
 def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
@@ -2589,6 +2618,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                    sc15 if sc15 is not None else (level_sc if level_sc is not sc else None))
     print('Exportando mallas...')
     ex.adaptive_parts = not classic   # solo el mapa de la 1.5.2 (el clasico como antes)
+    if sc16 is not None and level_sc is sc16:
+        swap_guard16(ex, sc16)
     mesh, stats = export_meshes(ex)
     tv = sum(s[1] for s in stats)
     tt = sum(s[2] for s in stats)

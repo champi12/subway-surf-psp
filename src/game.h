@@ -26,6 +26,8 @@ typedef struct {
     float headstart_until;        /* botones de headstart visibles hasta este momento */
     char reward[64]; float reward_t;
     int gameover_coins;
+    float gameover_t;             /* ginfo.time al llegar al fin de partida (CountUpCoins) */
+    int gameover_score0;          /* puntos sin las monedas (de ahi sube hasta final_score) */
     int tokens, character;        /* tokens: fichas de personaje recogidas (total); character: personaje elegido */
     int char_sel;                 /* personaje marcado en la pantalla de personajes */
     int board_sel;                /* tabla marcada en la pantalla de tablas */
@@ -40,10 +42,11 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
+float gameover_count(void);      /* CountUpCoins: 0 antes de contar, sube a 1 (suavizado) mientras pasan las monedas */
 int game_boards_used(void);
 int board_is_new(int row);       /* tabla nueva de la 1.6 aun no vista (pegatina NEW) */
 int board_new_count(void);       /* cuantas nuevas sin ver (numero en los botones ME y Tablas) */

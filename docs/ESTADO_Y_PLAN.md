@@ -1,7 +1,7 @@
 # Estado del proyecto y plan (para empezar una conversación nueva)
 
 Resumen de lo hecho, lo que está a medias y lo que queda, para retomar el trabajo sin el historial del chat.
-Última actualización: 11 de noviembre de 2026 (1.5.2 terminada; contenido de la 1.6 añadido).
+Última actualización: 11 de noviembre de 2026 (1.5.2 y 1.6 terminadas).
 
 ## 1. Qué es
 
@@ -140,8 +140,13 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    independientes (hoy el clásico solo sale en Halloween).
 2. Puntos blancos del mapa clásico.
 3. Reinicio tras carreras largas.
-4. 1.6: hecho Tony, las 4 tablas y su mapa por temporada (en la consola: 1 tirón en 482 s). Queda revisar si la
-   1.6 trae algo más (misiones, pantallas) y el fallo de "letras con líneas negras" en el mapa de la 1.4 (falta
+4. 1.6 terminada: Tony, las 4 tablas (pegatinas NUEVA/LÍMITE y número en ME y Tablas), su mapa por temporada
+   (1 tirón en 482 s en la consola), el inspector y el perro de Nueva York en su mapa (mallas y textura de la 1.6
+   con el esqueleto de siempre), el aviso "¡Bienvenido a Nueva York!", las misiones "X puntos sin..." con la regla
+   de la 1.6 (cada moneda, salto, voltereta o power-up pone la racha a cero), la cuenta de monedas a puntos del fin
+   de partida (CountUpCoins) y el aviso "¿Sin tablas?" (3 gratis). Lo demás de la 1.6 es de la interfaz táctil o
+   del servidor. El guardia de las demás versiones: 1.0 = 1.4 = 1.5.2 (verde); Halloween (zombi) y Navidad (Papá
+   Noel) ya tenían sus mallas y texturas. Queda el fallo de "letras con líneas negras" en el mapa de la 1.4 (falta
    captura).
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.

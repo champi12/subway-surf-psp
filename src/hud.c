@@ -535,10 +535,11 @@ static void foot_play(float nx, const char *text, float px, const char *key)
 }
 
 /* CoinBoxQuick: monedas arriba a la derecha (sin el "+" de comprar monedas) */
+static int coin_box_value = -1;   /* fin de partida: la hucha sube mientras cuentan las monedas */
 static void coin_box(float xr, float cy)
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%d", ginfo.total_coins);
+    snprintf(buf, sizeof(buf), "%d", coin_box_value >= 0 ? coin_box_value : ginfo.total_coins);
     float tw = labw(0, 15, buf), w = tw + U(30);
     ui_sliced(a_ui, "button_gray_gradient", xr - w, cy - U(10), w, U(20), UIS, C_WHITE);
     spr_c("coin_with_background", xr - w, cy, U(26), U(25), C_WHITE);
@@ -813,6 +814,7 @@ static void big_button(float cx, float by, const char *fill)
 static void draw_halloween_popup(void);
 static void draw_xmas_popup(void);
 static void draw_boards_popup(void);
+static void draw_ny_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -883,6 +885,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
         if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
         if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
+        if (ginfo.popup == POPUP_NY) draw_ny_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -900,6 +903,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
     if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
     if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
+    if (ginfo.popup == POPUP_NY) draw_ny_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -972,6 +976,35 @@ static void draw_boards_popup(void)
     ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
     ui_sprite_wh(a_ui, "icon_hoverboard", cx - U(108), cy - U(10), U(32), U(20), C_WHITE);
     labc(0, cx + U(10), cy, 20, C_WHITE, 1, 1, TR("¡3 gratis! (X)", "Get 3 Free! (X)"));
+}
+
+/* ChangelogPopup de la 1.6: "Welcome to NYC!" al empezar la temporada de Nueva York (Tony, 4 tablas nuevas). Misma
+ * disposicion que el de Navidad, con el azul de la ciudad */
+static void draw_ny_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_NYBLUE = 0xffb86a1eu;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_NYBLUE);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_NYBLUE);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Nueva York!", "to NYC!"));
+    static const char *const lines[3][4] = {
+        {"Subway Surfers World Tour", "Subway Surfers World Tour", "¡Explora el metro de Nueva York!", "Explore the New York City Subway!"},
+        {"¡Conoce a Tony!", "Meet the cool kid, Tony!", "Disponible por tiempo LIMITADO", "Available for a LIMITED time"},
+        {"¡Amplía tu colección de tablas!", "Boost your board collection!", "4 TABLAS NUEVAS en la pantalla de tablas", "4 NEW BOARDS in the Board Shop"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
 }
 
 /* HalloweenThemePopup: "Happy Halloween Everyone!" la primera vez de cada temporada */
@@ -1432,9 +1465,15 @@ static void draw_gameover(void)
 {
     char buf[64];
     bg_fallback();
+    /* CountUpCoins: puntos, monedas de la carrera y hucha pasan de "antes" a "despues" */
+    float cf = gameover_count();
+    int c0 = ginfo.gameover_coins;
+    coin_box_value = (int)lroundf(ginfo.total_coins - c0 + c0 * cf);
     coin_box(SCR_W - 8, 15);
+    coin_box_value = -1;
+    /* PrizeListPopup: debajo del marcador (arriba tapaba el titulo "Puntos") */
     if (!ginfo.boxes_pending && !ginfo.sboxes_pending && !ginfo.reward[0])
-        lab(0, SCR_W - 150, 34, 13, C_WHITE, 2, 1, TR("Cuadrado: premios", "Square: prizes"));   /* PrizeListPopup */
+        labc(0, 350, 172, 13, C_NAVY, 1, 1, TR("Cuadrado: premios", "Square: prizes"));
     /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda (lo dibuja el 3D) y a la derecha el marcador:
      * "* Score *", la pizarra con los puntos y las monedas, y el record */
     float cx = 350, cy = 104;
@@ -1443,9 +1482,9 @@ static void draw_gameover(void)
     spr_c("icon_star", cx + stw, cy - U(72), U(20), U(19), C_SCORE);
     labc(1, cx, cy - U(72), 30, C_SCORE, 1, 0, TR("Puntos", "Score"));
     spr_c("scoreboard", cx, cy, U(160) * 1.15f, U(121) * 1.15f, C_WHITE);
-    snprintf(buf, sizeof(buf), "%d", ginfo.final_score);
+    snprintf(buf, sizeof(buf), "%d", (int)lroundf(ginfo.gameover_score0 + (ginfo.final_score - ginfo.gameover_score0) * cf));
     labfit(1, cx, cy - U(34), 30, U(150), C_WHITE, 1, 1, buf);
-    snprintf(buf, sizeof(buf), "%d", ginfo.gameover_coins);
+    snprintf(buf, sizeof(buf), "%d", (int)lroundf(c0 * (1 - cf)));
     float tw = labw(0, 20, buf);
     spr_c("coin2d", cx - tw * 0.5f - U(12), cy + U(4), U(18), U(18), C_WHITE);
     labc(0, cx + U(6), cy + U(4), 20, C_WHITE, 1, 1, buf);
