@@ -394,6 +394,13 @@ int main(int argc, char **argv)
         if (frame_no == 140) pr |= PSP_CTRL_RTRIGGER;
         if (frame_no >= 170 && frame_no < 290 && frame_no % 12 == 0) pr |= PSP_CTRL_RIGHT;
         if (frame_no == 300) pr |= PSP_CTRL_CROSS;
+#elif defined(AT_HBPOPUP)
+        /* prueba de "Out of Boards?": O abre el aviso, X da las 3 tablas; luego personajes -> tablas (pegatinas NEW) */
+        if (frame_no == 60) pr |= PSP_CTRL_CIRCLE;
+        if (frame_no == 120) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 160) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 200) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no >= 240 && frame_no < 360 && frame_no % 12 == 0) pr |= PSP_CTRL_LEFT;
 #elif defined(AT_CHARS)
         /* prueba de personajes: abre la pantalla, baja hasta Lucy, la compra (con monedas de prueba) y vuelve */
         if (frame_no == 30) ginfo.total_coins = 9000;

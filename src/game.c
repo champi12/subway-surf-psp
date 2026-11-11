@@ -364,6 +364,15 @@ static int board_default(void)
 /* la normal es siempre tuya; las de monedas y la de regalo (Starboard, "FREE GIFT") hasta que se compran o se reclaman */
 static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1)); }
 int ny_season(void);
+/* BoardsNotificationHelper / HoverboardOverlayHelper de la 1.6: las tablas nuevas de esta version (isNewInThisUpdate:
+ * Miami, Monster y Skull Fire, detras de las 7 de la 1.5.2; Liberty no cuenta: lleva su limite de tiempo) llevan la
+ * pegatina NEW hasta que se marcan en el carrusel, y los botones ME y Tablas dicen cuantas quedan por ver */
+#define BOARD_FIRST16 7
+static int board_seen;                 /* bit i: tabla vista en el carrusel */
+/* TutorialHoverboardPopup (PlayerInfo.RunCompleted de la 1.5.2/1.6): tablas usadas en total, carreras desde el ultimo
+ * aviso y si toca / ya se enseno */
+static int hb_used, hb_runs, hb_should, hb_shown;
+static void hb_run_completed(void);
 /* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
 static int board_avail(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock != BOARD_SEASON || board_has(i) || ny_season()); }
 static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
@@ -1727,6 +1736,7 @@ static void mod_begin(int m)
         float since = game_time - hb_last_end;
         if (since < HB_PARTICLE_DELAY + HB_COOLDOWN) { mods[m].active = 0; mods[m].phase = 99; return; }
         ginfo.hoverboards--;
+        if (hb_used < 4095) hb_used++;   /* Achievements.GetNumberOfHoverboardsUsed */
         missions_did(M_HOVERBOARD, 1);
         mods[m].paused = 0;
         stumble_set(0);
@@ -2597,6 +2607,7 @@ static void die_tick(float dt)
         ginfo.gameover_coins = coins_run;
         ginfo.reward[0] = 0;
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
+        hb_run_completed();
         game_save_bg();   /* en segundo plano (todos los mapas) */
         change_state(GS_GAMEOVER);
         ginfo.state = GS_GAMEOVER;
@@ -3124,6 +3135,29 @@ int board_step(int row, int dir)
     return row;
 }
 int board_is_season(int row) { return row >= 0 && row < gd_nboards && gd_boards[row].unlock == BOARD_SEASON; }
+int board_is_new(int row)
+{
+    return row >= BOARD_FIRST16 && row < gd_nboards && row < 32 && gd_boards[row].unlock != BOARD_SEASON &&
+           !(board_seen >> row & 1);
+}
+int board_new_count(void) { int n = 0; for (int i = 0; i < gd_nboards; i++) n += board_is_new(i); return n; }
+int game_board_guideline(void)
+{
+#ifdef AT_HBPOPUP
+    { static int once; if (!once) { once = 1; hb_should = 1; hb_used = 2; } }   /* prueba: el aviso desde el principio */
+#endif
+    return hb_should && !hb_shown;
+}
+int game_boards_used(void) { return hb_used; }
+/* PlayerInfo.RunCompleted: cada 5 carreras, si nunca se ha usado una tabla o aun no se ha comprado ninguna (las que
+ * quedan son las 3 del principio menos las usadas), el boton de tablas del menu lleva el aviso */
+static void hb_run_completed(void)
+{
+    if (++hb_runs <= 4) return;
+    hb_runs = 0;
+    if (!hb_shown && (hb_used == 0 || ginfo.hoverboards == 3 - hb_used)) { hb_should = 1; return; }
+    hb_shown = 1;
+}
 const char *board_name(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].name : ""; }
 int board_price(int row) { return row >= 0 && row < gd_nboards ? gd_boards[row].price : 0; }
 int board_is_owned(int row) { return board_has(row); }
@@ -3183,7 +3217,10 @@ static void boards_input(unsigned in, int confirm)
     if (in & IN_RIGHT) in |= IN_DOWN;
     if ((in & IN_UP) && !(in & IN_CROSS)) r = board_step(r, -1);
     if ((in & IN_DOWN) && !(in & IN_CIRCLE)) r = board_step(r, 1);
-    if (r != ginfo.board_sel) { ginfo.board_sel = r; board_preview(r); snd_play(sfx_tap, 0.5f, 1, 0); }
+    if (r != ginfo.board_sel) {
+        ginfo.board_sel = r; board_preview(r); snd_play(sfx_tap, 0.5f, 1, 0);
+        if (board_is_new(r)) { board_seen |= 1 << r; game_save_bg(); }   /* HoverboardOverlayHelper.SelectedInMenu */
+    }
     if (confirm) {
         const BoardDef *d = &gd_boards[r];
         if (board_has(r)) {
@@ -3543,7 +3580,17 @@ void game_input(unsigned in)
     case GS_MENU:
         /* menu: X jugar, triangulo misiones, cuadrado reto diario, START ajustes, L personajes y R tienda */
         if (ginfo.popup) {
-            if (in & (IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
+            if (in & (IN_CROSS | IN_CIRCLE | IN_START)) {
+                snd_play(sfx_tap, 1, 1, 0);
+                if (ginfo.popup == POPUP_BOARDS) {
+                    /* OkClicked / CloseClicked: las dos dan las 3 tablas */
+                    ginfo.hoverboards += 3;
+                    hb_shown = 1; hb_should = 0;
+                    snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+                    game_save();
+                }
+                ginfo.popup = POPUP_NONE;
+            }
             break;
         }
         if (ginfo.missions_open) {
@@ -3553,6 +3600,7 @@ void game_input(unsigned in)
         if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
         else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_DAILY; }
         else if (in & IN_START) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; ginfo.settings_sel = 0; }
+        else if ((in & IN_CIRCLE) && game_board_guideline()) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_BOARDS; }
         else if (confirm) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
         else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
@@ -4040,7 +4088,8 @@ static int save_fill(unsigned char *buf)
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
     int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned,
-                (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0)};
+                (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0),
+                (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     return (int)(sizeof(d) + sizeof(e));
@@ -4120,6 +4169,7 @@ void game_load(void)
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
     if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; }
+    if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; }
     audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;

@@ -483,6 +483,16 @@ static void foot_btn(float nx, const char *fill, const char *icon, float iw, flo
 /* botones verdes de la seccion "ME" de la 1.5.2 (personajes, tablas, trofeos): button_fill_menuMe de la hoja de la
  * libreta; sin el APK de la 1.5.2, el azul de la 1.4 */
 static int a_nb = -2;
+/* BoardsNotificationHelper de la 1.6: circulo rojo con el numero de tablas nuevas sin ver */
+static void new_badge(float x, float y, int n)
+{
+    char b[8];
+    if (n <= 0) return;
+    snprintf(b, sizeof(b), "%d", n);
+    spr_c("background_sticker_medium", x, y, 22, 22, 0xff2a2ad8u);
+    labc(0, x, y, 14, C_WHITE, 1, 1, b);
+}
+
 static void foot_btn_me(float nx, const char *icon, float iw, float ih, const char *title, const char *key)
 {
     float cx = SCR_W * 0.5f + U(nx), cy = FOOT_Y;
@@ -491,6 +501,7 @@ static void foot_btn_me(float nx, const char *icon, float iw, float ih, const ch
         ui_sliced(a_ui, "button_generic_2_outline", cx - U(34), cy - U(25), U(72), U(56), UIS, C_OUTLINE);
         if (!strcmp(icon, "icon_boards")) ui_sprite_wh(a_nb, icon, cx - U(iw) * 0.5f, cy - U(ih) * 0.5f, U(iw), U(ih), C_WHITE);
         else spr_c(icon, cx, cy, U(iw), U(ih), C_WHITE);
+        if (!strcmp(icon, "icon_boards") || !strcmp(icon, "icon_hoverboard")) new_badge(cx + U(28), cy - U(20), board_new_count());
         if (key && !strcmp(key, "[]")) {
             /* la tecla cuadrado: un cuadradito con borde en lugar de "[]" (la letra no tiene ese simbolo) */
             float tw = labw(0, 14, title), x0 = cx - (tw + 14) * 0.5f, ty = cy + U(30);
@@ -801,6 +812,7 @@ static void big_button(float cx, float by, const char *fill)
 
 static void draw_halloween_popup(void);
 static void draw_xmas_popup(void);
+static void draw_boards_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -833,6 +845,13 @@ static void draw_menu(void)
     ui_sprite_wh(a_ui, "icon_hoverboard", hx - U(16), hy - U(13), U(32), U(20), C_WHITE);
     snprintf(buf, sizeof(buf), "%d", ginfo.hoverboards);
     labc(0, hx + U(16), hy + U(8), 14, C_WHITE, 2, 1, buf);
+    if (game_board_guideline()) {
+        /* GuidelineButton de la 1.5.2: el "!" que late sobre el boton de tablas hasta abrir "Out of Boards?" (O) */
+        float s = 1.0f + 0.25f * fabsf(sinf(ginfo.time * 5.0f));
+        spr_c("background_sticker_medium", hx + U(20), hy - U(18), 22 * s, 22 * s, C_ORANGE);
+        labc(1, hx + U(20), hy - U(18), 16 * s, C_WHITE, 1, 1, "!");
+        labc(0, hx, hy + U(30), 14, C_WHITE, 1, 1, "O");
+    }
     /* "Tap to play" que late */
     float a = 0.55f + 0.45f * sinf(ginfo.time * 4.0f);
     lab(1, SCR_W * 0.5f, SCR_H - U(132), 20, ((unsigned)(a * 255) << 24) | 0xffffff, 1, 1,
@@ -858,10 +877,12 @@ static void draw_menu(void)
                 ui_sprite_wh(a_nb, fb[i].icon, bx + (bw - iw) * 0.5f, y1 - ih, iw, ih, C_WHITE);
             }
             lab(0, bx + 6, y1 - h + 2, 14, C_WHITE, 0, 1, fb[i].key);
+            if (i == 0) new_badge(bx + bw - 6, y1 - h + 4, board_new_count());   /* tablas nuevas, en ME */
         }
         if (ginfo.missions_open) draw_missions_popup();
         if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
         if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
+        if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -878,6 +899,7 @@ static void draw_menu(void)
     if (ginfo.missions_open) draw_missions_popup();
     if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
     if (ginfo.popup == POPUP_XMAS) draw_xmas_popup();
+    if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -909,6 +931,47 @@ static void draw_xmas_popup(void)
     ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
     labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* TutorialHoverboardPopup de la 1.5.2 / 1.6: "Out of Boards?" (o "Need Help?" si nunca se ha usado una tabla), con
+ * las 3 tablas de regalo. Misma disposicion que los avisos de temporada: bocadillo naranja con la tabla, tres lineas y
+ * el boton verde */
+static void draw_boards_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    int never = game_boards_used() == 0;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_ORANGE);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_ORANGE);
+    /* la nube con la tabla: el brillo azul de la interfaz y el icono de la tabla encima */
+    spr_c("background_superglow", bx + U(56), by - U(66), U(64), U(52), 0xffe0a040u);
+    ui_sprite_wh(a_ui, "icon_hoverboard", bx + U(56) - U(22), by - U(66) - U(14), U(44), U(28), C_WHITE);
+    labc(1, bx, by - U(38), 24, C_WHITE, 1, 1, never ? TR("¿Necesitas", "Need") : TR("¿Sin", "Out of"));
+    labfit(1, bx, by - U(10), 28, U(150), C_WHITE, 1, 1, never ? TR("ayuda?", "Help?") : TR("tablas?", "Boards?"));
+    /* el subtitulo en dos lineas, como el original */
+    labfit(0, bx, by + U(24), 15, U(150), C_WHITE, 1, 1, never ? TR("¡Usa las", "Use the") : TR("¡Aquí tienes 3", "Here's 3 to"));
+    labfit(0, bx, by + U(42), 15, U(150), C_WHITE, 1, 1, never ? TR("TABLAS!", "HOVERBOARDS!") : TR("para empezar!", "get you going!"));
+    const char *l[3][4] = {
+        {"¡ESQUIVA los problemas!", "SURF AWAY from trouble!", "Las tablas te libran de chocar", "Boards save you from crashing"},
+        {"¡Otra OPORTUNIDAD!", "Have another GO!", "Empieza volando con 3 tablas GRATIS", "Get a flying start with 3 FREE Boards"},
+        {"¿Dónde consigo MÁS?", "Where can I get MORE?", "Compra tablas en la tienda", "Get Hoverboards in the Shop"},
+    };
+    if (never) {
+        l[1][0] = "¿Cómo se ACTIVAN?"; l[1][1] = "How to ACTIVATE?";
+        l[1][2] = "Pulsa cuadrado o triángulo al correr"; l[1][3] = "Press square or triangle while running";
+    }
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(l[i][0], l[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(l[i][2], l[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    ui_sprite_wh(a_ui, "icon_hoverboard", cx - U(108), cy - U(10), U(32), U(20), C_WHITE);
+    labc(0, cx + U(10), cy, 20, C_WHITE, 1, 1, TR("¡3 gratis! (X)", "Get 3 Free! (X)"));
 }
 
 /* HalloweenThemePopup: "Happy Halloween Everyone!" la primera vez de cada temporada */
@@ -1107,6 +1170,14 @@ static void draw_boards(void)
         else if (board_is_gift(j)) {
             spr_c("background_sticker_medium", x + w * 0.5f - 8, cy - w * 0.5f + 10, 30, 30, C_ORANGE);
             labfit(0, x + w * 0.5f - 8, cy - w * 0.5f + 10, 9, 24, C_WHITE, 1, 1, TR("GRATIS", "FREE"));
+        }
+        /* HoverboardOverlayHelper de la 1.6: NEW en las nuevas sin ver, LIMITED en la de temporada */
+        if (!board_is_owned(j) && board_is_season(j)) {
+            spr_c("background_sticker_medium", x + w * 0.5f - 8, cy - w * 0.5f + 10, 30, 30, C_ORANGE);
+            labfit(0, x + w * 0.5f - 8, cy - w * 0.5f + 10, 9, 26, C_WHITE, 1, 1, TR("LÍMITE", "LIMITED"));
+        } else if (board_is_new(j)) {
+            spr_c("background_sticker_medium", x + w * 0.5f - 8, cy - w * 0.5f + 10, 30, 30, 0xff2a2ad8u);
+            labfit(0, x + w * 0.5f - 8, cy - w * 0.5f + 10, 9, 26, C_WHITE, 1, 1, TR("NUEVA", "NEW"));
         }
     }
     spr_c("button_arrow_left", cx - 2.5f * step - 4, cy, 14, 20, C_WHITE);
