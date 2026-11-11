@@ -554,10 +554,12 @@ static void tex_filter(void)
 
 /* nivel de mipmap de un trozo a la distancia d (de la camara, en unidades): ~12 texeles del atlas por unidad, y con el
  * campo de vision de la PSP ~514/d pixeles por unidad: un texel por pixel a d ~ 40. Cada nivel, el doble de lejos */
+static int lod_cap = 3;   /* nivel maximo para el trozo que se dibuja (franja estrecha de textura) */
 static void lod_for(float d)
 {
     const float d1 = r_texdbg == 3 ? 200.0f : 100.0f;
     int l = d < d1 ? 0 : d < d1 * 2 ? 1 : d < d1 * 4 ? 2 : 3;
+    if (l > lod_cap) l = lod_cap;
     if (l == part_lod) return;
     part_lod = l;
     if (cur_tex >= 0 && cur_mips) tex_filter();
@@ -1415,18 +1417,13 @@ static void draw_mesh_now(int mi, const M34 *world, const int *mats, int nmats, 
              * grandes (hasta 256 unidades) y casi todo el trozo esta mas lejos: con el borde cercano el suelo lejano
              * (nieve de Navidad) salia con un nivel demasiado nitido y lineas blancas que se movian */
             {
-                /* y por lo estirada que va su textura: el nivel 0 sirve mientras haya menos de un texel por pixel. Con
-                 * ~12 texeles por unidad (lo normal del atlas) es como antes; una franja estrecha estirada en una pared
-                 * larga (tuneles de Rio) usa el nivel 0 tambien de lejos. Los niveles reducidos la mezclaban con lo de al
-                 * lado del atlas: la pared se aclaraba a lo lejos (el original no tiene niveles reducidos). Solo baja el
-                 * nivel, nunca lo sube */
-                float dl = d0 - (r_light ? 0.5f : 1.0f) * pr;
-                const MatFile *mf = mat >= 0 && mat < gd.nmats ? &gd.mats[mat] : NULL;
-                if (pt->uvd > 0 && mf && mf->tex >= 0 && mf->tex < gd.ntex && sc > 1e-4f) {
-                    float tpu = pt->uvd * gd.tex[mf->tex].w * fabsf(mf->st[0]) / sc;   /* texeles por unidad del mundo */
-                    if (tpu < 12.0f) dl *= tpu / 12.0f;
-                }
-                lod_for(dl);
+                /* los trozos de color plano (data.c) siempre con el nivel 0: en los reducidos su color se mezclaba con lo
+                 * de al lado del atlas (la pared de los tuneles de Rio se aclaraba a lo lejos; el original no tiene niveles
+                 * reducidos). Leer siempre el mismo texel le cuesta poco al GE. Antes se bajaba el nivel a todo lo
+                 * estirado (casi todo el escenario) y el GE subia hasta 30 ms en la consola */
+                lod_cap = pt->flat ? 0 : 3;
+                lod_for(d0 - (r_light ? 0.5f : 1.0f) * pr);
+                lod_cap = 3;
             }
             bind_material(mat, amul);
             /* de lejos (ya en la niebla) la version ligera: los mismos vertices con menos triangulos */

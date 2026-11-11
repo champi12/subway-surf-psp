@@ -9,6 +9,7 @@
 #include "data.h"
 #include "devlog.h"
 #include <pspkernel.h>
+static int strip_parts;   /* trozos con una franja estrecha de textura (devlog) */
 
 GameData gd;
 static char errbuf[128];
@@ -150,19 +151,25 @@ static void parse_mesh(uint8_t *p, Mesh *m)
             p += ni * 2;
             if (ni & 1) p += 2;
             {
-                /* densidad de textura del trozo: raiz de (area en la textura / area en el modelo). Una pared con una
-                 * franja estrecha del atlas estirada a lo largo da muy poca: a esa no le hacen falta los niveles reducidos */
-                double ua = 0, wa = 0;
+                /* trozos de color plano: casi toda su area (60 % o mas) son triangulos que toman un solo color del atlas
+                 * (su franja de textura mide menos de 1 texel de ancho). En los niveles reducidos ese color se mezcla con
+                 * lo de al lado del atlas y cambia (la pared de los tuneles de Rio se aclaraba a lo lejos; el original no
+                 * tiene niveles reducidos). Esos trozos van siempre con el nivel 0, que para un color plano es barato (el
+                 * GE lee siempre el mismo texel); los texturizados siguen como antes */
+                double fa = 0, ta = 0;
                 const MVert *V = pt->verts;
                 for (uint32_t t = 0; t + 2 < ni; t += 3) {
                     const MVert *a = &V[pt->idx[t]], *b = &V[pt->idx[t + 1]], *c = &V[pt->idx[t + 2]];
-                    float u1 = b->u - a->u, v1 = b->v - a->v, u2 = c->u - a->u, v2 = c->v - a->v;
-                    ua += fabsf(u1 * v2 - u2 * v1);
                     float x1 = b->x - a->x, y1 = b->y - a->y, z1 = b->z - a->z, x2 = c->x - a->x, y2 = c->y - a->y, z2 = c->z - a->z;
                     float cx = y1 * z2 - z1 * y2, cy = z1 * x2 - x1 * z2, cz = x1 * y2 - y1 * x2;
-                    wa += sqrtf(cx * cx + cy * cy + cz * cz);
+                    float ar = sqrtf(cx * cx + cy * cy + cz * cz);
+                    float du = fmaxf(fmaxf(a->u, b->u), c->u) - fminf(fminf(a->u, b->u), c->u);
+                    float dv = fmaxf(fmaxf(a->v, b->v), c->v) - fminf(fminf(a->v, b->v), c->v);
+                    ta += ar;
+                    if (fminf(du, dv) < 1.0f / 512.0f) fa += ar;
                 }
-                pt->uvd = wa > 1e-6 ? (float)sqrt(ua / wa) : 0.0f;
+                pt->flat = ta > 0 && fa >= 0.6 * ta;
+                strip_parts += pt->flat;
             }
             if (m->skinned) { pt->skin = (MSkin *)p; p += nv * sizeof(MSkin); }
             for (int l = 0; l < nlod; l++) {
@@ -272,6 +279,7 @@ static int load_meshes(void)
     }
     fclose(f);
     dlog("CARGA %-10s %6d KB en %4.0f ms (%d mallas)", "mesh.bin", kb / 1024, (sceKernelGetSystemTimeLow() - t0) / 1000.0f, n);
+    dlog("Trozos de color plano (siempre con la textura entera): %d", strip_parts);
     return 0;
 }
 

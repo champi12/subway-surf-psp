@@ -2083,10 +2083,12 @@ static void xmas_popup_check(void)
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
 static int ny_popup_year;
+int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16 o 17 */
 static int tony_ready(void);
 static void ny_popup_check(void)
 {
-    if (!ny_season() || ginfo.popup || !tony_ready()) return;
+    /* con el mapa de Rio de pruebas (WORLD17) no: decia "Bienvenido a Nueva York" corriendo por Rio */
+    if (!ny_season() || ginfo.popup || !tony_ready() || game_world == 17) return;
     int y = 26;
 #ifndef AUTOTEST
     ScePspDateTime t;

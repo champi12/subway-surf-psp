@@ -197,7 +197,8 @@ int main(int argc, char **argv)
         /* EN PRUEBAS: el mapa de la 1.7 (Rio de Janeiro, data/w17) siempre, con make WORLD17=1 */
         if ((f = sceIoOpen("data/w17/world.bin", PSP_O_RDONLY, 0)) >= 0) { sceIoClose(f); wdir = "data/w17"; }
 #endif
-        { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        { extern int r_light; r_light = strcmp(wdir, "data") != 0; }
+        { extern int game_world; game_world = !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
         dlog("Mundo: %s", !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17, en pruebas)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif
