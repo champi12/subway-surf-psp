@@ -741,6 +741,8 @@ static void draw_menu(void)
     /* arriba a la izquierda: Misiones (triangulo) y la palabra del dia */
     top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triángulo", "triangle"));
     top_button(U(144), U(26), U(110), daily_word_complete() ? TR("¡Palabra hecha!", "Word: done!") : TR("Palabra del día", "Daily Challenge"), NULL);
+    /* ajustes (SettingsPopup de la 1.5.2): cuadrado */
+    top_button(SCR_W - U(150), U(26), U(76), TR("Ajustes", "Settings"), TR("cuadrado", "square"));
     {
         const char *w = daily_word();
         unsigned m = daily_word_mask();
@@ -911,6 +913,7 @@ static void draw_shop(void)
 {
     bg_fallback();
     coin_box(SCR_W - 8, 15);
+    lab(0, SCR_W - 150, 34, 13, C_WHITE, 2, 1, TR("Cuadrado: premios", "Square: prizes"));   /* PrizeListPopup */
     /* descripcion de la tarjeta marcada (Upgrades.cs) */
     char buf[64];
     if (shop_items[ginfo.shop_sel].kind == 3) {
@@ -1272,6 +1275,8 @@ static void draw_gameover(void)
     char buf[64];
     bg_fallback();
     coin_box(SCR_W - 8, 15);
+    if (!ginfo.boxes_pending && !ginfo.sboxes_pending && !ginfo.reward[0])
+        lab(0, SCR_W - 150, 34, 13, C_WHITE, 2, 1, TR("Cuadrado: premios", "Square: prizes"));   /* PrizeListPopup */
     /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda (lo dibuja el 3D) y a la derecha el marcador:
      * "* Score *", la pizarra con los puntos y las monedas, y el record */
     float cx = 350, cy = 104;
@@ -1470,6 +1475,109 @@ void hud_loading(float p)
     r_end_frame();
 }
 
+/* ------------------------------------------------------------ ajustes y lista de premios (1.5.2) */
+static int a_st = -2;   /* hoja Settings15: iconos de SettingsPopup y PrizeListPopup */
+
+/* sprite de una hoja centrado en (cx, cy) y metido en maxw x maxh sin deformarlo */
+static void spr_fit(int ai, const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
+{
+    USprite *sp = find_sprite(ai, name);
+    if (!sp || sp->ow <= 0 || sp->oh <= 0) return;
+    float w = maxw, h = maxw * sp->oh / sp->ow;
+    if (h > maxh) { h = maxh; w = maxh * sp->ow / sp->oh; }
+    ui_sprite_wh(ai, name, cx - w * 0.5f, cy - h * 0.5f, w, h, col);
+}
+
+/* SettingsPopup de la 1.5.2: sonido (SoundButton) y, mientras dura la Navidad, la temporada (SeasonButton). Los demas
+ * botones del original (mensajes, invitar amigos, Game Center, privacidad) necesitan internet: no estan */
+static void draw_settings_popup(void)
+{
+    if (a_st == -2) a_st = ui_atlas("Settings15");
+    if (a_nb == -2) a_nb = ui_atlas("Notebook15");
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    int season = game_season_button();
+    int n = season ? 2 : 1;
+    float w = 300, h = 96 + n * 62, x = (SCR_W - w) * 0.5f, y = (SCR_H - h) * 0.5f - 8;
+    panel(x, y, w, h);
+    labc(1, x + w * 0.5f, y + 24, 26, C_NAVY, 1, 0, TR("Ajustes", "Settings"));
+    for (int i = 0; i < n; i++) {
+        float ry = y + 52 + i * 62, bx = x + 22, sel = ginfo.settings_sel == i;
+        if (sel) ui_sliced(a_ui, "whitebox", x + 8, ry - 4, w - 16, 58, UIS, 0xffb8e4f6u);
+        ui_sliced(a_ui, "button_fill_menuShop", bx, ry + 1, 48, 48, UIS, C_WHITE);
+        ui_sliced(a_ui, "button_generic_2_outline", bx - 4, ry - 3, 56, 56, UIS, sel ? 0xff00c8ffu : C_OUTLINE);
+        int off = i == 0 ? ginfo.opt_sound_off : ginfo.opt_season_off;
+        if (i == 0) spr_fit(a_st, "icon_soundOn", bx + 24, ry + 25, 34, 27, C_WHITE);
+        else spr_fit(a_nb, "icon_xmas", bx + 24, ry + 25, 38, 38, C_WHITE);
+        if (off) spr_fit(a_st, "icon_off", bx + 24, ry + 25, 44, 44, C_WHITE);
+        const char *t = i == 0 ? (off ? TR("Sonido: NO", "Sound OFF") : TR("Sonido: SÍ", "Sound ON"))
+                               : (off ? TR("Navidad: NO", "Holidays OFF") : TR("Navidad: SÍ", "Holidays ON"));
+        const char *d = i == 0 ? TR("Todos los efectos y la música", "Affects all sounds and music")
+                               : TR("Vías, trenes y cielo de Navidad", "Holiday tracks, trains and sky");
+        labfit(0, bx + 62, ry + 14, 19, w - 100, C_NAVY, 0, 0, t);
+        labfit(0, bx + 62, ry + 35, 14, w - 100, 0xff8a8a8au, 0, 0, d);
+    }
+    labc(0, x + 14, y + h - 18, 13, 0xff8a8a8au, 0, 0, TR("X: cambiar   O: cerrar", "X: toggle   O: close"));
+    labc(0, x + w - 14, y + h - 18, 12, 0xffa0a0a0u, 2, 0, "v1.5.2 PSP");
+}
+
+/* PrizeListPopup de la 1.5.2: lo que puede tocar en las cajas misteriosas, por rareza (los textos e iconos del
+ * original, en horizontal para la pantalla de la PSP) */
+static void draw_prizes_popup(void)
+{
+    if (a_st == -2) a_st = ui_atlas("Settings15");
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float x = 14, y = 8, w = SCR_W - 28, h = SCR_H - 16;
+    panel(x, y, w, h);
+    labc(1, x + w * 0.5f - 40, y + 20, 26, C_NAVY, 1, 0, TR("Premios", "Prizes"));
+    labc(0, x + w * 0.5f + 40, y + 22, 15, 0xff8a8a8au, 0, 0, TR("en las cajas misteriosas", "found in Mystery Box"));
+    spr_fit(a_st, "icon_small_mysteryBox", x + w - 30, y + 20, 28, 26, C_WHITE);
+    static const struct { const char *es, *en; unsigned int col; float hh; } cat[4] = {
+        {"¡Premio gordo!", "Jackpot!", 0xff2ab8f0u, 38}, {"Raro", "Rare", 0xffb04a8au, 48},
+        {"Especial", "Special", 0xffd08a2au, 48}, {"Común", "Common", 0xff3aa34eu, 40},
+    };
+    static const struct { int cat; const char *icon, *es1, *en1, *es2, *en2; } it[] = {
+        {1, "icon_upgrades_headstart2000", "Mega", "Mega", "Salida", "Headstart"},
+        {1, "trophy_goldChain_clock_stroke", "Trofeos", "Trophies", NULL, NULL},
+        {1, "icon_loginReward_stroke", "5000", "5000", "monedas", "coins"},
+        {2, "icon_upgrades_headstart500", "Salida", "Headstart", NULL, NULL},
+        {2, "icon_upgrades_hoverboard", "Hasta 10", "Up to 10", "tablas", "Hoverboards"},
+        {2, "Icon_coin_pouch_large_stroke", "Hasta 1500", "Up to 1500", "monedas", "coins"},
+        {3, "trophy_fresh_token", NULL, NULL, NULL, NULL}, {3, "trophy_yutani_token", NULL, NULL, NULL, NULL},
+        {3, "trophy_spike_token", NULL, NULL, NULL, NULL}, {3, "trophy_tricky_token", NULL, NULL, NULL, NULL},
+    };
+    float ry = y + 40, lw = 96, ax = x + 12 + lw + 8, aw = x + w - 12 - ax;
+    for (int c = 0; c < 4; c++) {
+        float hh = cat[c].hh;
+        ui_sliced(a_ui, "backgroud_callout_square", x + 10, ry, w - 20, hh, UIS, cat[c].col);
+        ui_sliced(a_ui, "whitebox", ax, ry + 4, aw - 2, hh - 8, UIS, 0xfff4f4f4u);
+        labfit(1, x + 12 + lw * 0.5f, ry + hh * 0.5f, c == 0 ? 17 : 19, lw - 6, C_WHITE, 1, 1, TR(cat[c].es, cat[c].en));
+        if (c == 0) {
+            /* Jackpot: 100 000 monedas, con el saco de monedas y monedas sueltas */
+            spr_fit(a_st, "icon_loginReward_stroke", ax + 30, ry + hh * 0.5f, 34, 30, C_WHITE);
+            for (int k = 0; k < 5; k++)
+                spr_fit(a_st, "coin2d", ax + 62 + k * 15, ry + 10 + (k & 1) * 16, 12, 12, C_WHITE);
+            labfit(1, ax + aw * 0.5f + 50, ry + hh * 0.5f, 22, aw - 160, 0xff2a9ad8u, 1, 1,
+                   TR("100 000 monedas", "100 000 coins!"));
+        } else {
+            int cnt = 0, k = 0;
+            for (int i = 0; i < (int)(sizeof(it) / sizeof(it[0])); i++) cnt += it[i].cat == c;
+            for (int i = 0; i < (int)(sizeof(it) / sizeof(it[0])); i++) {
+                if (it[i].cat != c) continue;
+                float cx = ax + aw * (k + 0.5f) / cnt;
+                k++;
+                if (!it[i].es1) { spr_fit(a_st, it[i].icon, cx, ry + hh * 0.5f, 44, hh - 10, C_WHITE); continue; }
+                spr_fit(a_st, it[i].icon, cx - 34, ry + hh * 0.5f, 34, hh - 12, C_WHITE);
+                if (it[i].es2) {
+                    labfit(0, cx - 14, ry + hh * 0.5f - 8, 15, aw / cnt - 44, C_NAVY, 0, 0, TR(it[i].es1, it[i].en1));
+                    labfit(0, cx - 14, ry + hh * 0.5f + 9, 15, aw / cnt - 44, C_NAVY, 0, 0, TR(it[i].es2, it[i].en2));
+                } else labfit(0, cx - 14, ry + hh * 0.5f, 15, aw / cnt - 44, C_NAVY, 0, 0, TR(it[i].es1, it[i].en1));
+            }
+        }
+        ry += hh + 4;
+    }
+    labc(0, x + w - 14, y + h - 12, 13, 0xff8a8a8au, 2, 0, TR("O: cerrar", "O: close"));
+}
+
 void hud_draw(void)
 {
     hud_fonts();
@@ -1493,6 +1601,8 @@ void hud_draw(void)
         else draw_ingame();
         break;
     }
+    if (ginfo.popup == POPUP_SETTINGS) draw_settings_popup();
+    if (ginfo.popup == POPUP_PRIZES) draw_prizes_popup();
     if (ginfo.state != GS_MENU || !ginfo.popup) draw_slides();
 }
 

@@ -35,6 +35,9 @@ typedef struct {
 static Voice voices[MAX_VOICES];
 static int16_t __attribute__((aligned(64))) mixbuf[2][MIX_SAMPLES * 2];
 static volatile int audio_running, audio_paused;
+/* Ajustes de la 1.5.2 (SoundButton: Settings.optionSound): sin ningun sonido ni musica */
+static volatile int audio_mute;
+void audio_set_mute(int m) { audio_mute = m; }
 static SceUID mix_thid = -1, mus_thid = -1;
 
 static int mixer_thread(SceSize args, void *argp)
@@ -73,7 +76,7 @@ static int mixer_thread(SceSize args, void *argp)
             out[i * 2] = out[i * 2 + 1] = (int16_t)s;
         }
         DBG_PHASE(mixer, "sceAudioOutputBlocking");
-        sceAudioOutputBlocking(ch, PSP_AUDIO_VOLUME_MAX, out);
+        sceAudioOutputBlocking(ch, audio_mute ? 0 : PSP_AUDIO_VOLUME_MAX, out);
         cur ^= 1;
     }
     sceAudioChRelease(ch);
@@ -239,7 +242,7 @@ static int music_thread(SceSize args, void *argp)
                 }
             }
         }
-        int vol = (int)(clamp01(mus_vol) * PSP_AUDIO_VOLUME_MAX);
+        int vol = audio_mute ? 0 : (int)(clamp01(mus_vol) * PSP_AUDIO_VOLUME_MAX);
         if (mus_paused) { sceKernelDelayThread(10000); continue; }
         if (at3_id >= 0) {
             int samples = 0, end = 0, remain = 0;

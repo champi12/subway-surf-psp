@@ -32,12 +32,15 @@ typedef struct {
     int trophy_sel;               /* trofeo marcado en la pantalla de trofeos */
     int missions_open;            /* ventana de misiones abierta en el menu */
     int popup;                    /* ventana encima del menu (POPUP_...) */
+    int settings_sel;             /* opcion marcada en los ajustes */
+    int opt_sound_off, opt_season_off;   /* ajustes de la 1.5.2: sonido y temporada (Navidad) apagados */
     int sboxes_pending, sboxes_opened;   /* super cajas misteriosas (1.4) */
     int reward_super;             /* el ultimo premio era de una super caja */
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES };
+int game_season_button(void);    /* 1: los ajustes llevan el boton de temporada (Navidad disponible en este mundo) */
 
 typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
 extern const ShopItem shop_items[];

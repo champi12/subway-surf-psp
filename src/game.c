@@ -1993,13 +1993,16 @@ static void xmas_popup_check(void)
     game_save();
 }
 
+/* SettingsPopup de la 1.5.2: el boton de temporada solo sale mientras la Navidad esta disponible */
+int game_season_button(void) { return data_xm_ok && xmas_season() && !theme_halloween; }
+
 /* boot: al arrancar, antes de cargar ninguna textura (no hace falta volver a leer nada) */
 void game_theme_check(int boot)
 {
     if (theme_available < 0) theme_available = data_theme_init(halloween_season());
     int on = theme_available && halloween_season();
     /* Navidad: solo si no es Halloween y este mundo trae su tema (xm_tex.bin, el de la 1.5.2) */
-    int xm = !on && data_xm_ok && xmas_season();
+    int xm = !on && data_xm_ok && xmas_season() && !ginfo.opt_season_off;   /* apagable en los ajustes (1.5.2) */
     if (xm) data_xmas_meshes_init();
     if (on == theme_halloween && xm == theme_xmas && !boot) return;
     theme_halloween = on;
@@ -3444,9 +3447,38 @@ void game_input(unsigned in)
         else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_quit_run(); }
         return;
     }
+    /* lista de premios de las cajas (PrizeListPopup de la 1.5.2): encima de la tienda o del fin de partida */
+    if (ginfo.popup == POPUP_PRIZES) {
+        if (in & (IN_CROSS | IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
+        return;
+    }
+    /* ajustes (SettingsPopup de la 1.5.2): sonido y, en Navidad, la temporada */
+    if (ginfo.popup == POPUP_SETTINGS) {
+        int n = game_season_button() ? 2 : 1;
+        /* X tambien da IN_UP y O IN_DOWN (los gestos de la carrera): solo las flechas mueven la seleccion */
+        if (((in & IN_UP) && !(in & IN_CROSS)) || ((in & IN_DOWN) && !(in & IN_CIRCLE))) {
+            ginfo.settings_sel = (ginfo.settings_sel + 1) % n;
+            snd_play(sfx_tap, 0.5f, 1, 0);
+        }
+        if (ginfo.settings_sel >= n) ginfo.settings_sel = 0;
+        if (confirm) {
+            snd_play(sfx_tap, 1, 1, 0);
+            dlog("AJUSTES %s", ginfo.settings_sel == 0 ? (ginfo.opt_sound_off ? "sonido si" : "sonido no")
+                                                         : (ginfo.opt_season_off ? "Navidad si" : "Navidad no"));
+            if (ginfo.settings_sel == 0) {
+                ginfo.opt_sound_off = !ginfo.opt_sound_off;   /* SoundButton.Click */
+                audio_set_mute(ginfo.opt_sound_off);
+            } else {
+                ginfo.opt_season_off = !ginfo.opt_season_off;   /* SeasonButton.Click: quita o pone la Navidad */
+                game_theme_check(0);
+            }
+            game_save();
+        } else if (in & (IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
+        return;
+    }
     switch (state) {
     case GS_MENU:
-        /* menu: X jugar, triangulo misiones, L personajes y R tienda (como pestanas a izquierda y derecha) */
+        /* menu: X jugar, triangulo misiones, cuadrado ajustes, L personajes y R tienda */
         if (ginfo.popup) {
             if (in & (IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
             break;
@@ -3456,6 +3488,7 @@ void game_input(unsigned in)
             break;
         }
         if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
+        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; ginfo.settings_sel = 0; }
         else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
         else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
@@ -3483,7 +3516,8 @@ void game_input(unsigned in)
         if ((in & IN_RIGHT) && !(sel & 1) && sel + 1 < shop_count) sel++;
         if (sel != old) { ginfo.shop_sel = sel; snd_play(sfx_tap, 0.5f, 1, 0); }
         if (confirm) shop_buy(ginfo.shop_sel);
-        if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
+        if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
+        else if (in & (IN_L | IN_R)) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
         else if (in & (IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); change_state(GS_MENU); ginfo.state = GS_MENU; }
         break;
     }
@@ -3499,6 +3533,7 @@ void game_input(unsigned in)
         } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
             break;
         } else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
+        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); open_shop(); }
         break;
     case GS_DIE:
@@ -3933,7 +3968,8 @@ static int save_fill(unsigned char *buf)
     d[31] = owned14 | (hw_popup_year & 0xff) << 16 | (unsigned)(xm_popup_year & 0xff) << 24;
     d[19] = dw_day < 0 ? 0 : (int)(((unsigned)dw_day << 12) | (dw_paid << 11) | (dw_mask & 0x7ff));
     /* de la 1.4: racha de dias con la palabra completada, ultimo dia pagado y super cajas por abrir */
-    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned};
+    int e[8] = {dw_streak, dw_last_paid, ginfo.sboxes_pending, ginfo.sboxes_opened, board_sel + 1, board_owned,
+                (ginfo.opt_sound_off ? 1 : 0) | (ginfo.opt_season_off ? 2 : 0)};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     return (int)(sizeof(d) + sizeof(e));
@@ -4012,6 +4048,8 @@ void game_load(void)
     fclose(f);
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
+    if (ne >= 7) { ginfo.opt_sound_off = e[6] & 1; ginfo.opt_season_off = (e[6] >> 1) & 1; }
+    audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;
     if (n < 13 || (d[0] != SAVE_MAGIC && !v2)) return;

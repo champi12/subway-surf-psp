@@ -1122,12 +1122,21 @@ NOTEBOOK_SPRITES = (('GenericAtlas', 'newbackground'), ('GenericAtlas', 'metal_s
                     ('LowResAtlas', 'button_fill_menuMe'), ('LowResAtlas', 'icon_boards'), ('LowResAtlas', 'icon_xmas'))
 
 
-def build_notebook_atlas(sc15):
+# Ajustes (SettingsPopup) y lista de premios de las cajas (PrizeListPopup) de la 1.5.2: sus iconos, en otra hoja
+SETTINGS_SPRITES = tuple(('LowResAtlas', n) for n in (
+    'icon_soundOn', 'icon_off', 'icon_small_mysteryBox', 'icon_upgrades_headstart2000', 'icon_upgrades_headstart500',
+    'icon_loginReward_stroke', 'trophy_goldChain_clock_stroke', 'icon_upgrades_hoverboard',
+    'Icon_coin_pouch_large_stroke', 'trophy_fresh_token', 'trophy_yutani_token', 'trophy_spike_token',
+    'trophy_tricky_token', 'background_stripes', 'coin2d'))
+
+
+def build_notebook_atlas(sc15, sprite_list=None, W=512, H=256, what='la libreta de la 1.5.2'):
     """Interfaz de la 1.5.2: la hoja de libreta (newbackground, espiral y dibujo de fondo, del GenericAtlas) y los
-    botones nuevos de la portada (FRIENDS / ME / SHOP), en una hoja de 512x256. Devuelve (imagen, sprites) o None."""
+    botones nuevos de la portada (FRIENDS / ME / SHOP), en una hoja de 512x256 (u otra lista de sprites en otra hoja).
+    Devuelve (imagen, sprites) o None."""
     srcs = {}
     items = []
-    for at, n in NOTEBOOK_SPRITES:
+    for at, n in (sprite_list or NOTEBOOK_SPRITES):
         if at not in srcs:
             srcs[at] = read_atlas(sc15, at)
         im, sp = srcs[at]
@@ -1146,7 +1155,6 @@ def build_notebook_atlas(sc15):
         items.append((n, im, sp[n], w, h))
     if not items:
         return None
-    W, H = 512, 256
     items.sort(key=lambda it: (-it[4], -it[3]))
     x = y = shelf = 0
     place = {}
@@ -1154,7 +1162,7 @@ def build_notebook_atlas(sc15):
         if x + w > W:
             x, y, shelf = 0, y + shelf + 2, 0
         if y + h > H:
-            print('  AVISO: la libreta de la 1.5.2 no cabe en 512x256')
+            print('  AVISO: %s no cabe en %dx%d' % (what, W, H))
             return None
         place[n] = (x, y)
         x += w + 2
@@ -1816,6 +1824,12 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
             atlases.append({'name': 'Notebook15', 'tex': len(ex.textures), 'w': 512, 'h': 256, 'pixel': 1.0,
                             'sprites': nb[1], 'key': ('gen', 'Notebook15')})
             ex.textures.append(('generada', 'ui_notebook', nb[0], True))
+        st = build_notebook_atlas(sc15, SETTINGS_SPRITES, 256, 256, 'ajustes y premios') if sc15 is not None else None
+        if st:
+            atlases.append({'name': 'Settings15', 'tex': len(ex.textures), 'w': 256, 'h': 256, 'pixel': 1.0,
+                            'sprites': st[1], 'key': ('gen', 'Settings15')})
+            ex.textures.append(('generada', 'ui_settings', st[0], True))
+            print('  ajustes y premios de la 1.5.2: %d sprites en 256x256' % len(st[1]))
         mb = find_texture(sc15, 'mysterybox_bg') if sc15 is not None else None
         if mb is not None:
             # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256

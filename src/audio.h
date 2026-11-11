@@ -12,6 +12,7 @@ void snd_set(int h, float vol, float pitch);
 int snd_playing(int h);
 void snd_stop_all(void);
 void snd_pause_all(int pause);
+void audio_set_mute(int mute);   /* ajustes: sonido apagado (efectos y musica) */
 
 /* reproduce un AudioClipInfo del original: volumen y tono aleatorios entre min y max */
 typedef struct { int sfx; float minPitch, maxPitch, minVol, maxVol; } ClipInfo;

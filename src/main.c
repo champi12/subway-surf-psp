@@ -301,6 +301,14 @@ int main(int argc, char **argv)
         /* prueba: iman cada AT_MAGNET fotogramas (si se esta corriendo) */
         { extern void game_debug_powerup(int k); if (frame_no % AT_MAGNET == 0) game_debug_powerup(0); }
 #endif
+#ifdef AT_POPUP
+        /* prueba: abre una ventana del menu (3 ajustes, 4 premios) y, con AT_POPUP_KEY, pulsa X en el fotograma 70 */
+        if (frame_no == 40) ginfo.popup = AT_POPUP;
+#ifdef AT_POPUP_KEY
+        if (frame_no == 60) ginfo.settings_sel = AT_POPUP_KEY;   /* 0 sonido, 1 temporada */
+        if (frame_no == 70) pr |= PSP_CTRL_CROSS;
+#endif
+#endif
 #ifdef AT_JET
         /* prueba: jetpack en el fotograma AT_JET (si se esta corriendo) */
         { extern void game_debug_powerup(int k); if (frame_no == AT_JET) game_debug_powerup(3); }
