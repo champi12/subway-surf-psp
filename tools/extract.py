@@ -1127,7 +1127,10 @@ SETTINGS_SPRITES = tuple(('LowResAtlas', n) for n in (
     'icon_soundOn', 'icon_off', 'icon_small_mysteryBox', 'icon_upgrades_headstart2000', 'icon_upgrades_headstart500',
     'icon_loginReward_stroke', 'trophy_goldChain_clock_stroke', 'icon_upgrades_hoverboard',
     'Icon_coin_pouch_large_stroke', 'trophy_fresh_token', 'trophy_yutani_token', 'trophy_spike_token',
-    'trophy_tricky_token', 'background_stripes', 'coin2d'))
+    'trophy_tricky_token', 'background_stripes', 'coin2d',
+    # DailyChallengePopup (reto diario)
+    'icon_bigSuperMysteryBox', 'Icon_coin_pouch_large', 'Icon_coin_pouch_larger', 'checkbox_checked_mission',
+    'background_splat'))
 
 
 def build_notebook_atlas(sc15, sprite_list=None, W=512, H=256, what='la libreta de la 1.5.2'):

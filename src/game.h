@@ -39,7 +39,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY };
 int game_season_button(void);    /* 1: los ajustes llevan el boton de temporada (Navidad disponible en este mundo) */
 
 typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
@@ -84,6 +84,8 @@ int daily_prize(int day);         /* premio del dia n de la racha: monedas, o 0 
 int daily_prize_next(void);
 int daily_day_next(void);         /* dia de la racha de ese premio (1, 2, 3...) */
 int daily_streak(void);
+int daily_paid_today(void);     /* la palabra de hoy ya se completo y se pago */
+int daily_seconds_left(void);   /* hasta medianoche */
 const char *shop_desc(int i);     /* descripcion de Upgrades.cs */
 
 /* trofeos (Trophies.cs): 8 objetos de oro que salen en las cajas misteriosas */

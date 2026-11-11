@@ -1553,6 +1553,14 @@ int daily_prize(int day)
     return coins[day < 1 ? 0 : day > 5 ? 4 : day - 1];
 }
 int daily_streak(void) { return dw_streak; }
+int daily_paid_today(void) { return dw_paid; }
+/* segundos hasta medianoche (UIDailyTimer: lo que queda de la palabra de hoy) */
+int daily_seconds_left(void)
+{
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
+}
 /* dia de la racha del proximo premio: el de hoy si falta completar la palabra, si no el de manana (PauseUI: "Come back
  * and win") */
 int daily_day_next(void)
@@ -3447,8 +3455,8 @@ void game_input(unsigned in)
         else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_quit_run(); }
         return;
     }
-    /* lista de premios de las cajas (PrizeListPopup de la 1.5.2): encima de la tienda o del fin de partida */
-    if (ginfo.popup == POPUP_PRIZES) {
+    /* lista de premios de las cajas (PrizeListPopup) y reto diario (DailyChallengePopup) de la 1.5.2 */
+    if (ginfo.popup == POPUP_PRIZES || ginfo.popup == POPUP_DAILY) {
         if (in & (IN_CROSS | IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
         return;
     }
@@ -3478,7 +3486,7 @@ void game_input(unsigned in)
     }
     switch (state) {
     case GS_MENU:
-        /* menu: X jugar, triangulo misiones, cuadrado ajustes, L personajes y R tienda */
+        /* menu: X jugar, triangulo misiones, cuadrado reto diario, START ajustes, L personajes y R tienda */
         if (ginfo.popup) {
             if (in & (IN_CROSS | IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
             break;
@@ -3488,8 +3496,9 @@ void game_input(unsigned in)
             break;
         }
         if (in & IN_TRIANGLE) { snd_play(sfx_tap, 1, 1, 0); ginfo.missions_open = 1; }
-        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; ginfo.settings_sel = 0; }
-        else if (confirm || (in & IN_START)) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
+        else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_DAILY; }
+        else if (in & IN_START) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; ginfo.settings_sel = 0; }
+        else if (confirm) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
         else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
         break;

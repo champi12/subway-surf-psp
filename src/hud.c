@@ -738,24 +738,12 @@ static void draw_menu(void)
 {
     char buf[48];
     draw_menu_snow();
-    /* arriba a la izquierda: Misiones (triangulo) y la palabra del dia */
+    /* arriba a la izquierda: Misiones (triangulo) y el reto diario (cuadrado) */
     top_button(U(46), U(26), U(76), TR("Misiones", "Missions"), TR("triángulo", "triangle"));
-    top_button(U(144), U(26), U(110), daily_word_complete() ? TR("¡Palabra hecha!", "Word: done!") : TR("Palabra del día", "Daily Challenge"), NULL);
-    /* ajustes (SettingsPopup de la 1.5.2): cuadrado */
-    top_button(SCR_W - U(150), U(26), U(76), TR("Ajustes", "Settings"), TR("cuadrado", "square"));
-    {
-        const char *w = daily_word();
-        unsigned m = daily_word_mask();
-        char ch[2] = {0, 0};
-        float tw = 0;
-        for (int i = 0; w[i]; i++) { ch[0] = w[i]; tw += labw(1, 20, ch) + 4; }
-        float cx = U(144) - tw * 0.5f;
-        for (int i = 0; w[i]; i++) {
-            ch[0] = w[i];
-            lab(1, cx, U(50), 20, (m >> i & 1) ? C_LETTER_ON : 0xffd0d0d0u, 0, 1, ch);
-            cx += labw(1, 20, ch) + 4;
-        }
-    }
+    /* FrontUI de la 1.5.2: junto a Misiones el boton "Daily Challenge" (la palabra va en su ventana, no en la portada) */
+    top_button(U(144), U(26), U(110), TR("Reto diario", "Daily Challenge"), TR("cuadrado", "square"));
+    /* ajustes (SettingsPopup de la 1.5.2): START */
+    top_button(SCR_W - U(150), U(26), U(76), TR("Ajustes", "Settings"), "START");
     /* arriba a la derecha: hoverboards (los trofeos estan en la seccion ME, como en la 1.5.2) */
     float hx = SCR_W - U(79), hy = U(26);
     top_button(hx, hy, U(44), NULL, NULL);
@@ -1578,6 +1566,91 @@ static void draw_prizes_popup(void)
     labc(0, x + w - 14, y + h - 12, 13, 0xff8a8a8au, 2, 0, TR("O: cerrar", "O: close"));
 }
 
+/* sprite de la hoja de la interfaz o, si no esta, de la de ajustes y premios */
+static void spr_any(const char *name, float cx, float cy, float maxw, float maxh, unsigned int col)
+{
+    if (find_sprite(a_ui, name)) spr_fit(a_ui, name, cx, cy, maxw, maxh, col);
+    else spr_fit(a_st, name, cx, cy, maxw, maxh, col);
+}
+
+/* premio de un dia: bolsas de monedas (una mas cada dia) o la super caja misteriosa */
+static void daily_reward_icon(int day, float cx, float cy, float s)
+{
+    int pz = daily_prize(day);
+    if (!pz) { spr_any("icon_bigSuperMysteryBox", cx, cy, 70 * s, 66 * s, C_WHITE); return; }
+    int n = day < 1 ? 1 : day > 4 ? 4 : day;
+    for (int k = n - 1; k >= 0; k--)
+        spr_any("Icon_coin_pouch_larger", cx + (k - (n - 1) * 0.5f) * 16 * s, cy - (k & 1) * 4 * s, 34 * s, 46 * s, C_WHITE);
+}
+
+/* DailyChallengePopup de la 1.5.2: la palabra de hoy, lo que queda de dia, el premio y la racha de 5 dias */
+static void draw_daily_popup(void)
+{
+    char buf[48];
+    if (a_st == -2) a_st = ui_atlas("Settings15");
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float x = 14, y = 8, w = SCR_W - 28, h = SCR_H - 16;
+    panel(x, y, w, h);
+    labc(1, x + w * 0.5f, y + 20, 26, C_NAVY, 1, 0, TR("Reto diario", "Daily Challenge"));
+    int done = daily_paid_today(), next = daily_day_next(), secs = daily_seconds_left();
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", secs / 3600, secs / 60 % 60, secs % 60);
+    float lx = x + 20, lw = w * 0.58f;
+    if (!done) {
+        /* la palabra: letras cogidas en color, las que faltan en gris (DailyChallengeColorChanger) */
+        const char *wd = daily_word();
+        unsigned m = daily_word_mask();
+        ui_sliced(a_ui, "whitebox", lx + 20, y + 44, lw - 40, 46, UIS, 0xffffffffu);
+        ui_sliced(a_ui, "button_generic_2_outline", lx + 15, y + 39, lw - 30, 56, UIS, C_OUTLINE);
+        char ch[2] = {0, 0};
+        float tw = 0;
+        for (int i = 0; wd[i]; i++) { ch[0] = wd[i]; tw += labw(1, 30, ch) + 8; }
+        float cx = lx + lw * 0.5f - tw * 0.5f;
+        for (int i = 0; wd[i]; i++) {
+            ch[0] = wd[i];
+            lab(1, cx, y + 50, 30, (m >> i & 1) ? C_LETTER_ON : C_LETTER_OFF, 0, 0, ch);
+            cx += labw(1, 30, ch) + 8;
+        }
+        labc(0, lx + lw * 0.5f, y + 108, 17, C_NAVY, 1, 0, TR("Recoge las letras en la carrera", "Collect letters"));
+        char t2[64];
+        snprintf(t2, sizeof(t2), TR("Tiempo: %s", "Time: %s"), buf);
+        labc(0, lx + lw * 0.5f, y + 128, 17, 0xff8a8a8au, 1, 0, t2);
+    } else {
+        ui_sliced(a_ui, "backgroud_callout_square", lx + 10, y + 42, lw - 20, 96, UIS, 0xffd08a2au);
+        labc(0, lx + lw * 0.5f, y + 60, 17, C_WHITE, 1, 1, TR("PRÓXIMO RETO EN", "NEXT CHALLENGE IN"));
+        labc(1, lx + lw * 0.5f, y + 88, 30, C_WHITE, 1, 1, buf);
+        labc(0, lx + lw * 0.5f, y + 118, 16, C_WHITE, 1, 1, TR("Vuelve y gana:", "Come back and win:"));
+    }
+    /* premio del dia que toca (el de hoy, o el de manana si ya esta hecha) */
+    float rx = x + w * 0.79f, ry = y + 82;
+    spr_any("background_splat", rx, ry, 120, 120, C_WHITE);
+    daily_reward_icon(next, rx, ry - 6, 1.0f);
+    if (daily_prize(next)) {
+        snprintf(buf, sizeof(buf), "%d", daily_prize(next));
+        spr_any("coin2d", rx - labw(0, 17, buf) * 0.5f - 10, ry + 38, 16, 16, C_WHITE);
+        labc(0, rx + 4, ry + 38, 17, C_NAVY, 1, 0, buf);
+    }
+    /* la racha: dias 1 a 4 (monedas) y 5+ (super caja) */
+    int today = done ? next - 1 : next;   /* el dia que corresponde a hoy */
+    float by = y + 150, bw = (w - 40) / 5.0f;
+    for (int d = 1; d <= 5; d++) {
+        float bx = x + 20 + (d - 1) * bw, cx = bx + bw * 0.5f;
+        int act = d == today || (d == 5 && today >= 5), past = d < today && d < 5;
+        unsigned bg = d == 5 ? (act ? 0xff05ea9du : 0xff3ee1f8u) : act ? 0xffd08a2au : 0xffe0e0e0u;
+        ui_sliced(a_ui, "backgroud_callout_square", bx + 3, by, bw - 6, h - (by - y) - 10, UIS, bg);
+        unsigned tc = act || d == 5 ? C_WHITE : 0xff532a09u;
+        if (d < 5) snprintf(buf, sizeof(buf), act ? TR("Hoy", "Today") : TR("Día %d", "Day %d"), d);
+        else snprintf(buf, sizeof(buf), act ? TR("¡Hoy!", "Today!") : TR("Día 5+", "Day 5+"));
+        labc(0, cx, by + 12, 15, tc, 1, d == 5 || act, buf);
+        if (d < 5) {
+            spr_any("Icon_coin_pouch_large", cx, by + 40, 30, 36, C_WHITE);
+            snprintf(buf, sizeof(buf), "%d", daily_prize(d));
+            labc(0, cx, by + 68, 15, tc, 1, act, buf);
+        } else spr_any("icon_bigSuperMysteryBox", cx, by + 48, 56, 52, C_WHITE);
+        if (past || (act && done)) spr_any("checkbox_checked_mission", bx + bw - 16, by + 12, 26, 22, C_WHITE);
+    }
+    labc(0, x + w - 14, y + h - 12, 13, 0xff8a8a8au, 2, 0, TR("O: cerrar", "O: close"));
+}
+
 void hud_draw(void)
 {
     hud_fonts();
@@ -1603,6 +1676,7 @@ void hud_draw(void)
     }
     if (ginfo.popup == POPUP_SETTINGS) draw_settings_popup();
     if (ginfo.popup == POPUP_PRIZES) draw_prizes_popup();
+    if (ginfo.popup == POPUP_DAILY) draw_daily_popup();
     if (ginfo.state != GS_MENU || !ginfo.popup) draw_slides();
 }
 
