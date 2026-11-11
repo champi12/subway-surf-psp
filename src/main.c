@@ -288,6 +288,16 @@ int main(int argc, char **argv)
 #if DEVLOG
         /* SELECT + R: captura de pantalla (captura_NNN.bmp en la carpeta del juego), sin el medidor */
         if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_RTRIGGER)) { shot_pending = 1; pr &= ~PSP_CTRL_RTRIGGER; }
+        /* SELECT + L: modo de prueba de las texturas lejanas (render.c, r_texdbg) */
+        if ((b & PSP_CTRL_SELECT) && (pr & PSP_CTRL_LTRIGGER)) {
+            extern int r_texdbg;
+            static const char *const tn[4] = {"Texturas: normal", "Texturas: sin reducidas (nivel 0)",
+                                              "Texturas: suavizado a lo lejos", "Texturas: reducidas mas lejos"};
+            r_texdbg = (r_texdbg + 1) & 3;
+            pr &= ~PSP_CTRL_LTRIGGER;
+            dlog("PRUEBA %s", tn[r_texdbg]);
+            hud_slide("PRUEBA (SELECT+L)", tn[r_texdbg]);
+        }
 #if defined(AUTOTEST) && defined(AT_SHOTBMP)
         if (frame_no == 400) shot_pending = 1;   /* prueba de la captura */
 #endif

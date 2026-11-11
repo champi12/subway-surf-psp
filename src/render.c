@@ -521,15 +521,19 @@ void r_preload_texture(const char *name)
 }
 
 static int cur_mips, mip_ok = 1;
+/* modo de prueba de las texturas lejanas (devlog: SELECT + L lo cambia en la consola, para ver que quita las "sombras"
+ * y lineas del mapa de Rio): 0 normal, 1 sin texturas reducidas (nivel 0 siempre), 2 con suavizado (bilineal) tambien
+ * a lo lejos, 3 las reducidas el doble de lejos */
+int r_texdbg;
 static void tex_filter(void)
 {
     /* con mipmaps el GE elige el nivel segun la distancia (GU_TEXTURE_AUTO); los objetos pequenos (monedas,
      * power-ups, personajes) usan siempre el nivel 0: el GE les ponia un nivel demasiado reducido y, al ser un
      * trozo de un atlas, se colaban los dibujos de al lado (monedas borrosas y con lineas brillantes) */
-    int use = cur_mips && mip_ok;
+    int use = cur_mips && mip_ok && r_texdbg != 1;
     /* de lejos (nivel 2 o mas, a partir de 200: ya en la niebla) sin filtro bilineal: el GE lee 1 texel por pixel en
      * vez de 4 y no se nota a ese tamano. Era el GE el que pasaba de 33 ms en los tramos mas cargados */
-    int mag = filt_nearest || (r_light && use && part_lod >= 2) ? GU_NEAREST : GU_LINEAR;
+    int mag = filt_nearest || (r_light && use && part_lod >= 2 && r_texdbg != 2) ? GU_NEAREST : GU_LINEAR;
     int min = !use ? mag : filt_nearest ? GU_NEAREST_MIPMAP_NEAREST : GU_LINEAR_MIPMAP_NEAREST;
 #ifdef AT_MIPLEVEL
     /* prueba: el emulador no elige los niveles reducidos como la consola; asi se ve uno concreto */
@@ -549,7 +553,7 @@ static void tex_filter(void)
  * campo de vision de la PSP ~514/d pixeles por unidad: un texel por pixel a d ~ 40. Cada nivel, el doble de lejos */
 static void lod_for(float d)
 {
-    const float d1 = 100.0f;
+    const float d1 = r_texdbg == 3 ? 200.0f : 100.0f;
     int l = d < d1 ? 0 : d < d1 * 2 ? 1 : d < d1 * 4 ? 2 : 3;
     if (l == part_lod) return;
     part_lod = l;
