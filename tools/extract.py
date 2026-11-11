@@ -2146,10 +2146,9 @@ BOARDS_15 = [(3, 'Freestyler', 45000, 2, 0), (1, 'Bouncer', 280000, 2, 1), (0, '
 # de enero, tras la Navidad); las demas siempre
 BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0), (9, 'Skull Fire', 75000, 2, 0),
                          (10, 'Liberty', 50000, 3, 0)]
-# la 1.7 (EN PRUEBAS): Daredevil (speedboard, 11), que acelera el juego mientras dura (effect 3). Para probarla sale
-# desbloqueada (unlock 0, como la normal); en el original cuesta 85000 monedas
+# la 1.7: Daredevil (speedboard, 11), que acelera el juego mientras dura (effect 3), 85000 monedas como el original
 # Toucan (12, "Rio Special": unlock 4, solo en la temporada de Rio) y Lumberjack (13, "Treehugger" en el codigo)
-BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 0, 3), (12, 'Toucan', 50000, 4, 0), (13, 'Lumberjack', 4000, 2, 0)]
+BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 2, 3), (12, 'Toucan', 50000, 4, 0), (13, 'Lumberjack', 4000, 2, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')

@@ -59,7 +59,7 @@ else
     if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el contenido de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
     # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 2 al 31 de enero)
     if [ -n "$APK16" ] && [ -f "$APK16" ]; then echo "Con el contenido de la 1.6 de $APK16"; OPTS+=(--apk16 "$APK16"); fi
-    # la 1.7 (EN PRUEBAS): su mapa de Rio en data/w17 (se juega con WORLD17=1) y la tabla Daredevil desbloqueada
+    # la 1.7: Carmen, sus tablas y su mapa de Rio en data/w17 (del 1 al 27 de febrero)
     if [ -n "$APK17" ] && [ -f "$APK17" ]; then echo "Con la 1.7 de $APK17 (en pruebas)"; OPTS+=(--apk17 "$APK17"); fi
     export WORLD15=${WORLD15:-1}
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
@@ -71,7 +71,7 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
-if [ -f data/w17/world.bin ]; then echo "Mapa de la 1.7 (Rio): incluido, EN PRUEBAS (se juega compilando con WORLD17=1). Daredevil desbloqueada"; fi
+if [ -f data/w17/world.bin ]; then echo "Mapa de la 1.7 (Rio): incluido (del 1 al 27 de febrero; WORLD17=1 lo deja siempre)"; fi
 if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 2 al 31 de enero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
 if [ -f data/hw_tex.bin ]; then
     echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"

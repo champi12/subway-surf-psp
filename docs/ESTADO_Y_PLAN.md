@@ -151,7 +151,7 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 4b. 1.7 (Río): su mapa en data/w17 (`--apk17`) del 1 al 27 de febrero (tras Nueva York; `WORLD17=1` lo deja
    siempre), sin texturas reducidas (como el original: en Río cambiaban el color de las paredes a lo lejos), con su
    inspector y la interfaz de la 1.5.2 (la de la 1.7 es de Unity 4 y no se lee entera). Carmen y Toucan por fecha
-   (temporada de Río), Lumberjack y Daredevil (acelera y abre la cámara; desbloqueada para probarla), Score Booster
+   (temporada de Río), Lumberjack y Daredevil (85000; acelera y abre la cámara), Score Booster
    (+5 al multiplicador una carrera: L al empezar, en la tienda en lugar del headstart pequeño, 3 al empezar),
    aviso de bienvenida de Río y las animaciones nuevas del inspector y el perro (esquivar y rodar) en todos los
    mapas, y las tablas de premios de las cajas de la 1.7 (con el Score Booster). Volver del modo reposo ya no
