@@ -558,6 +558,11 @@ int main(int argc, char **argv)
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no > 60 && frame_no < 60 + 32 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
         if (frame_no == 60 + 32 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
+#elif defined(AT_KEYBOX)
+        /* prueba: en la tienda, una caja que da la llave de la primera caja (el icono en el aviso) */
+        if (frame_no == 30) pr |= PSP_CTRL_CROSS;      /* cierra el aviso de las llaves */
+        if (frame_no == 50) pr |= PSP_CTRL_RTRIGGER;   /* tienda */
+        if (frame_no == 80) { extern void game_debug_keybox(void); game_debug_keybox(); }
 #elif defined(AT_TROPHY)
         /* prueba de trofeos: 30 cajas misteriosas, pantalla de trofeos y paso por los 8 */
         if (frame_no == 30) { extern void game_debug_boxes(int n); game_debug_boxes(30); }

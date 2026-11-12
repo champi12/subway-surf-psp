@@ -529,6 +529,7 @@ static void hunt_picked(void)
  * la carrera tras chocar (1 llave, luego 2, 4...). En el original solo se activaba en algunos paises desde su servidor
  * y tras ver el aviso de las llaves (ShowKeysPopup); aqui, de momento, solo en el mapa de Sidney */
 static int keys, keys_popup_shown, keys_first_mb, keys_first_smb;
+static int keys_gift;   /* PlayerInfo de la 1.9/1.10: se empieza con 5 llaves; aqui una sola vez, en el primer mapa con llaves */
 static int saveme_cost = 1;           /* SaveMeManager._numberOfUsedKeysInCurrentRun */
 static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (-1: cerrada) */
 static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
@@ -2507,7 +2508,15 @@ static void tokyo_popup_check(void)
 static void keys_popup_check(void)
 {
     extern int game_world;
-    if ((game_world != 19 && game_world != 110) || keys_popup_shown || ginfo.popup) return;
+    if ((game_world != 19 && game_world != 110) || ginfo.popup) return;
+    if (!keys_gift) {
+        /* las 5 llaves de regalo (amountOfKeys empieza en 5): solo la primera vez, en el mapa con llaves que sea */
+        keys_gift = 1;
+        keys += 5;
+        dlog("LLAVES de regalo: 5 (ahora %d)", keys);
+        if (keys_popup_shown) { hud_slide(TR("¡5 llaves de regalo!", "5 free Keys!"), TR("Sirven para Save Me", "Use them to Save Me")); game_save(); }
+    }
+    if (keys_popup_shown) return;
     keys_popup_shown = 1;
     ginfo.popup = POPUP_KEYS;
     game_save();
@@ -3106,6 +3115,7 @@ static void saveme_revive(void)
     keys -= saveme_cost;
     if (keys < 0) keys = 0;
     missions_did(M_SPENDKEYS, saveme_cost);   /* SaveMeButton de la 1.10 */
+    fx_board_crash();   /* Revive.reviveParticle: la misma nube de colores que al romperse la tabla */
     dlog("SAVE ME: revive por %d llave%s (quedan %d) a %d m", saveme_cost, saveme_cost > 1 ? "s" : "", keys, ginfo.meters);
     saveme_cost *= 2;   /* SaveMeManager.IncrementNumberOfUsedKeys */
     saveme_t0 = -1;
@@ -4867,7 +4877,7 @@ static int save_fill(unsigned char *buf)
     int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year,
                  (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year,
                  ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16, sydney_popup_year,
-                 (keys & 0xffff) | keys_popup_shown << 16 | keys_first_mb << 17 | keys_first_smb << 18 | 1 << 30};
+                 (keys & 0xffff) | keys_popup_shown << 16 | keys_first_mb << 17 | keys_first_smb << 18 | keys_gift << 19 | 1 << 30};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
@@ -4966,6 +4976,7 @@ void game_load(void)
     if (ne2 >= 8 && (e2[7] >> 30 & 1)) {
         keys = e2[7] & 0xffff; keys_popup_shown = (e2[7] >> 16) & 1;
         keys_first_mb = (e2[7] >> 17) & 1; keys_first_smb = (e2[7] >> 18) & 1;
+        keys_gift = (e2[7] >> 19) & 1;
     }
     if (ne2 >= 6) { mb_booster_at = (e2[5] & 0xffff) - 1; mb_first_booster = (e2[5] >> 16) & 1; }
     if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
@@ -5030,6 +5041,15 @@ void game_debug_unlock_all(void)
 }
 
 /* para la prueba automatica: abrir n cajas misteriosas de golpe */
+/* prueba: una caja comprada en la tienda que debe dar la llave de la primera caja (MysteryBox.Roll de la 1.9) */
+void game_debug_keybox(void)
+{
+    if (ginfo.boxes_opened < 3) ginfo.boxes_opened = 3;
+    keys_first_mb = 0; keys_popup_shown = 1; ginfo.popup = 0;
+    ginfo.boxes_pending++;
+    mystery_open_type(0);
+    dlog("PRUEBA caja con llave: %s icono %s", ginfo.reward, ginfo.reward_icon ? ginfo.reward_icon : "-");
+}
 void game_debug_boxes(int n)
 {
     for (int i = 0; i < n; i++) { ginfo.boxes_pending++; mystery_open(); }

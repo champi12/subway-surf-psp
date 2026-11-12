@@ -582,11 +582,23 @@ static void foot_play(float nx, const char *text, float px, const char *key)
 
 /* CoinBoxQuick: monedas arriba a la derecha (sin el "+" de comprar monedas) */
 static int coin_box_value = -1;   /* fin de partida: la hucha sube mientras cuentan las monedas */
+static void key_icon(float cx, float cy, float s);
 static void coin_box(float xr, float cy)
 {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", coin_box_value >= 0 ? coin_box_value : ginfo.total_coins);
     float tw = labw(0, 15, buf), w = tw + U(30);
+    /* CoinBoxSizer de la 1.9/1.10: con Save Me, a la izquierda de las monedas el tramo de las llaves (icono y
+     * cuantas hay), en todas las pantallas que llevan la hucha (tienda, personajes, tablas, cajas, fin de partida) */
+    if (game_saveme_on()) {
+        char kb[12];
+        snprintf(kb, sizeof(kb), "%d", game_keys());
+        /* el tramo acaba debajo de la moneda; el numero se queda a 18 de ella para no pisarla */
+        float kw = labw(0, 15, kb) + U(50), kx = xr - w - kw;
+        ui_sliced(a_ui, "button_gray_gradient", kx, cy - U(10), kw, U(20), UIS, C_WHITE);
+        key_icon(kx + U(6), cy, U(26));
+        labc(0, xr - w - U(20), cy, 15, 0xfff7f7f7u, 2, 1, kb);
+    }
     ui_sliced(a_ui, "button_gray_gradient", xr - w, cy - U(10), w, U(20), UIS, C_WHITE);
     spr_c("coin_with_background", xr - w, cy, U(26), U(25), C_WHITE);
     labc(0, xr - U(6), cy, 15, 0xfff7f7f7u, 2, 1, buf);
@@ -695,7 +707,12 @@ static float slide_box(float t, const char *l1, const char *l2, int tick, const 
         spr_c("icon_tick", lx + U(11), y + U(44), U(22), U(16), 0xff4acc8cu);   /* (0.55, 0.80, 0.29) */
         labc(0, lx + U(30), y + U(44), 15, C_WHITE, 0, 1, l2);
     } else labc(0, tx, y + U(40), 26, C_WHITE, 1, 1, l2);
-    if (icon) spr_c(icon, x + 8 + 20, y + h * 0.5f, 40, 40, C_WHITE);
+    if (icon && !strncmp(icon, "ui_", 3)) {
+        /* llave, Score Booster, huevo y muneca: texturas sueltas (no van en el atlas de la interfaz). Antes no salian */
+        int t = data_tex_find(icon);
+        float iw2 = !strcmp(icon, "ui_doll") ? 40 * 25.0f / 35.0f : 40;
+        if (t >= 0) r_sprite(t, x + 8 + 20 - iw2 * 0.5f, y + h * 0.5f - 20, iw2, 40, 0, 0, 1, 1, C_WHITE);
+    } else if (icon) spr_c(icon, x + 8 + 20, y + h * 0.5f, 40, 40, C_WHITE);
     return y + h;
 }
 
@@ -1213,10 +1230,11 @@ static void draw_keys_popup(void)
     spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_KEY);
     labc(1, bx, by - U(32), 22, C_WHITE, 1, 1, TR("¿Quieres otra", "Want a second"));
     labfit(1, bx, by - U(4), 22, U(150), C_WHITE, 1, 1, TR("oportunidad?", "chance?"));
-    key_icon(bx, by + U(34), U(36));
+    key_icon(bx - U(18), by + U(34), U(36));
+    labc(1, bx + U(18), by + U(34), 22, C_WHITE, 1, 1, "+5");   /* las 5 de regalo (la primera vez) */
     static const char *const lines[3][4] = {
         {"¡Los accidentes pasan!", "Accidents happen!", "Pulsa Save Me para seguir corriendo", "Hit 'Save Me' to continue your run!"},
-        {"Sigue con las llaves", "Get another go with Keys", "¡El inspector sigue detrás de ti!", "The Inspector is still on your trail!"},
+        {"Sigue con las llaves", "Get another go with Keys", "Te regalamos 5 para empezar", "Here are 5 Keys to start with"},
         {"Busca llaves por el camino", "Find Keys along the way", "¡O en las cajas misteriosas!", "Or in Mystery Boxes!"},
     };
     float lx = x + 178, ly = y + 22;
@@ -1779,14 +1797,7 @@ static void draw_gameover(void)
     coin_box_value = (int)lroundf(ginfo.total_coins - c0 + c0 * cf);
     coin_box(SCR_W - 8, 15);
     coin_box_value = -1;
-    /* GameOverScreen de la 1.9: con Save Me, las llaves que se tienen junto a las monedas */
-    if (game_saveme_on()) {
-        snprintf(buf, sizeof(buf), "%d", game_keys());
-        float kw = labw(0, 18, buf) + 30;
-        ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - kw, 32, kw, 22, UIS * 0.7f, BOX_COL);
-        key_icon(SCR_W - 8 - kw + 12, 43, 18);
-        labc(0, SCR_W - 8 - (kw - 22) * 0.5f, 43, 18, C_WHITE, 1, 1, buf);
-    }
+    /* GameOverScreen de la 1.9: con Save Me, las llaves van junto a las monedas (en coin_box) */
     /* PrizeListPopup: debajo del marcador (arriba tapaba el titulo "Puntos") */
     if (!ginfo.boxes_pending && !ginfo.sboxes_pending && !ginfo.reward[0])
         labc(0, 350, 172, 13, C_NAVY, 1, 1, TR("Cuadrado: premios", "Square: prizes"));
