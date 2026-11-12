@@ -179,7 +179,8 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    con la misma disposición que la de la 1.5.2; el de la 1.5.2 (con su Navidad), Halloween y el clásico con la de la
    1.5.2. Como el original, primero sale la imagen sola y después la libreta con el consejo y la barra.
    Power-ups: el port usaba las probabilidades de la 1.0; desde la 1.4 son 2x 32, imán 32, zapatillas 22, jetpack 14
-   y caja 20, y las letras de la palabra del día salen en cada punto mientras quede alguna (CheckLetterSpawnRate).
+   y caja 20. Letras de la palabra del día: el peso de la 1.0 (15), mezcladas con los power-ups (desde la 1.4 el
+   original sacaba letra en cada hueco hasta completar la palabra); con la palabra completa, ninguna.
    PRUEBA: Bouncer, Lowrider y Daredevil desbloqueadas (PRUEBA_TABLAS=1 en build_dist.sh); quitar al terminar.
 4g. 1.9 (Sídney): su mapa en data/w19 (`--apk19`) del 4 de abril al 1 de mayo (`WORLD19=1` lo deja siempre), sin
    mipmaps, con su inspector y su perro (en la 1.9 las mallas se llaman como en la 1.0) y su pantalla de carga. Por

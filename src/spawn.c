@@ -11,7 +11,10 @@ typedef struct { float prob, dist_min, spawn_z; int field; } PickupType;
 /* orden de SpawnPoint: dailyLetter, doubleScoreMultiplier, jetpackPickup, jumpBooster, magnetBooster, mysteryBox
  * spawnProbability / minimumMeters de Upgrades.cs de la 1.9 (de la 1.4 a la 1.8: 2x 32, iman 32, zapatillas 22 y
  * caja 20; el port usaba los de la 1.0). Las letras van aparte: SpawnPointManager.CheckLetterSpawnRate */
-#define LETTER_PROB 1.5e9f
+/* letras: el peso de la 1.0 (15), mezcladas con los power-ups. Desde la 1.4 el original les daba 1.5e9 mientras quedara
+ * alguna por coger (CheckLetterSpawnRate): salia letra en cada hueco y no habia power-ups hasta completar la palabra.
+ * Se queda la regla de la 1.4 de no sacar letras con la palabra ya completa */
+#define LETTER_PROB 15.0f
 #define NPK 7
 static PickupType pk[NPK] = {
     {LETTER_PROB, 0.0f, 0, 0},                 /* letras: spawnDistanceMin queda en 0 (bug del original) */
@@ -85,8 +88,7 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
 #endif
     int chosen = -1;
 #if !defined(AT_LETTERS) && !defined(AT_PKTEST)
-    /* CheckLetterSpawnRate (1.4 en adelante): mientras quede alguna letra de la palabra del dia por coger, sale letra
-     * en cada punto que toque (probabilidad 1.5e9 frente a las ~120 del resto); con la palabra completa, ninguna */
+    /* CheckLetterSpawnRate: con la palabra del dia completa, ninguna letra; si no, el peso de la 1.0 */
     pk[0].prob = game_letter_pending() ? LETTER_PROB : 0.0f;
 #endif
 #ifdef AT_KEYSHOW
