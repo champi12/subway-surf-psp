@@ -1,5 +1,5 @@
-/* missions.c - Missions.cs de la 1.4: 29 grupos de 3 misiones de historia y 20 repetibles despues; al completar un
- * grupo sube el multiplicador (hasta x30) y, en los repetibles, se gana una super caja misteriosa */
+/* missions.c - Missions.cs de la 1.4: 29 grupos de 3 misiones de historia y los repetibles despues (40 desde la 1.10);
+ * al completar un grupo sube el multiplicador (hasta x30) y, en los repetibles, se gana una super caja misteriosa */
 #include <stdio.h>
 #include <string.h>
 #include "missions.h"
@@ -19,8 +19,13 @@ extern float game_time;
  * del dia) ya se pueden hacer: la palabra sale del reloj de la consola */
 static int offline_impossible(int type)
 {
+    extern int game_world;
     int t = mission_tpl[type].target;
-    return t == MT_BeatFriends;
+    if (t == MT_BeatFriends || t == MT_PokeFriend) return 1;
+    /* las llaves (1.10) solo salen donde va Save Me (Sidney y Tokio): en los demas mapas esas misiones no se pueden
+     * hacer y se dan por hechas, como las de amigos */
+    if ((t == MT_SpendKeys || t == MT_PickupKeys) && game_world != 19 && game_world != 110) return 1;
+    return 0;
 }
 
 int missions_multiplier(void)
@@ -101,7 +106,10 @@ void missions_did(int target, int magnitude)
         int prog = mission_progress[i];
         if (t->single && in_run && prog < goal) prog = run_progress[i];
         int np = prog + magnitude;
-        if (t->less) {
+        if (t->eq) {
+            /* completeIfEqual (1.10, "monedas justas"): solo cuenta si se llega exacto; no se guarda lo que se lleva */
+            if (np == goal) { int was = mission_progress[i]; mission_progress[i] = goal; if (was < goal) complete(i); }
+        } else if (t->less) {
             if (np > goal) {
                 if (t->single && in_run) run_progress[i] = np;
                 else mission_progress[i] = np;
@@ -156,8 +164,22 @@ int missions_skip_price(void) { return 1500 + 100 * mission_set; }
 void missions_skip(int i)
 {
     if (mission_set >= MISSION_SETS || mission_progress[i] >= missions_goal(i)) return;
+    missions_did(M_SKIPMISSION, 1);   /* MissionsManager.SkipMission de la 1.10: antes de dar la saltada por hecha */
+    if (mission_set >= MISSION_SETS || mission_progress[i] >= missions_goal(i)) return;
     mission_progress[i] = missions_goal(i);
     complete(i);
+}
+
+/* MissionsManager.ApplyChangesForVersion(1) de la 1.10: quien iba por los repetibles de antes sigue en el mismo grupo,
+ * que en la lista nueva esta mas abajo (se cuentan los nuevos que quedan antes); se conserva lo que llevaba */
+void missions_upgrade_110(void)
+{
+    if (mission_set < MISSION_STORY) return;
+    int num = mission_set - MISSION_STORY;
+    if (num >= 20) num = 0;
+    int num2 = num;
+    for (int j = 0; j < 20; j++) if (mission_inserted_110[j] - 1 <= num2) num2++;
+    if (MISSION_STORY + num2 < MISSION_SETS) mission_set = MISSION_STORY + num2;
 }
 
 int missions_done(int i) { return mission_set >= MISSION_SETS || mission_progress[i] >= missions_goal(i); }

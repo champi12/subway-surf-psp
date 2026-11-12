@@ -50,28 +50,48 @@ void spawn_restart(void)
 /* SpawnPointEgg.PerformSelection: un huevo si desde el ultimo han pasado al menos 80 s de carrera (distancia entre
  * la velocidad del nivel) y la busqueda sigue (temporada, menos de 100 y sin Chicky). En los mapas sin huevos propios
  * el huevo va de hijo de cada SpawnPoint y solo sale si alli no ha salido ningun power-up */
+static float doll_last = -1000.0f;   /* SpawnPointEgg.lastSpawn de la 1.10 (static: no se reinicia entre carreras) */
 void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
 {
-    const uint32_t *c = node_comp(node, C_SPAWNEGG, NULL);
+    int nw = 0;
+    const uint32_t *c = node_comp(node, C_SPAWNEGG, &nw);
     if (!c) return;
-    int g = (int)c[0];
-    if (g < 0) return;
-    float z = node_pos(node).z;
-    float sp = game_level_speed();
+    int ge = (int)c[0], gdl = nw >= 2 ? (int)c[1] : -1;   /* [huevo, muneca] */
+    int kind = game_hunt_kind();
+    int put_egg = 0, put_doll = 0;
+    if (kind == 1 && ge >= 0) {
+        float z = node_pos(node).z;
+        float sp = game_level_speed();
 #if defined(AT_EGGSHOW)
-    const float egg_gap = 0.0f;   /* prueba: un huevo en cada punto libre, para verlos */
+        const float egg_gap = 0.0f;   /* prueba: un huevo en cada punto libre, para verlos */
 #elif defined(AT_EGGS)
-    const float egg_gap = 3.0f;   /* prueba: huevos muy seguidos */
+        const float egg_gap = 3.0f;   /* prueba: huevos muy seguidos */
 #else
-    const float egg_gap = 80.0f;
+        const float egg_gap = 80.0f;
 #endif
-    if (chosen < 0 && sp > 0 && (z - egg_last) / sp >= egg_gap && egg_should_spawn()) {
-        if (*nv < max) visit[(*nv)++] = g;
-        egg_last = z;
+        if (chosen < 0 && sp > 0 && (z - egg_last) / sp >= egg_gap) {
+            put_egg = 1;
+            egg_last = z;
 #ifdef AT_EGGS
-        dlog("HUEVO sale en z=%.0f", z);
+            dlog("HUEVO sale en z=%.0f", z);
 #endif
-    } else scene_set_active_recursive(g, 0);
+        }
+    } else if (kind == 2 && gdl >= 0 && chosen < 0) {
+        /* SpawnPointEgg.PerformSelection de la 1.10: nunca antes de 5 s desde la anterior, seguro pasados 240 s y si no
+         * un 4 % en cada punto */
+        float t = game_hunt_time();
+        int flag;
+#if defined(AT_EGGSHOW)
+        flag = 1;
+#else
+        if (t < doll_last + 5.0f) flag = 0;
+        else if (t > doll_last + 240.0f) flag = 1;
+        else flag = rnd01() <= 0.04f;
+#endif
+        if (flag) { put_doll = 1; doll_last = t; }
+    }
+    if (ge >= 0) { if (put_egg) { if (*nv < max) visit[(*nv)++] = ge; } else scene_set_active_recursive(ge, 0); }
+    if (gdl >= 0) { if (put_doll) { if (*nv < max) visit[(*nv)++] = gdl; } else scene_set_active_recursive(gdl, 0); }
 }
 
 void spawn_perform_selection(int sp, int *visit, int *nv, int max)

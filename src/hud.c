@@ -393,6 +393,18 @@ static void draw_ingame(void)
         if (t_egg >= 0) r_sprite(t_egg, x1 - ew + 4 * UIS, ey + 4 * UIS, 22 * UIS, 22 * UIS, 0, 0, 1, 1, 0xffffffffu);
         ui_text(f_big, x1 - 8 * UIS, ey + 3 * UIS, LBL, 0xffffffff, 2, buf);
     }
+    /* contador de la caza semanal de la 1.10 (weeklyHuntCounter de IngameScreen): munecas de la semana "N/meta" */
+    int hh, hg;
+    if (game_hunt_counter(&hh, &hg)) {
+        static int t_doll = -2;
+        if (t_doll == -2) t_doll = data_tex_find("ui_doll");
+        snprintf(buf, sizeof(buf), "%d/%d", hh, hg);
+        tw = ui_text_width(f_big, LBL, buf);
+        float ew = tw + 34 * UIS, ey = cy + bh + 5 * UIS;
+        ui_sliced(a_ui, "background_ingame_beatThis", x1 - ew, ey, ew, bh, UIS, BOX_COL);
+        if (t_doll >= 0) r_sprite(t_doll, x1 - ew + 7 * UIS, ey + 3 * UIS, 17 * UIS, 24 * UIS, 0, 0, 1, 1, 0xffffffffu);
+        ui_text(f_big, x1 - 8 * UIS, ey + 3 * UIS, LBL, 0xffffffff, 2, buf);
+    }
     /* boton de pausa (arriba a la izquierda) */
     ui_sliced(a_ui, "background_ingame_button", 4, 4, 40 * UIS, 40 * UIS, UIS, 0xffffffff);
     ui_sprite_wh(a_ui, "pause", 4 + 14 * UIS, 4 + 13 * UIS, 13 * UIS, 14 * UIS, 0xffffffff);
@@ -853,6 +865,7 @@ static void draw_rio_popup(void);
 static void draw_rome_popup(void);
 static void draw_keys_popup(void);
 static void draw_sydney_popup(void);
+static void draw_tokyo_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -927,6 +940,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_RIO) draw_rio_popup();
         if (ginfo.popup == POPUP_ROME) draw_rome_popup();
         if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
+        if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
         if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
         return;
     }
@@ -949,6 +963,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_RIO) draw_rio_popup();
     if (ginfo.popup == POPUP_ROME) draw_rome_popup();
     if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
+    if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
     if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
 }
 
@@ -1129,6 +1144,42 @@ static void draw_sydney_popup(void)
         {"Recorre el metro de Sídney", "Run through Sydney's subway", "Nuevo mapa hasta el 1 de mayo", "New map until May 1"},
         {"Conoce a Kim", "Meet Kim", "Solo por tiempo LIMITADO", "LIMITED time only"},
         {"Tablas nuevas", "New boards", "Outback y Great White", "Outback and Great White"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* aviso de la temporada de Tokio (1.10): Harumi, Kitty y la caza semanal con lo que se lleva esta semana
+ * (WeeklyHuntPopup). Misma disposicion, con el rosa de Tokio */
+static void draw_tokyo_popup(void)
+{
+    char buf[64], bw[40];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_TOK = 0xffa05af0u;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_TOK);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_TOK);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Tokio!", "to Tokyo!"));
+    int wk = game_hunt_week(), have = game_hunt_items(wk), goal = game_hunt_goal(wk);
+    static const char *const prize[5][2] = {{"", ""}, {"10 hoverboards", "10 Hoverboards"}, {"7 llaves", "7 Keys"},
+                                            {"una súper caja", "a Super Box"}, {"la tabla Cherry", "the Cherry board"}};
+    snprintf(bw, sizeof(bw), TR("Caza semanal %d de 4", "Weekly Hunt %d of 4"), wk);
+    if (have >= goal) snprintf(buf, sizeof(buf), "%s", TR("¡Completada! Vuelve la próxima semana", "Complete! Come back next week"));
+    else snprintf(buf, sizeof(buf), TR("%d de %d muñecas: gana %s", "%d of %d dolls: win %s"), have, goal, TR(prize[wk][0], prize[wk][1]));
+    const char *lines[3][4] = {
+        {"Recorre las calles de Tokio", "Run through the streets of Tokyo", "Nuevo mapa hasta el 29 de mayo", "New map until May 29"},
+        {"Conoce a Harumi", "Meet Harumi", "Solo por tiempo LIMITADO", "LIMITED time only"},
+        {bw, bw, buf, buf},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {
@@ -1371,7 +1422,9 @@ static void draw_boards(void)
                                                                      : TR("Va agachado", "Stays Low"));
     else if (board_is_season(i)) {
         int bs = board_is_season(i);
-        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 5 ? TR("Especial de Sídney", "Sydney Special")
+        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 7 ? TR("Especial Caza semanal", "Weekly Hunt Special")
+                                           : bs == 6 ? TR("Especial de Tokio", "Tokyo Special")
+                                           : bs == 5 ? TR("Especial de Sídney", "Sydney Special")
                                            : bs == 4 ? TR("Especial Búsqueda de huevos", "Egg Hunt Special")
                                            : bs == 3 ? TR("Especial de Roma", "Rome Special")
                                            : bs == 2 ? TR("Especial de Río", "Rio Special")
@@ -1392,6 +1445,14 @@ static void draw_boards(void)
         labc(0, bx, by, 20, C_WHITE, 1, 1, board_is_selected(i) ? TR("ELEGIDA", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
     } else if (board_is_gift(i)) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, TR("GRATIS (X)", "FREE (X)"));
+    } else if (board_is_season(i) == 7) {
+        /* Cherry (1.10): se gana con las munecas de la cuarta semana de la caza */
+        static int t_doll = -2;
+        if (t_doll == -2) t_doll = data_tex_find("ui_doll");
+        snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(4), game_hunt_goal(4));
+        float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
+        if (t_doll >= 0) r_sprite(t_doll, px - U(26), by - U(14), U(20), U(28), 0, 0, 1, 1, C_WHITE);
+        labc(0, px, by, 20, C_WHITE, 0, 1, buf);
     } else if (board_is_season(i) == 4) {
         /* Chicky (HoverboardBuyButton de la 1.8): no se compra; los huevos que se llevan de los que hacen falta */
         static int t_egg = -2;
@@ -1460,7 +1521,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 6 ? TR("Especial de Sídney", "Sydney Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 7 ? TR("Especial de Tokio", "Tokyo Special")
+                                                   : limited == 6 ? TR("Especial de Sídney", "Sydney Special")
                                                    : limited == 5 ? TR("Especial de Roma", "Rome Special")
                                                    : limited == 4 ? TR("Especial de Río", "Rio Special")
                                                    : limited == 3 ? TR("Especial de Nueva York", "New York Special")
@@ -1532,6 +1594,14 @@ static int a_rewards = -2, rewards_loaded;
 /* w < 0: dado la vuelta (el reves del premio mientras gira) */
 static void reward_spr(const char *name, const char *fallback, float cx, float cy, float k, float wk, unsigned int col)
 {
+    if (!strcmp(name, "ui_doll")) {
+        /* la muneca de la caza semanal (1.10): icono de 25x35, mas alto que ancho */
+        static int tbd = -2;
+        if (tbd == -2) tbd = data_tex_find(name);
+        float hh = 70 * k, w = hh * 25.0f / 35.0f * (wk < 0 ? -wk : wk);
+        if (tbd >= 0) { r_sprite(tbd, (int)(cx - w * 0.5f), (int)(cy - hh * 0.5f), w, hh, 0, 0, 1, 1, col); return; }
+        name = fallback = "icon_upgrades_doubleScore";
+    }
     if (!strcmp(name, "ui_booster") || !strcmp(name, "ui_egg") || !strcmp(name, "ui_key")) {
         /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7); el huevo de la caja de la busqueda de
          * huevos (1.8) y la llave (1.9), igual */

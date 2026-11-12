@@ -299,6 +299,7 @@ static float lane_t;
  * los puntos se suman siempre y cada moneda, salto, voltereta o power-up pone la cuenta a cero (RemoveProgressForThis).
  * La de power-ups suma mientras no hay ninguno activo (la tabla no cuenta) */
 static int powerup_active_no_board(void);
+static int booster_on;   /* Score Booster activo (definido mas abajo) */
 static void score_missions(int num, int from_meters)
 {
     missions_did(M_SCORE, num);
@@ -306,6 +307,7 @@ static void score_missions(int num, int from_meters)
     missions_did(M_NOROLLSBEFORESCORE, num);
     missions_did(M_NOJUMPSBEFORESCORE, num);
     if (from_meters && !powerup_active_no_board()) missions_did(M_NOPOWERUPSBEFORESCORE, num);
+    if (from_meters && booster_on) missions_did(M_SCOREWITHBOOSTER, num);   /* 1.10 */
 }
 /* power-up recogido: jetpack, zapatillas, iman, multiplicador (OneOfEachPowerup: el producto de los cuatro) */
 static void powerup_picked(int k)
@@ -398,13 +400,44 @@ static void hb_run_completed(void);
 int rio_season(void);
 int rome_season(void);
 int sydney_season(void);
+int tokyo_season(void);
+/* actualizacion de cada tabla (filas de boards.bin): 0 la 1.5.2, 1 la 1.6, 2 la 1.7, 3 la 1.8, 4 la 1.9, 5 la 1.10 */
+static int board_update(int row)
+{
+    return row < 7 ? 0 : row < 11 ? 1 : row < 14 ? 2 : row < 17 ? 3 : row < 19 ? 4 : 5;
+}
+/* actualizaciones "alcanzadas": se ha jugado alguna vez en la temporada de su ciudad (bit 1 la 1.6 ... bit 5 la
+ * 1.10). Sus tablas que no son de temporada (Miami, Monster, Skull Fire, Daredevil, Lumberjack, Scoot, Great White...)
+ * no salen hasta entonces y despues se quedan en la partida, se compren o no */
+static int updates_reached;
+static int hunt_week_now(void);
 static int board_avail(int i)
 {
     if (i < 0 || i >= gd_nboards) return 0;
     int u = gd_boards[i].unlock;
     if (board_has(i)) return 1;
-    return u == BOARD_SEASON ? ny_season() : u == BOARD_SEASON_RIO ? rio_season() :
-           u == BOARD_SEASON_ROME || u == BOARD_EGGS ? rome_season() : u == BOARD_SEASON_SYDNEY ? sydney_season() : 1;
+    if (u == BOARD_SEASON) return ny_season();
+    if (u == BOARD_SEASON_RIO) return rio_season();
+    if (u == BOARD_SEASON_ROME || u == BOARD_EGGS) return rome_season();
+    if (u == BOARD_SEASON_SYDNEY) return sydney_season();
+    if (u == BOARD_SEASON_TOKYO) return tokyo_season();
+    if (u == BOARD_HUNT) return hunt_week_now() == 4;   /* Cherry: la cuarta semana de la caza (IsBoardActive) */
+    int up = board_update(i);
+    return up == 0 || (updates_reached >> up & 1);
+}
+static void updates_reached_check(void)
+{
+    int r = updates_reached;
+    if (ny_season()) r |= 1 << 1;
+    if (rio_season()) r |= 1 << 2;
+    if (rome_season()) r |= 1 << 3;
+    if (sydney_season()) r |= 1 << 4;
+    if (tokyo_season()) r |= 1 << 5;
+    if (r != updates_reached) {
+        updates_reached = r;
+        dlog("ACTUALIZACIONES alcanzadas: 0x%02x (sus tablas fijas ya salen)", r);
+        game_save();   /* en el menu: no se nota */
+    }
 }
 /* EggHuntManager de la 1.8: durante la temporada de Roma salen huevos de Pascua (en cualquier mapa); con 100 se gana
  * Chicky (la tabla de unlock eggHunt, cuyo "precio" es el numero de huevos) y una caja de la busqueda. Los huevos son
@@ -442,6 +475,56 @@ int game_eggs_max(void) { return EGGS_MAX; }
 int game_egg_counter(void) { return egg_hunt_run; }
 float game_level_speed(void) { return currentLevelSpeed; }
 
+static int save_pending;
+/* caza semanal de la 1.10 (WeeklyHuntManager): munecas en la via; cada semana su objetivo y su premio. Lo cogido es de
+ * la temporada: cada ano se empieza de cero */
+static const int hunt_goal[5] = {0, 25, 40, 30, 60};
+static int hunt_items[5], hunt_year, hunt_box;   /* hunt_box: semana cuyo premio esta por abrir (1, 2 o 4) */
+static int hunt_run;                             /* IsAnyPeriodActive al empezar la carrera */
+static float hunt_elapsed;                       /* Game.ElapsedGameTime: segundos de carrera (no se reinicia) */
+static int hunt_active(void)
+{
+    int w = hunt_week_now();
+    if (!w) return 0;
+    int y = season_year();
+    if (hunt_year != y) { hunt_year = y; memset(hunt_items, 0, sizeof(hunt_items)); }
+    return hunt_items[w] < hunt_goal[w] ? w : 0;
+}
+int game_hunt_counter(int *have, int *goal)
+{
+    int w = hunt_week_now();
+    if (!hunt_run || !w) return 0;
+    *have = hunt_items[w] < hunt_goal[w] ? hunt_items[w] : hunt_goal[w];
+    *goal = hunt_goal[w];
+    return 1;
+}
+/* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (caza semanal) */
+int game_hunt_items(int w) { if (w < 1 || w > 4) return 0; hunt_active(); return hunt_items[w] < hunt_goal[w] ? hunt_items[w] : hunt_goal[w]; }
+int game_hunt_goal(int w) { return w >= 1 && w <= 4 ? hunt_goal[w] : 0; }
+int game_hunt_kind(void) { return hunt_run ? 2 : egg_hunt_run ? 1 : 0; }
+float game_hunt_time(void) { return hunt_elapsed; }
+static void hunt_picked(void)
+{
+    /* WeeklyHuntManager.ItemPickedUp: con la ultima, la caja con el premio de la semana (en la tercera, una super caja
+     * misteriosa normal) y en la cuarta ademas Cherry */
+    int w = hunt_week_now();
+    if (!w || hunt_items[w] >= hunt_goal[w]) return;
+    hunt_items[w]++;
+    dlog("MUNECA de la caza semanal %d/%d (semana %d)", hunt_items[w], hunt_goal[w], w);
+    if (hunt_items[w] >= hunt_goal[w]) {
+        ginfo.sboxes_pending++;
+        if (w != 3) hunt_box = w;
+        if (w == 4) {
+            for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_HUNT) board_owned |= 1 << i;
+        }
+        hunt_run = 0;
+        hud_slide(TR("¡Caza semanal completada!", "Weekly Hunt complete!"),
+                  w == 1 ? TR("10 hoverboards", "10 Hoverboards") : w == 2 ? TR("7 llaves", "7 Keys") :
+                  w == 3 ? TR("Súper caja misteriosa", "Super Mystery Box") : TR("Tabla Cherry", "Cherry board"));
+    }
+    save_pending = 1;
+}
+
 /* Save Me de la 1.9 (SaveMeManager, Revive): llaves que se cogen en la via o salen en las cajas y sirven para seguir
  * la carrera tras chocar (1 llave, luego 2, 4...). En el original solo se activaba en algunos paises desde su servidor
  * y tras ver el aviso de las llaves (ShowKeysPopup); aqui, de momento, solo en el mapa de Sidney */
@@ -449,7 +532,7 @@ static int keys, keys_popup_shown, keys_first_mb, keys_first_smb;
 static int saveme_cost = 1;           /* SaveMeManager._numberOfUsedKeysInCurrentRun */
 static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (-1: cerrada) */
 static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
-int game_saveme_on(void) { extern int game_world; return game_world == 19 && keys_popup_shown; }
+int game_saveme_on(void) { extern int game_world; return (game_world == 19 || game_world == 110) && keys_popup_shown; }
 int game_keys(void) { return keys; }
 int game_saveme_cost(void) { return saveme_cost; }
 static int save_pending;
@@ -955,6 +1038,12 @@ static float trigger_powerup(int type, int pw_type)
         missions_did(M_NOJUMPSBEFORESCORE, num);
     }
     if (type != PT_HEADSTART) missions_did(M_POWERUPS, 1);   /* GameStats.usePowerups */
+    if (type != PT_HEADSTART) {
+        /* GameStats.AddPowerup de la 1.10: cuantos hay activos a la vez (la tabla cuenta) */
+        int na = pw_on[PT_JETPACK] + pw_on[PT_SNEAKERS] + pw_on[PT_MAGNET] + pw_on[PT_DOUBLE] + pw_on[PT_HOVERBOARD];
+        missions_reset(M_ACTIVEPOWERUPS);
+        missions_did(M_ACTIVEPOWERUPS, na);
+    }
     return pw_left[type];
 }
 
@@ -1225,7 +1314,7 @@ static void apply_gravity(float dt)
             ch.jumping = 0;
             ch.falling = 0;
             on_grounded();
-            if (ch.runPosition == RP_GROUND) missions_reset(M_LANDONTRAININROW);
+            if (ch.runPosition == RP_GROUND) { missions_reset(M_LANDONTRAININROW); missions_reset(M_COINSINAIR); }   /* OnChangeIsCharacterOnGround */
             else if (ch.runPosition == RP_TRAIN || ch.runPosition == RP_MOVINGTRAIN) missions_did(M_LANDONTRAININROW, 1);
             if (!ch.rolling) {
                 SetRunAnim();
@@ -1594,9 +1683,17 @@ static void pickup_coin_effect(float y)
     snd_play(snd_coin.sfx, rnd_rangef(snd_coin.minVol, snd_coin.maxVol), pitch, 0);
 }
 
+/* Coin.OnPickup de la 1.10: monedas en el aire (IsAboveGround: y > 20), con el jetpack y en cada carril */
+static void coin_missions_110(void)
+{
+    if (cc.pos.y > 20.0f) missions_did(M_COINSINAIR, 1);
+    if (state == GS_JETPACK) missions_did(M_COINSWITHJETPACK, 1);
+    missions_did(ch.trackIndex == 0 ? M_COINSLEFT : ch.trackIndex == 2 ? M_COINSRIGHT : M_COINSCENTER, 1);
+}
 static void collect_coin(int i)
 {
     coins_run++;
+    coin_missions_110();
     missions_reset(M_NOCOINSBEFORESCORE);
     missions_did(M_EARNCOIN, 1);
     if (coins[i].pulling && mods[MOD_MAGNET].active) missions_did(M_COINSWITHMAGNET, 1);
@@ -1885,6 +1982,7 @@ static void notify_pickup(int node)
     case PK_KEY:
         /* SaveMeTokenPickup.OnPickup: una llave (AddSaveMeTokenToUnlock) y las particulas de los power-ups */
         keys++;
+        missions_did(M_PICKUPKEYS, 1);
         powerup_picked(-1);
         play_ci(&snd_powerup);
         hud_slide(TR("¡Una llave!", "A Key!"), TR("Sirve para Save Me", "Use it to Save Me"));
@@ -1892,8 +1990,9 @@ static void notify_pickup(int node)
         save_pending = 1;
         break;
     case PK_EGG:
-        /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp y las particulas de los power-ups */
-        egg_picked();
+        /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp (la 1.10: WeeklyHuntManager.ItemPickedUp, la muneca) y
+         * las particulas de los power-ups */
+        if (game_hunt_kind() == 2) hunt_picked(); else egg_picked();
         play_ci(&snd_powerup);
         break;
     case PK_LETTER: {
@@ -1913,6 +2012,7 @@ static void notify_pickup(int node)
         coins_run++;
         missions_reset(M_NOCOINSBEFORESCORE);
         missions_did(M_EARNCOIN, 1);
+        coin_missions_110();
         pickup_coin_effect(m34_pos(&nrt[node].world).y);
         nrt[node].taken = 1;
 #ifdef AUTOTEST
@@ -2220,6 +2320,36 @@ int sydney_season(void)
 #endif
 }
 
+/* Tokio de la 1.10 (Harumi, la tabla Kitty, la caza semanal y su mapa): la temporada de la actualizacion 1.10, del 2
+ * al 29 de mayo (Harumi y Kitty se vendian del 15 de abril al 30 de mayo) */
+int tokyo_season(void)
+{
+#if defined(AT_TOKYO)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return t.month == 5 && t.day >= 2 && t.day <= 29;
+#endif
+}
+/* WeeklyHuntManager de la 1.10: cuatro semanas dentro de la temporada de Tokio (en el original del 8 de abril al 30 de
+ * mayo de 2013), cada una con su premio */
+static int hunt_week_now(void)
+{
+#if defined(AT_HUNTWEEK)
+    return AT_HUNTWEEK;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (!tokyo_season() || console_date(&t) < 0) return 0;
+    return t.day <= 8 ? 1 : t.day <= 15 ? 2 : t.day <= 22 ? 3 : 4;
+#endif
+}
+int game_hunt_week(void) { return hunt_week_now(); }
+
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): la temporada de la actualizacion 1.6, del 3 al 29
  * de enero (Tony y Liberty se vendian del 2 de diciembre al 1 de febrero a las 00:00: Characters.cs / Hoverboards.cs);
  * despues viene Rio. El 2 de enero, tras la Navidad, el mapa normal */
@@ -2241,7 +2371,7 @@ int ny_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() || sydney_season() ?
+    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() || sydney_season() || tokyo_season() ?
            10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
@@ -2256,6 +2386,7 @@ int season_seconds_left(void)
         days = t.month == 2 ? feb - t.day + 31 + 3 : t.month == 3 ? 31 - t.day + 3 : 3 - t.day;
     }
     else if (sydney_season()) days = t.month == 4 ? 30 - t.day + 1 : 1 - t.day;   /* hasta el 1 de mayo */
+    else if (tokyo_season()) days = 29 - t.day;                                    /* hasta el 29 de mayo */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2316,7 +2447,7 @@ static void xmas_popup_check(void)
 /* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
-static int ny_popup_year, rio_popup_year, rome_popup_year, sydney_popup_year;
+static int ny_popup_year, rio_popup_year, rome_popup_year, sydney_popup_year, tokyo_popup_year;
 int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16, 17, 18 o 19 */
 static int tony_ready(void);
 /* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
@@ -2361,11 +2492,22 @@ static void sydney_popup_check(void)
     ginfo.popup = POPUP_SYDNEY;
     game_save();
 }
+/* aviso de la temporada de Tokio (1.10: Harumi, Kitty y la caza semanal) */
+static int harumi_ready(void);
+static void tokyo_popup_check(void)
+{
+    if (!tokyo_season() || ginfo.popup || !harumi_ready()) return;
+    int y = season_year();
+    if (tokyo_popup_year == y) return;
+    tokyo_popup_year = y;
+    ginfo.popup = POPUP_TOKYO;
+    game_save();
+}
 /* ShowKeysPopup de la 1.9: la primera vez en el mapa de Sidney se explican las llaves; desde entonces Save Me va */
 static void keys_popup_check(void)
 {
     extern int game_world;
-    if (game_world != 19 || keys_popup_shown || ginfo.popup) return;
+    if ((game_world != 19 && game_world != 110) || keys_popup_shown || ginfo.popup) return;
     keys_popup_shown = 1;
     ginfo.popup = POPUP_KEYS;
     game_save();
@@ -2492,6 +2634,7 @@ static void game_start_run(void)
     { static int once; if (!once) { once = 1; egg_year = season_year(); eggs = 96; } }   /* prueba: casi completa */
 #endif
     egg_hunt_run = egg_hunt_active();   /* IngameScreen.Show: el contador de huevos solo si la busqueda sigue */
+    hunt_run = hunt_active() != 0;      /* y el de la caza semanal (IsAnyPeriodActive) */
     saveme_cost = 1; saveme_t0 = -1; saveme_done = 0;   /* SaveMeManager.ResetSaveMeForNewRun */
 #ifdef AT_KEYS
     { static int once; if (!once) { once = 1; keys = AT_KEYS; } }   /* prueba: llaves para Save Me */
@@ -2962,6 +3105,7 @@ static void saveme_revive(void)
 {
     keys -= saveme_cost;
     if (keys < 0) keys = 0;
+    missions_did(M_SPENDKEYS, saveme_cost);   /* SaveMeButton de la 1.10 */
     dlog("SAVE ME: revive por %d llave%s (quedan %d) a %d m", saveme_cost, saveme_cost > 1 ? "s" : "", keys, ginfo.meters);
     saveme_cost *= 2;   /* SaveMeManager.IncrementNumberOfUsedKeys */
     saveme_t0 = -1;
@@ -3034,6 +3178,9 @@ static void die_tick(float dt)
         ginfo.gameover_score0 = score;
         ginfo.gameover_t = ginfo.time;
         ginfo.reward[0] = 0;
+        /* GameOverScreen de la 1.10: superar el record y acabar con las monedas justas */
+        if (ginfo.final_score > ginfo.highscore) missions_did(M_BEATHIGHSCORE, 1);
+        missions_did(M_EXACTCOINS, coins_run);
         if (ginfo.final_score > ginfo.highscore) ginfo.highscore = ginfo.final_score;
         hb_run_completed();
         game_save_bg();   /* en segundo plano (todos los mapas) */
@@ -3349,12 +3496,14 @@ static const CharDef chars[] = {
     {"slick", "Roberto", UL_COINS, TK_JAKE, 95000, "", "", NULL, 5, "roberto", "avatar_roberto"},
     /* 1.9: Kim, "Sydney Special" (event 6, temporada de Sidney); comprada se queda */
     {"slick", "Kim", UL_COINS, TK_JAKE, 95000, "", "", NULL, 6, "kim", "avatar_kim"},
+    /* 1.10: Harumi, "Tokyo Special" (event 7, temporada de Tokio); comprada se queda */
+    {"slick", "Harumi", UL_COINS, TK_JAKE, 95000, "", "", NULL, 7, "harumi", "avatar_harumi"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 20, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 20, 21, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -3374,6 +3523,8 @@ static int carmen_ready(void) { return CH_CARMEN < NCHARS && ext_ready(CH_CARMEN
 static int roberto_ready(void) { return CH_ROBERTO < NCHARS && ext_ready(CH_ROBERTO); }
 #define CH_KIM 20
 static int kim_ready(void) { return CH_KIM < NCHARS && ext_ready(CH_KIM); }
+#define CH_HARUMI 21
+static int harumi_ready(void) { return CH_HARUMI < NCHARS && ext_ready(CH_HARUMI); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3389,6 +3540,7 @@ static int char_available(int i)
     case 4: return rio_season();
     case 5: return rome_season();
     case 6: return sydney_season();
+    case 7: return tokyo_season();
     }
     return 0;
 }
@@ -3556,7 +3708,7 @@ static void zombie_init(int slick_node)
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : sydney_season() ? " (Sidney: Kim a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : sydney_season() ? " (Sidney: Kim a la venta)" : tokyo_season() ? " (Tokio: Harumi a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -3588,7 +3740,7 @@ int board_is_season(int row)
     if (row < 0 || row >= gd_nboards) return 0;
     int u = gd_boards[row].unlock;
     return u == BOARD_SEASON ? 1 : u == BOARD_SEASON_RIO ? 2 : u == BOARD_SEASON_ROME ? 3 : u == BOARD_EGGS ? 4 :
-           u == BOARD_SEASON_SYDNEY ? 5 : 0;
+           u == BOARD_SEASON_SYDNEY ? 5 : u == BOARD_SEASON_TOKYO ? 6 : u == BOARD_HUNT ? 7 : 0;
 }
 int board_is_new(int row)
 {
@@ -3698,6 +3850,12 @@ static void boards_input(unsigned in, int confirm)
             snprintf(b, sizeof(b), TR("Huevos: %d/%d", "Eggs: %d/%d"), game_eggs(), EGGS_MAX);
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
             hud_slide(TR("Búscalos corriendo", "Find them while running"), b);
+        } else if (d->unlock == BOARD_HUNT) {
+            /* 1.10: Cherry no se compra, es el premio de la cuarta semana de la caza semanal */
+            char b[40];
+            snprintf(b, sizeof(b), TR("Muñecas: %d/%d", "Dolls: %d/%d"), game_hunt_items(4), game_hunt_goal(4));
+            snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+            hud_slide(TR("Búscalas corriendo", "Find them while running"), b);
         } else if (d->unlock == BOARD_FREE) {
             /* regalo: se reclama y queda elegida */
             board_owned |= 1 << r;
@@ -3935,6 +4093,21 @@ static int rio_box_booster(void)
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
 static void mystery_open_type(int super)
 {
+    if (super && hunt_box) {
+        /* MysteryBox.Roll(ItemHuntPeriodOne/Two/Four) de la 1.10: 10 hoverboards, 7 llaves o la tabla Cherry */
+        if (ginfo.sboxes_pending > 0) ginfo.sboxes_pending--;
+        int w = hunt_box;
+        hunt_box = 0;
+        if (w == 1) { ginfo.hoverboards += 10; snprintf(ginfo.reward, sizeof(ginfo.reward), "10 hoverboards"); ginfo.reward_icon = "icon_upgrades_hoverboard"; }
+        else if (w == 2) { keys += 7; snprintf(ginfo.reward, sizeof(ginfo.reward), TR("7 llaves", "7 Keys")); ginfo.reward_icon = "ui_key"; }
+        else { snprintf(ginfo.reward, sizeof(ginfo.reward), TR("Tabla Cherry", "Cherry board")); ginfo.reward_icon = "ui_doll"; }
+        ginfo.reward_super = 1;
+        ginfo.reward_trophy = 0;
+        ginfo.reward_t = game_time;
+        snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+        game_save();
+        return;
+    }
     if (super && egg_box) {
         /* MysteryBox.Roll(EggHunt): el premio es Chicky (ya desbloqueada al coger el huevo 100) */
         if (ginfo.sboxes_pending > 0) ginfo.sboxes_pending--;
@@ -4060,6 +4233,7 @@ static void use_booster(void)
     if (state != GS_RUNNING || game_time > ginfo.headstart_until || ginfo.boosters <= 0 || booster_on) return;
     ginfo.boosters--;
     booster_on = 1;   /* GameStats.scoreBoosterActivated */
+    missions_did(M_SCOREBOOSTER, 1);   /* SlideinPowerupHelper de la 1.10 */
     booster_t = ginfo.time;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.2f, 0);
     dlog("SCORE BOOSTER activado: multiplicador x%d", score_multiplier());
@@ -4250,7 +4424,8 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); keys_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); tokyo_popup_check(); keys_popup_check();
+                            updates_reached_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -4314,7 +4489,7 @@ void game_update(float dt)
         }
     }
     DBG_PHASE(main, "game_update: power-ups");
-    if (state == GS_RUNNING || state == GS_JETPACK) mods_update(dt);
+    if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
     update_powerup_times(dt);
     /* corrutinas del personaje */
     track_change_tick();
@@ -4696,7 +4871,13 @@ static int save_fill(unsigned char *buf)
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
-    return (int)(sizeof(d) + sizeof(e) + sizeof(e2));
+    /* de la 1.10: aviso de Tokio, munecas de cada semana (7 bits), su ano y la caja del premio, y las actualizaciones
+     * alcanzadas (tablas fijas de cada una) */
+    int e3[8] = {tokyo_popup_year,
+                 (hunt_items[1] & 127) | (hunt_items[2] & 127) << 7 | (hunt_items[3] & 127) << 14 | (hunt_items[4] & 127) << 21,
+                 (hunt_year & 0xff) | hunt_box << 8, updates_reached | 1 << 30, 1 /* misiones de la 1.10 */};
+    memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2), e3, sizeof(e3));
+    return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3));
 }
 
 static void save_write(const unsigned char *buf, int n)
@@ -4771,6 +4952,9 @@ void game_load(void)
     memset(e, 0, sizeof(e)); memset(e2, 0, sizeof(e2));
     int ne = n == 32 ? (int)fread(e, 4, 8, f) : 0;
     int ne2 = ne == 8 ? (int)fread(e2, 4, 8, f) : 0;
+    int e3[8];
+    memset(e3, 0, sizeof(e3));
+    int ne3 = ne2 == 8 ? (int)fread(e3, 4, 8, f) : 0;
     fclose(f);
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
@@ -4787,6 +4971,17 @@ void game_load(void)
     if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }
     if (ne2 >= 2) board_seen = e2[1];
+    if (ne3 >= 4 && (e3[3] >> 30 & 1)) {
+        tokyo_popup_year = e3[0];
+        for (int w = 1; w <= 4; w++) hunt_items[w] = (e3[1] >> (7 * (w - 1))) & 127;
+        hunt_year = e3[2] & 0xff; hunt_box = (e3[2] >> 8) & 7;
+        updates_reached = e3[3] & 0xff;
+    } else {
+        /* partidas de antes: las actualizaciones cuyas tablas ya se vieron o se compraron cuentan como alcanzadas */
+        for (int r = 7; r < 32; r++) if ((board_seen | board_owned) >> r & 1) updates_reached |= 1 << board_update(r);
+    }
+    /* misiones de la 1.10 (40 repetibles): quien venia de antes sigue en su grupo */
+    if (!(ne3 >= 5 && e3[4] >= 1)) missions_upgrade_110();
     audio_set_mute(ginfo.opt_sound_off);
     if (n >= 4 && d[0] == 0x53535031) { ginfo.highscore = d[1]; ginfo.total_coins = d[2]; ginfo.hoverboards = d[3]; tutorial_completed = 1; return; }
     int v2 = d[0] == 0x53535032;

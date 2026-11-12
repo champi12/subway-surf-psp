@@ -1,7 +1,7 @@
 /* missions_data.h - generado a partir de Missions.cs del juego original */
-enum {MT_none, MT_EarnCoin, MT_SpendCoin, MT_Score, MT_JumpTrain, MT_Jump, MT_Roll, MT_RollLeft, MT_RollCenter, MT_RollRight, MT_RollUnderBarriers, MT_JumpBarriers, MT_DieToTrain, MT_Jetpack, MT_SuperSneakers, MT_Letters, MT_Magnets, MT_MysteryBoxes, MT_BeatFriends, MT_DailyQuests, MT_Tokens, MT_DodgeBarriers, MT_CrashBarriers, MT_CrashTrains, MT_Powerups, MT_Headstart, MT_CoinsWithMagnet, MT_BuyMysterybox, MT_CollectCoinPouch, MT_TimeDeath, MT_BumpTrain, MT_BumpBush, MT_BumpLightSignal, MT_BumpBarrier, MT_HoverBoard, MT_HoverBoardExpire, MT_NoCoinsBeforeScore, MT_Trophies, MT_DoubleMultiplier, MT_ReachMissionSet, MT_GuardJump, MT_HaveUpgrades, MT_HaveHeadStartLarge, MT_HaveKing, MT_HavePinkGirl, MT_HaveNinja, MT_HaveFrank, MT_HaveBlackGirl, MT_PokeFriend, MT_LandOnTrainInRow, MT_StayInOneLane, MT_DailyQuestInRow, MT_NoJumpsBeforeScore, MT_NoRollsBeforeScore, MT_NoPowerUpsBeforeScore, MT_OneOfEachPowerup, MT_COUNT };
-enum {MS_none, MS_EarnCoin, MS_EarnCoinSingleRun, MS_SpendCoin, MS_ScoreCumulative, MS_JumpTrain, MS_JumpTrainSingleRun, MS_Jump, MS_JumpSingleRun, MS_Roll, MS_RollSingleRun, MS_RollLeft, MS_RollCenter, MS_RollRight, MS_RollUnderBarriers, MS_JumpBarriers, MS_DieToTrain, MS_Jetpack, MS_JetpackSingleRun, MS_SuperSneakers, MS_SuperSneakersSingleRun, MS_Letters, MS_Magnets, MS_MagnetsSingleRun, MS_MysteryBoxes, MS_BeatFriends, MS_BeatFriendsSingleRun, MS_DailyQuests, MS_Tokens, MS_DodgeBarriers, MS_CrashBarriers, MS_CrashBarriersSingleRun, MS_CrashTrains, MS_BumpTrainsSingleRun, MS_Powerups, MS_Headstart, MS_CoinsWithMagnet, MS_BuyMysterybox, MS_CollectCoinPouch, MS_TimeDeath, MS_BumpTrain, MS_BumpBush, MS_BumpLightSignal, MS_BumpBarrier, MS_ScoreSingleRun, MS_HoverBoard, MS_HoverBoardExpire, MS_NoCoinsBeforeScore, MS_DoubleMultiplierSingleRun, MS_ReachMissionSet, MS_GuardJump, MS_HaveUpgrades, MS_HaveHeadStartLarge, MS_HaveKing, MS_HavePinkGirl, MS_HaveNinja, MS_HaveFrank, MS_HaveBlackGirl, MS_PokeFriend, MS_DodgeBarriersSingleRun, MS_HoverBoardExpireSingleRun, MS_BumpBarrierSingleRun, MS_BumpLightSignalSingleRun, MS_LandOnTrainInRow, MS_StayInOneLane, MS_DailyQuestInRow, MS_NoJumpsBeforeScore, MS_NoRollsBeforeScore, MS_NoPowerUpsBeforeScore, MS_OneOfEachPowerup, MS_COUNT };
-typedef struct { int target, single, less; const char *text; } MissionTpl;
+enum {MT_none, MT_EarnCoin, MT_SpendCoin, MT_Score, MT_JumpTrain, MT_Jump, MT_Roll, MT_RollLeft, MT_RollCenter, MT_RollRight, MT_RollUnderBarriers, MT_JumpBarriers, MT_DieToTrain, MT_Jetpack, MT_SuperSneakers, MT_Letters, MT_Magnets, MT_MysteryBoxes, MT_BeatFriends, MT_DailyQuests, MT_Tokens, MT_DodgeBarriers, MT_CrashBarriers, MT_CrashTrains, MT_Powerups, MT_Headstart, MT_CoinsWithMagnet, MT_BuyMysterybox, MT_CollectCoinPouch, MT_TimeDeath, MT_BumpTrain, MT_BumpBush, MT_BumpLightSignal, MT_BumpBarrier, MT_HoverBoard, MT_HoverBoardExpire, MT_NoCoinsBeforeScore, MT_Trophies, MT_DoubleMultiplier, MT_ReachMissionSet, MT_GuardJump, MT_HaveUpgrades, MT_HaveHeadStartLarge, MT_HaveKing, MT_HavePinkGirl, MT_HaveNinja, MT_HaveFrank, MT_HaveBlackGirl, MT_PokeFriend, MT_LandOnTrainInRow, MT_StayInOneLane, MT_DailyQuestInRow, MT_NoJumpsBeforeScore, MT_NoRollsBeforeScore, MT_NoPowerUpsBeforeScore, MT_OneOfEachPowerup, MT_ActivePowerups, MT_ScoreBooster, MT_CollectCoinsLeftLane, MT_CollectCoinsCenterLane, MT_CollectCoinsRightLane, MT_SpendKeys, MT_PickupKeys, MT_EarnCoinWithoutTouchingGround, MT_GetExactlyAmountOfCoins, MT_SkipMission, MT_ScoreWithScorebooster, MT_CoinsWithJetpack, MT_BeatOwnHighscore, MT_COUNT };
+enum {MS_none, MS_EarnCoin, MS_EarnCoinSingleRun, MS_SpendCoin, MS_ScoreCumulative, MS_JumpTrain, MS_JumpTrainSingleRun, MS_Jump, MS_JumpSingleRun, MS_Roll, MS_RollSingleRun, MS_RollLeft, MS_RollCenter, MS_RollRight, MS_RollUnderBarriers, MS_JumpBarriers, MS_DieToTrain, MS_Jetpack, MS_JetpackSingleRun, MS_SuperSneakers, MS_SuperSneakersSingleRun, MS_Letters, MS_Magnets, MS_MagnetsSingleRun, MS_MysteryBoxes, MS_BeatFriends, MS_BeatFriendsSingleRun, MS_DailyQuests, MS_Tokens, MS_DodgeBarriers, MS_CrashBarriers, MS_CrashBarriersSingleRun, MS_CrashTrains, MS_BumpTrainsSingleRun, MS_Powerups, MS_Headstart, MS_CoinsWithMagnet, MS_BuyMysterybox, MS_CollectCoinPouch, MS_TimeDeath, MS_BumpTrain, MS_BumpBush, MS_BumpLightSignal, MS_BumpBarrier, MS_ScoreSingleRun, MS_HoverBoard, MS_HoverBoardExpire, MS_NoCoinsBeforeScore, MS_DoubleMultiplierSingleRun, MS_ReachMissionSet, MS_GuardJump, MS_HaveUpgrades, MS_HaveHeadStartLarge, MS_HaveKing, MS_HavePinkGirl, MS_HaveNinja, MS_HaveFrank, MS_HaveBlackGirl, MS_PokeFriend, MS_DodgeBarriersSingleRun, MS_HoverBoardExpireSingleRun, MS_BumpBarrierSingleRun, MS_BumpLightSignalSingleRun, MS_LandOnTrainInRow, MS_StayInOneLane, MS_DailyQuestInRow, MS_NoJumpsBeforeScore, MS_NoRollsBeforeScore, MS_NoPowerUpsBeforeScore, MS_OneOfEachPowerup, MS_ActivePowerups, MS_ScoreBooster, MS_CollectCoinsLeftLane, MS_CollectCoinsCenterLane, MS_CollectCoinsRightLane, MS_SpendKeys, MS_PickupKeys, MS_PickupKeysSingleRun, MS_EarnCoinWithoutTouchingGround, MS_GetExactlyAmountOfCoins, MS_SkipMission, MS_ScoreWithScorebooster, MS_CoinsWithJetpack, MS_BeatOwnHighscore, MS_COUNT };
+typedef struct { int target, single, less; const char *text; int eq; } MissionTpl;   /* eq: completeIfEqual (1.10) */
 static const MissionTpl mission_tpl[MS_COUNT] = {
     {MT_none, 0, 0, ""},
     {MT_EarnCoin, 0, 0, "Recoge {0} monedas"},
@@ -74,11 +74,28 @@ static const MissionTpl mission_tpl[MS_COUNT] = {
     {MT_NoRollsBeforeScore, 1, 0, "{0} puntos sin rodar"},
     {MT_NoPowerUpsBeforeScore, 1, 0, "{0} puntos sin power-ups"},
     {MT_OneOfEachPowerup, 1, 0, "Coge al menos {0} de cada power-up en una carrera"},
+    /* de la 1.10 */
+    {MT_ActivePowerups, 0, 0, "Ten {0} power-ups activos a la vez"},
+    {MT_ScoreBooster, 0, 0, "Usa {0} Score Boosters"},
+    {MT_CollectCoinsLeftLane, 0, 0, "Recoge {0} monedas en el carril izquierdo"},
+    {MT_CollectCoinsCenterLane, 0, 0, "Recoge {0} monedas en el carril central"},
+    {MT_CollectCoinsRightLane, 0, 0, "Recoge {0} monedas en el carril derecho"},
+    {MT_SpendKeys, 0, 0, "Gasta {0} llaves"},
+    {MT_PickupKeys, 0, 0, "Coge {0} llaves"},
+    {MT_PickupKeys, 1, 0, "Coge {0} llaves en una carrera"},
+    {MT_EarnCoinWithoutTouchingGround, 1, 0, "Recoge {0} monedas sin tocar el suelo"},
+    {MT_GetExactlyAmountOfCoins, 0, 0, "Acaba una carrera con {0} monedas justas", 1},
+    {MT_SkipMission, 0, 0, "Salta {0} misión"},
+    {MT_ScoreWithScorebooster, 0, 0, "{0} puntos con el Score Booster"},
+    {MT_CoinsWithJetpack, 0, 0, "Recoge {0} monedas con el jetpack"},
+    {MT_BeatOwnHighscore, 0, 0, "Supera tu récord"},
 };
-/* Missions.cs de la 1.4: los 29 grupos de la historia (4 cambian algun objetivo respecto a la 1.0) y los 20
- * repetibles que vienen despues; al terminar el ultimo repetible se vuelve al primero */
+/* Missions.cs de la 1.4: los 29 grupos de la historia (4 cambian algun objetivo respecto a la 1.0) y los repetibles
+ * que vienen despues (20 en la 1.4, 40 desde la 1.10); al terminar el ultimo repetible se vuelve al primero */
 #define MISSION_STORY 29
-#define MISSION_SETS (MISSION_STORY + 20)
+#define MISSION_SETS (MISSION_STORY + 40)
+/* MissionsData.missionsInsertedForRepeatable de la 1.10: donde quedaron los 20 repetibles nuevos (1 = el primero) */
+static const unsigned char mission_inserted_110[20] = {2, 4, 5, 7, 9, 11, 15, 19, 23, 26, 28, 30, 32, 34, 35, 36, 37, 38, 39, 40};
 static const struct { int type, goal; } mission_sets[MISSION_SETS][3] = {
     {{MS_EarnCoin, 500}, {MS_ScoreSingleRun, 1000}, {MS_Powerups, 2}},
     {{MS_EarnCoinSingleRun, 200}, {MS_Jump, 20}, {MS_SuperSneakers, 2}},
@@ -109,27 +126,47 @@ static const struct { int type, goal; } mission_sets[MISSION_SETS][3] = {
     {{MS_Tokens, 10}, {MS_BuyMysterybox, 6}, {MS_BumpLightSignal, 20}},
     {{MS_JumpSingleRun, 50}, {MS_HoverBoard, 12}, {MS_HoverBoardExpire, 4}},
     {{MS_EarnCoinSingleRun, 750}, {MS_BumpBarrier, 25}, {MS_ScoreSingleRun, 250000}},
-    /* repetibles */
+    /* repetibles (los 40 de la 1.10: los 20 de antes con 20 nuevos intercalados) */
     {{MS_JumpTrainSingleRun, 4}, {MS_JetpackSingleRun, 3}, {MS_CoinsWithMagnet, 1200}},
+    {{MS_ActivePowerups, 3}, {MS_ScoreBooster, 5}, {MS_CollectCoinsLeftLane, 1500}},   /* 1.10 */
     {{MS_DodgeBarriersSingleRun, 30}, {MS_MagnetsSingleRun, 5}, {MS_Headstart, 10}},
+    {{MS_TimeDeath, 5}, {MS_SpendKeys, 4}, {MS_RollLeft, 400}},   /* 1.10 */
+    {{MS_OneOfEachPowerup, 1}, {MS_EarnCoinWithoutTouchingGround, 100}, {MS_CollectCoinsRightLane, 1500}},   /* 1.10 */
     {{MS_HoverBoardExpireSingleRun, 4}, {MS_DoubleMultiplierSingleRun, 4}, {MS_DailyQuestInRow, 3}},
+    {{MS_GetExactlyAmountOfCoins, 300}, {MS_SkipMission, 1}, {MS_ScoreWithScorebooster, 2000000}},   /* 1.10 */
     {{MS_BumpBush, 5}, {MS_MysteryBoxes, 10}, {MS_Roll, 300}},
+    {{MS_StayInOneLane, 30}, {MS_Jetpack, 20}, {MS_CoinsWithJetpack, 2000}},   /* 1.10 */
     {{MS_JumpSingleRun, 70}, {MS_SuperSneakersSingleRun, 5}, {MS_NoPowerUpsBeforeScore, 120000}},
+    {{MS_MagnetsSingleRun, 5}, {MS_RollSingleRun, 100}, {MS_PickupKeys, 5}},   /* 1.10 */
     {{MS_StayInOneLane, 20}, {MS_BumpTrainsSingleRun, 12}, {MS_SpendCoin, 9000}},
     {{MS_ScoreSingleRun, 300000}, {MS_NoJumpsBeforeScore, 25000}, {MS_ScoreCumulative, 5000000}},
     {{MS_BumpBarrier, 40}, {MS_BumpBarrierSingleRun, 4}, {MS_Jump, 300}},
+    {{MS_GetExactlyAmountOfCoins, 200}, {MS_CollectCoinsCenterLane, 1500}, {MS_NoPowerUpsBeforeScore, 120000}},   /* 1.10 */
     {{MS_EarnCoinSingleRun, 800}, {MS_OneOfEachPowerup, 1}, {MS_Letters, 12}},
     {{MS_RollSingleRun, 70}, {MS_BuyMysterybox, 10}, {MS_EarnCoin, 20000}},
     {{MS_LandOnTrainInRow, 10}, {MS_NoRollsBeforeScore, 25000}, {MS_DodgeBarriers, 150}},
+    {{MS_SpendKeys, 5}, {MS_Magnets, 20}, {MS_PickupKeys, 10}},   /* 1.10 */
     {{MS_HoverBoard, 20}, {MS_HoverBoardExpire, 8}, {MS_Powerups, 50}},
     {{MS_BumpLightSignalSingleRun, 5}, {MS_RollCenter, 200}, {MS_BumpLightSignal, 40}},
     {{MS_OneOfEachPowerup, 1}, {MS_DoubleMultiplierSingleRun, 5}, {MS_NoPowerUpsBeforeScore, 140000}},
+    {{MS_Headstart, 5}, {MS_BumpBarrierSingleRun, 8}, {MS_EarnCoinWithoutTouchingGround, 200}},   /* 1.10 */
     {{MS_Jetpack, 12}, {MS_JetpackSingleRun, 4}, {MS_Headstart, 12}},
     {{MS_EarnCoinSingleRun, 1000}, {MS_CoinsWithMagnet, 1500}, {MS_EarnCoin, 20000}},
+    {{MS_Jump, 400}, {MS_SuperSneakers, 20}, {MS_NoJumpsBeforeScore, 70000}},   /* 1.10 */
     {{MS_HoverBoardExpireSingleRun, 5}, {MS_BuyMysterybox, 10}, {MS_SpendCoin, 12000}},
+    {{MS_ScoreBooster, 5}, {MS_RollCenter, 100}, {MS_ScoreCumulative, 3000000}},   /* 1.10 */
     {{MS_StayInOneLane, 30}, {MS_MagnetsSingleRun, 5}, {MS_Magnets, 20}},
+    {{MS_DoubleMultiplierSingleRun, 6}, {MS_LandOnTrainInRow, 12}, {MS_BeatOwnHighscore, 1}},   /* 1.10 */
     {{MS_NoJumpsBeforeScore, 30000}, {MS_NoRollsBeforeScore, 30000}, {MS_NoPowerUpsBeforeScore, 160000}},
-    {{MS_LandOnTrainInRow, 12}, {MS_HoverBoardExpire, 10}, {MS_Powerups, 40}},
+    {{MS_MysteryBoxes, 10}, {MS_PickupKeysSingleRun, 2}, {MS_DailyQuests, 3}},   /* 1.10 */
+    {{MS_LandOnTrainInRow, 12}, {MS_HoverBoardExpireSingleRun, 10}, {MS_Powerups, 40}},
+    {{MS_GetExactlyAmountOfCoins, 200}, {MS_EarnCoinWithoutTouchingGround, 300}, {MS_PokeFriend, 1}},   /* 1.10 */
+    {{MS_BumpBarrierSingleRun, 6}, {MS_BuyMysterybox, 15}, {MS_Letters, 15}},   /* 1.10 */
+    {{MS_NoCoinsBeforeScore, 16000}, {MS_NoRollsBeforeScore, 32000}, {MS_CoinsWithMagnet, 4000}},   /* 1.10 */
+    {{MS_JumpSingleRun, 90}, {MS_DodgeBarriersSingleRun, 40}, {MS_DodgeBarriers, 200}},   /* 1.10 */
+    {{MS_BumpLightSignalSingleRun, 8}, {MS_MysteryBoxes, 12}, {MS_Roll, 400}},   /* 1.10 */
+    {{MS_HoverBoard, 30}, {MS_HoverBoardExpireSingleRun, 8}, {MS_CoinsWithJetpack, 3000}},   /* 1.10 */
+    {{MS_SuperSneakers, 24}, {MS_SuperSneakersSingleRun, 6}, {MS_DailyQuests, 4}},   /* 1.10 */
 };
 
 /* textos originales en ingles (Missions.cs: descriptionSingle / description sin ". {1} left") */
@@ -204,4 +241,18 @@ static const char *const mission_en[MS_COUNT][2] = {
     {"Score {0} point without rolling", "Score {0} points without rolling"},   /* NoRollsBeforeScore */
     {"Score {0}, no Powerups", "Score {0}, no Powerups"},   /* NoPowerUpsBeforeScore */
     {"Pick up at least 1 of each Powerup in one run", "Pick up at least {0} of each Powerup in one run"},   /* OneOfEachPowerup */
+    {"Have {0} powerup active", "Have {0} powerups active at once"},   /* ActivePowerups */
+    {"Use {0} Score Booster", "Use {0} Score Boosters"},   /* ScoreBooster */
+    {"Collect {0} coin in left lane", "Collect {0} coins in left lane"},   /* CollectCoinsLeftLane */
+    {"Collect {0} coin in center lane", "Collect {0} coins in center lane"},   /* CollectCoinsCenterLane */
+    {"Collect {0} coin in right lane", "Collect {0} coins in right lane"},   /* CollectCoinsRightLane */
+    {"Spend {0} key", "Spend {0} keys"},   /* SpendKeys */
+    {"Pick up {0} key", "Pick up {0} keys"},   /* PickupKeys */
+    {"Pick up {0} key in one run", "Pick up {0} keys in one run"},   /* PickupKeysSingleRun */
+    {"Collect {0} coin without touching the ground", "Collect {0} coins without touching the ground"},   /* EarnCoinWithoutTouchingGround */
+    {"End a run with exactly {0} coin", "End a run with exactly {0} coins"},   /* GetExactlyAmountOfCoins */
+    {"Skip {0} mission", "Skip {0} missions"},   /* SkipMission */
+    {"Score {0} point with Score Booster", "Score {0} points with Score Booster"},   /* ScoreWithScorebooster */
+    {"Collect {0} coin with Jetpack", "Collect {0} coins with Jetpack"},   /* CoinsWithJetpack */
+    {"Beat your highscore", "Beat your highscore {0} times"},   /* BeatOwnHighscore */
 };

@@ -13,7 +13,11 @@ enum {
     M_NOCOINSBEFORESCORE = 36, M_DOUBLEMULTIPLIER = 38, M_GUARDJUMP = 40,
     /* de la 1.4 */
     M_LANDONTRAININROW = 49, M_STAYINONELANE = 50, M_DAILYQUESTINROW = 51, M_NOJUMPSBEFORESCORE = 52,
-    M_NOROLLSBEFORESCORE = 53, M_NOPOWERUPSBEFORESCORE = 54, M_ONEOFEACHPOWERUP = 55
+    M_NOROLLSBEFORESCORE = 53, M_NOPOWERUPSBEFORESCORE = 54, M_ONEOFEACHPOWERUP = 55,
+    /* de la 1.10 */
+    M_ACTIVEPOWERUPS = 56, M_SCOREBOOSTER = 57, M_COINSLEFT = 58, M_COINSCENTER = 59, M_COINSRIGHT = 60,
+    M_SPENDKEYS = 61, M_PICKUPKEYS = 62, M_COINSINAIR = 63, M_EXACTCOINS = 64, M_SKIPMISSION = 65,
+    M_SCOREWITHBOOSTER = 66, M_COINSWITHJETPACK = 67, M_BEATHIGHSCORE = 68
 };
 
 extern int mission_set;
@@ -32,5 +36,6 @@ int missions_goal(int i);
 int missions_done(int i);
 int missions_skip_price(void);
 void missions_skip(int i);
+void missions_upgrade_110(void);   /* partidas de antes de la 1.10: el grupo repetible en la lista nueva */
 
 #endif

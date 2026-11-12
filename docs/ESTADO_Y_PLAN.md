@@ -197,6 +197,20 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    mapas: de frente solo se choca si el golpe es por delante (antes chocaba aunque se tocara de lado o por detrás).
    Volver a jugar tras una carrera larga: la vía se vacía durante el fin de carrera (6 ms por fotograma) y no dos
    veces seguidas al pulsar JUGAR (era el tirón de ~50-67 ms de la intro).
+4h. 1.10 (Tokio): su mapa en data/w110 (`--apk110`) del 2 al 29 de mayo (`WORLD110=1` lo deja siempre), sin
+   mipmaps, con su pantalla de carga. Medido (120 s): 223 llamadas de media (325 máx.) y 18207 triángulos (23520
+   máx.), 30 FPS fijos en el emulador estricto. Por fecha: Harumi (95000) y Kitty (50000, "Especial de Tokio"), con su
+   aviso de temporada. Save Me con llaves en Sídney y Tokio. Caza semanal (WeeklyHuntManager): muñequitas en la vía
+   (nunca a menos de 5 s de la anterior, seguro a los 240 s y si no un 4 % en cada punto), contador en carrera y
+   cuatro semanas: 2-8 de mayo 25 muñecas → 10 hoverboards; 9-15 → 40 → 7 llaves; 16-22 → 30 → súper caja; 23-29 → 60
+   → tabla Cherry (que no se compra). Misiones: los 40 repetibles de la 1.10 (los 20 de antes con 20 nuevos
+   intercalados: power-ups activos a la vez, Score Booster, monedas por carril, sin tocar el suelo, con jetpack,
+   monedas justas, superar el récord, saltar misión, llaves). Las partidas de antes siguen en su grupo (como
+   ApplyChangesForVersion). Las de llaves solo se pueden hacer en Sídney/Tokio; en los demás mapas se dan por hechas,
+   como las de amigos. La historia se queda como estaba (la 1.10 cambiaba 4 misiones de la historia).
+   Tablas no de temporada de cada actualización (Miami, Monster, Skull Fire, Daredevil, Lumberjack, Scoot, Great
+   White...): aparecen después de jugar una vez durante la temporada de su actualización y desde entonces se quedan
+   en la partida guardada y en la tienda. Las de temporada solo en su fecha (salvo compradas); las de la 1.5.2 siempre.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

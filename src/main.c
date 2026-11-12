@@ -247,12 +247,26 @@ int main(int argc, char **argv)
                 if (!(halloween_season() && has_hw)) wdir = "data/w19";
             }
         }
+        /* el mapa de la 1.10 (Tokio, data/w110) en su temporada (2 - 29 de mayo, tras Sidney); make WORLD110=1 lo deja
+         * siempre, para probarlo */
+        {
+            extern int tokyo_season(void);
+#if defined(WORLD110) && WORLD110
+            int tok = 1;
+#else
+            int tok = tokyo_season();
+#endif
+            if (tok && (f = sceIoOpen("data/w110/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+                sceIoClose(f);
+                if (!(halloween_season() && has_hw)) wdir = "data/w110";
+            }
+        }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }
         /* Rio y Roma: sin texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a lo
          * lejos y salian lineas */
-        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17") || !strcmp(wdir, "data/w18") || !strcmp(wdir, "data/w19"); }
-        { extern int game_world; game_world = !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
-        dlog("Mundo: %s", !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
+        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17") || !strcmp(wdir, "data/w18") || !strcmp(wdir, "data/w19") || !strcmp(wdir, "data/w110"); }
+        { extern int game_world; game_world = !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        dlog("Mundo: %s", !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
