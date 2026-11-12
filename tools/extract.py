@@ -2670,6 +2670,10 @@ def inject_hunts(ex, trees, level_sc, scs):
             if 'SpawnPoint' in cls or 'SpawnPointEgg' in cls:
                 if g.get('hunt'):
                     continue
+                # los mapas que traen sus SpawnPointEgg (Roma, Sidney, Tokio: 33 frente a 36 de power-ups) solo los
+                # usan a ellos, como el original; antes se anadian tambien en los de power-ups y salian el doble
+                if native is not None and 'SpawnPointEgg' not in cls:
+                    continue
                 hunt = {}
                 for kind in ('egg', 'doll'):
                     if 'SpawnPointEgg' in cls and kind == native:

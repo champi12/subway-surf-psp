@@ -883,6 +883,8 @@ static void draw_rome_popup(void);
 static void draw_keys_popup(void);
 static void draw_sydney_popup(void);
 static void draw_tokyo_popup(void);
+static void draw_hunt_popup(void);
+static void draw_hunt_button(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -909,6 +911,7 @@ static void draw_menu(void)
     top_button(U(144), U(26), U(110), TR("Reto diario", "Daily Challenge"), TR("cuadrado", "square"));
     /* ajustes (SettingsPopup de la 1.5.2): START */
     top_button(SCR_W - U(150), U(26), U(76), TR("Ajustes", "Settings"), "START");
+    draw_hunt_button();
     /* arriba a la derecha: hoverboards (los trofeos estan en la seccion ME, como en la 1.5.2) */
     float hx = SCR_W - U(79), hy = U(26);
     top_button(hx, hy, U(44), NULL, NULL);
@@ -958,6 +961,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_ROME) draw_rome_popup();
         if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
         if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
+        if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
         if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
         return;
     }
@@ -981,6 +985,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_ROME) draw_rome_popup();
     if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
     if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
+    if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
     if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
 }
 
@@ -1207,6 +1212,77 @@ static void draw_tokyo_popup(void)
     ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
     labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* la muneca de la caza semanal (ui_doll, 25x35) centrada en (cx, cy) con alto h */
+static void doll_icon(float cx, float cy, float h, unsigned int col)
+{
+    static int td = -2;
+    if (td == -2) td = data_tex_find("ui_doll");
+    float w = h * 25.0f / 35.0f;
+    if (td >= 0) r_sprite(td, cx - w * 0.5f, cy - h * 0.5f, w, h, 0, 0, 1, 1, col);
+}
+#define C_HUNT 0xffd25af0u        /* rosa de la caza semanal */
+#define C_HUNT_LIGHT 0xffe6a6f6u
+
+/* GuidelineButton itemHunt de la 1.10: en la portada, bajo Misiones, el cuadro rosa con la muneca y lo que se lleva
+ * de la semana; flecha izquierda abre la ventana */
+static void draw_hunt_button(void)
+{
+    if (!game_hunt_button() || ginfo.missions_open) return;
+    char buf[16];
+    int wk = game_hunt_week();
+    float cx = U(30), cy = U(84), sz = U(40);
+    ui_sliced(a_ui, "whitebox", cx - sz * 0.5f, cy - sz * 0.5f, sz, sz, UIS, C_HUNT);
+    ui_sliced(a_ui, "button_generic_2_outline", cx - sz * 0.5f - U(2), cy - sz * 0.5f - U(2), sz + U(5), sz + U(6), UIS, C_OUTLINE);
+    doll_icon(cx, cy, sz * 0.8f, C_WHITE);
+    snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(wk), game_hunt_goal(wk));
+    labc(0, cx, cy + sz * 0.5f + U(9), 14, C_WHITE, 1, 1, buf);
+    labc(0, cx + sz * 0.5f + U(10), cy, 14, C_WHITE, 1, 1, "<");
+}
+
+/* ItemHuntPopup de la 1.10: "Caza semanal" de Tokio con las cuatro semanas. La de ahora en grande con lo que se
+ * lleva; las pasadas con el tick si se completo o la X si no; las que faltan con "?" y cuantas pediran */
+static void draw_hunt_popup(void)
+{
+    char buf[48];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 400, h = 252, x = (SCR_W - w) * 0.5f, y = 10;
+    panel(x, y, w, h);
+    labc(1, SCR_W * 0.5f, y + 18, 26, C_NAVY, 1, 1, TR("Caza semanal", "Weekly Hunt"));
+    labc(0, SCR_W * 0.5f, y + 38, 15, 0xffb07a1eu, 1, 1, TR("Tokio", "Tokyo"));
+    static const char *const prize[5][2] = {{"", ""}, {"10 hoverboards", "10 Hoverboards"}, {"7 llaves", "7 Keys"},
+                                            {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Cherry", "Cherry Board"}};
+    int wk = game_hunt_week();
+    float ry = y + 52, rh = 46, gap = 4;
+    for (int i = 1; i <= 4; i++, ry += rh + gap) {
+        int have = game_hunt_items(i), goal = game_hunt_goal(i), cur = i == wk, done = have >= goal;
+        ui_sliced(a_ui, "whitebox", x + 12, ry, w - 24, rh, UIS, cur ? C_HUNT : C_HUNT_LIGHT);
+        float tx = x + w - 70;
+        snprintf(buf, sizeof(buf), TR("Semana %d", "Week %d"), i);
+        labc(1, tx, ry + 11, 17, cur ? 0xff7ff0ffu : C_WHITE, 2, 1, buf);
+        if (i > wk) {
+            labfit(0, tx, ry + 27, 15, w - 120, C_WHITE, 2, 1, TR("Aún no ha empezado", "Not started yet"));
+            snprintf(buf, sizeof(buf), TR("Busca %d muñecas", "Find %d dolls"), goal);
+            labc(0, tx, ry + 39, 13, C_HUNT, 2, 1, buf);
+        } else {
+            labfit(0, tx, ry + 27, 15, w - 120, C_WHITE, 2, 1, TR(prize[i][0], prize[i][1]));
+            snprintf(buf, sizeof(buf), "%d / %d", have, goal);
+            float pw = labw(0, 14, buf);
+            labc(0, tx - 14, ry + 39, 14, cur ? C_WHITE : C_HUNT, 2, 1, buf);
+            doll_icon(tx - 6, ry + 38, 14, C_WHITE);
+            (void)pw;
+        }
+        /* a la derecha: el circulo con el estado */
+        float cx = x + w - 38, cy = ry + rh * 0.5f;
+        spr_c("background_sticker_medium", cx, cy, 36, 36, cur ? 0xffe68cf8u : 0xfff0c8fau);
+        if (i < wk || (cur && done)) {
+            if (done) spr_c("icon_tick", cx, cy, 24, 18, 0xff4acc8cu);
+            else labc(1, cx, cy, 24, C_HUNT, 1, 1, "X");
+        } else if (i > wk) labc(1, cx, cy, 22, C_HUNT, 1, 1, "?");
+        else doll_icon(cx, cy, 26, C_WHITE);
+    }
+    labc(0, SCR_W * 0.5f, y + h - 8, 13, C_NAVY, 1, 1, TR("X / O: cerrar", "X / O: close"));
 }
 
 /* icono de la llave (ui_key, de la hoja de la 1.9) */

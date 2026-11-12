@@ -234,6 +234,8 @@ static int state = GS_MENU;
 static float state_time, start_time;
 static float currentSpeed, currentLevelSpeed = SPEED_MIN;
 static int isDead;
+static float revive_fade_t0 = -1;   /* AudioStateLoop.MusicFader al revivir (game_time al empezar; -1 nada) */
+static V3 die_pos;   /* posicion del personaje al morir (Save Me lo devuelve ahi) */
 #ifdef AT_NOTUT
 static int tutorial_completed = 1;   /* prueba automatica: sin tutorial */
 #else
@@ -501,6 +503,7 @@ int game_hunt_counter(int *have, int *goal)
 /* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (caza semanal) */
 int game_hunt_items(int w) { if (w < 1 || w > 4) return 0; hunt_active(); return hunt_items[w] < hunt_goal[w] ? hunt_items[w] : hunt_goal[w]; }
 int game_hunt_goal(int w) { return w >= 1 && w <= 4 ? hunt_goal[w] : 0; }
+int game_hunt_button(void) { return hunt_week_now() != 0; }
 int game_hunt_kind(void) { return hunt_run ? 2 : egg_hunt_run ? 1 : 0; }
 float game_hunt_time(void) { return hunt_elapsed; }
 static void hunt_picked(void)
@@ -2618,6 +2621,7 @@ static void game_start_run(void)
     daily_word_check();   /* palabra nueva si ha cambiado el dia */
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
+    revive_fade_t0 = -1;
     music_set_volume(0.3f);
     music_restart();
     guard_mute();
@@ -3092,6 +3096,7 @@ static void game_die(void)
     }
     if (track_running_tutorial && track_last_checkpoint(ch.z) >= 0) { back_to_checkpoint(); return; }
     clear_powerups();
+    die_pos = cc.pos;   /* para Save Me: donde estaba antes de que el tren o la caida lo movieran */
     isDead = 1;
     missions_did(M_TIMEDEATH, (int)(game_time - start_time));
     moving_autopilot(ch.z);
@@ -3122,7 +3127,14 @@ static void saveme_revive(void)
     if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");   /* AudioStateLoop.reviveSound de la 1.9 */
     if (sfx_revive >= 0) snd_play(sfx_revive, 1.0f, 1.0f, 0);
     else play_ci(&snd_powerup);
+    revive_fade_t0 = game_time;   /* PlayReviveSound: la musica baja (0,5 s), calla 1 s y vuelve a subir (2 s) */
     track_remove_obstacles(ch.z + 250.0f * normalized_speed());
+    /* Character.HandleRevive: StopAllCoroutines. Tras chocar con un tren en marcha el atropello (hbt) seguia
+     * moviendo al personaje cada fotograma: se quedaba clavado bajo el suelo, invisible, y la camara quieta. Se para
+     * y vuelve a su carril donde murio */
+    stop_all_char_coroutines();
+    char_set_pos(v3(track_get_x(ch.trackIndex), die_pos.y < 0 ? 0 : die_pos.y, die_pos.z));
+    ch.x = track_get_x(ch.trackIndex); ch.z = die_pos.z;
     /* Game.Revive */
     guard_mute();
     guard_reset_catch_up();
@@ -3754,7 +3766,10 @@ int board_is_season(int row)
 }
 int board_is_new(int row)
 {
-    return row >= BOARD_FIRST16 && row < gd_nboards && row < 32 && !board_is_season(row) && !(board_seen >> row & 1);
+    /* solo las que se ven en la tienda: las ocultas (de actualizaciones aun no jugadas) dejaban el globo de ME
+     * para siempre, porque no se puede llegar a ellas para verlas */
+    return row >= BOARD_FIRST16 && row < gd_nboards && row < 32 && !board_is_season(row) && !(board_seen >> row & 1) &&
+           board_avail(row);
 }
 int board_new_count(void) { int n = 0; for (int i = 0; i < gd_nboards; i++) n += board_is_new(i); return n; }
 /* GameOverScreen.CountUpCoins (1.5.2 y 1.6): 1,2 s quieto y luego las monedas pasan a los puntos (y a la hucha) en
@@ -4334,6 +4349,8 @@ void game_input(unsigned in)
         else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_DAILY; }
         else if (in & IN_START) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; ginfo.settings_sel = 0; }
         else if ((in & IN_CIRCLE) && game_board_guideline()) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_BOARDS; }
+        /* GuidelineButton itemHunt de la 1.10: la muneca de la portada abre la ventana de la caza semanal */
+        else if ((in & IN_LEFT) && !(in & IN_CROSS) && game_hunt_button()) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_HUNT; }
         else if (confirm) { snd_play(sfx_tap, 1, 1, 0); game_start_run(); }
         else if (in & IN_R) { snd_play(sfx_tap, 1, 1, 0); open_shop(); }
         else if (in & IN_L) { snd_play(sfx_tap, 1, 1, 0); open_chars(); }
@@ -4500,6 +4517,16 @@ void game_update(float dt)
     }
     DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
+    if (revive_fade_t0 >= 0 && state != GS_RUNNING && state != GS_JETPACK) revive_fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
+    if (revive_fade_t0 >= 0) {
+        /* MusicFader(reviveFadeUpTime 2, revivePauseTime 1) con fadeDownTime 0,5 y menuMusicVolume 0,3 */
+        float e = game_time - revive_fade_t0, v;
+        if (e < 0.5f) v = 0.3f * (1.0f - e / 0.5f);
+        else if (e < 1.5f) v = 0;
+        else if (e < 3.5f) v = 0.3f * (e - 1.5f) / 2.0f;
+        else { v = 0.3f; revive_fade_t0 = -1; }
+        music_set_volume(v);
+    }
     update_powerup_times(dt);
     /* corrutinas del personaje */
     track_change_tick();

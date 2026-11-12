@@ -558,6 +558,10 @@ int main(int argc, char **argv)
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no > 60 && frame_no < 60 + 32 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
         if (frame_no == 60 + 32 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
+#elif defined(AT_HUNTPOPUP)
+        /* prueba: cierra los avisos de Tokio y de las llaves y abre la caza semanal con la flecha izquierda */
+        if (frame_no == 30 || frame_no == 50) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 80) pr |= PSP_CTRL_LEFT;
 #elif defined(AT_KEYBOX)
         /* prueba: en la tienda, una caja que da la llave de la primera caja (el icono en el aviso) */
         if (frame_no == 30) pr |= PSP_CTRL_CROSS;      /* cierra el aviso de las llaves */
