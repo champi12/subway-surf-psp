@@ -591,6 +591,10 @@ int main(int argc, char **argv)
         /* salta la escena del inspector a los ~0,55 s (antes de que acabe), como quien pulsa X enseguida */
         { static int dn; dn = (ginfo.state == GS_DIEFALL || ginfo.state == GS_DIE) ? dn + 1 : 0; if (dn == 17) pr |= PSP_CTRL_CROSS; }
 #endif
+#ifdef AT_KEYS
+        /* Save Me (1.9): X al segundo de abrirse la ventana para revivir con llaves */
+        { static int dk; dk = (ginfo.state == GS_DIE || ginfo.state == GS_DIEFALL) ? dk + 1 : 0; if (dk == 45) pr |= PSP_CTRL_CROSS; }
+#endif
 #ifdef AT_BOOSTER
         if (ginfo.state == GS_RUNNING && frame_no % 30 == 0) pr |= PSP_CTRL_LTRIGGER;   /* prueba: Score Booster */
 #endif

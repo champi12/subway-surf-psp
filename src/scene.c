@@ -1103,6 +1103,9 @@ void track_deactivate_all(void)
 {
     lay_finish();
     for (int i = 0; i < track_nactive; i++) chunk_deactivate(track_active[i]);
+    /* ya no estan en la via: si no, track_restart los volvia a desactivar todos (otros ~20 ms al volver a jugar
+     * tras una carrera larga) */
+    track_nactive = 0;
 }
 
 /* fin de carrera: el escenario no se dibuja (la libreta tapa todo), asi que se esconden ahi, unos pocos por fotograma,
@@ -1110,13 +1113,18 @@ void track_deactivate_all(void)
  * empezar la siguiente). Devuelve cuantos quedan por esconder */
 int track_hide_used_step(int max)
 {
-    int left = 0;
+    /* max: microsegundos de CPU por fotograma. Primero se quitan de la via los tramos que estaban en ella (lo que
+     * hacia de golpe el menu al pulsar PLAY) y luego se esconden los usados en la carrera */
+    unsigned int t0 = sceKernelGetSystemTimeLow();
+    if (track_nactive > 0) lay_finish();
+    while (track_nactive > 0 && sceKernelGetSystemTimeLow() - t0 < (unsigned)max)
+        chunk_deactivate(track_active[--track_nactive]);
+    int left = track_nactive;
     for (int i = 0; i < nchunks; i++) {
         if (nrt[chunks[i].node].lpos.y == -1000.0f) continue;
-        if (max <= 0) { left++; continue; }
+        if (sceKernelGetSystemTimeLow() - t0 >= (unsigned)max) { left++; continue; }
         nrt[chunks[i].node].lpos.y = -1000.0f;
         scene_update_world(chunks[i].node);
-        max--;
     }
     return left;
 }

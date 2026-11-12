@@ -36,7 +36,7 @@ extern float track_spacing;
 extern int track_tutorial, track_running_tutorial;
 void track_init(void);
 void track_restart(void);
-int track_hide_used_step(int max);   /* fin de carrera: esconde unos pocos tramos usados; devuelve los que quedan */
+int track_hide_used_step(int max_us);   /* fin de carrera: quita y esconde tramos durante max_us; devuelve los que quedan */
 void track_lay_chunks(float charZ, float ahead, int jetpack);
 float track_lay_jetpack_chunks(float charZ, float flyLength);
 void track_deactivate_all(void);

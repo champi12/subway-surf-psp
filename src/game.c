@@ -441,6 +441,17 @@ int game_eggs(void) { return eggs < EGGS_MAX ? eggs : EGGS_MAX; }
 int game_eggs_max(void) { return EGGS_MAX; }
 int game_egg_counter(void) { return egg_hunt_run; }
 float game_level_speed(void) { return currentLevelSpeed; }
+
+/* Save Me de la 1.9 (SaveMeManager, Revive): llaves que se cogen en la via o salen en las cajas y sirven para seguir
+ * la carrera tras chocar (1 llave, luego 2, 4...). En el original solo se activaba en algunos paises desde su servidor
+ * y tras ver el aviso de las llaves (ShowKeysPopup); aqui, de momento, solo en el mapa de Sidney */
+static int keys, keys_popup_shown, keys_first_mb, keys_first_smb;
+static int saveme_cost = 1;           /* SaveMeManager._numberOfUsedKeysInCurrentRun */
+static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (-1: cerrada) */
+static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
+int game_saveme_on(void) { extern int game_world; return game_world == 19 && keys_popup_shown; }
+int game_keys(void) { return keys; }
+int game_saveme_cost(void) { return saveme_cost; }
 static int save_pending;
 static void egg_picked(void)
 {
@@ -1437,7 +1448,11 @@ static void on_char_enter(const Col *c)
         }
         return;
     }
-    if (impactX == 1) {
+    /* Character.OnCharacterColliderEnter de la 1.9: de frente (en el medio, o de lado sin estar cambiando de carril)
+     * solo se choca si el golpe es por delante (ImpactZ.Before); si no, no pasa nada. Hasta la 1.8 chocaba siempre
+     * en el medio, aunque se le tocara de lado o por detras */
+    if (impactX == 1 || ch.trackMovement == 0) {
+        if (impactZ != 0) return;
         int crit = 1;
         if (!ch.immune) {
             if (impactY == 2) {
@@ -1866,6 +1881,15 @@ static void notify_pickup(int node)
         score_missions(score_multiplier() * 50, 0);
         missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
+        break;
+    case PK_KEY:
+        /* SaveMeTokenPickup.OnPickup: una llave (AddSaveMeTokenToUnlock) y las particulas de los power-ups */
+        keys++;
+        powerup_picked(-1);
+        play_ci(&snd_powerup);
+        hud_slide(TR("¡Una llave!", "A Key!"), TR("Sirve para Save Me", "Use it to Save Me"));
+        dlog("LLAVE cogida (%d)", keys);
+        save_pending = 1;
         break;
     case PK_EGG:
         /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp y las particulas de los power-ups */
@@ -2337,6 +2361,15 @@ static void sydney_popup_check(void)
     ginfo.popup = POPUP_SYDNEY;
     game_save();
 }
+/* ShowKeysPopup de la 1.9: la primera vez en el mapa de Sidney se explican las llaves; desde entonces Save Me va */
+static void keys_popup_check(void)
+{
+    extern int game_world;
+    if (game_world != 19 || keys_popup_shown || ginfo.popup) return;
+    keys_popup_shown = 1;
+    ginfo.popup = POPUP_KEYS;
+    game_save();
+}
 static void ny_popup_check(void)
 {
     /* con el mapa de Rio de pruebas (WORLD17) no: decia "Bienvenido a Nueva York" corriendo por Rio */
@@ -2459,6 +2492,10 @@ static void game_start_run(void)
     { static int once; if (!once) { once = 1; egg_year = season_year(); eggs = 96; } }   /* prueba: casi completa */
 #endif
     egg_hunt_run = egg_hunt_active();   /* IngameScreen.Show: el contador de huevos solo si la busqueda sigue */
+    saveme_cost = 1; saveme_t0 = -1; saveme_done = 0;   /* SaveMeManager.ResetSaveMeForNewRun */
+#ifdef AT_KEYS
+    { static int once; if (!once) { once = 1; keys = AT_KEYS; } }   /* prueba: llaves para Save Me */
+#endif
     spawn_restart();
 #if DEVLOG
     unsigned int rt1 = sceKernelGetSystemTimeLow();
@@ -2917,6 +2954,46 @@ static void game_die(void)
 }
 
 
+/* Revive.ReviveNow + Game.Revive de la 1.9: fuera los obstaculos de delante (250 por la velocidad), el inspector se
+ * reinicia lejos y escondido, sin power-ups, y el personaje sale de un salto (altura 15) */
+static int sfx_revive = -2;
+float game_saveme_left(void) { return saveme_t0 < 0 ? -1.0f : 3.0f - (game_time - saveme_t0); }
+static void saveme_revive(void)
+{
+    keys -= saveme_cost;
+    if (keys < 0) keys = 0;
+    dlog("SAVE ME: revive por %d llave%s (quedan %d) a %d m", saveme_cost, saveme_cost > 1 ? "s" : "", keys, ginfo.meters);
+    saveme_cost *= 2;   /* SaveMeManager.IncrementNumberOfUsedKeys */
+    saveme_t0 = -1;
+    if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");   /* AudioStateLoop.reviveSound de la 1.9 */
+    if (sfx_revive >= 0) snd_play(sfx_revive, 1.0f, 1.0f, 0);
+    else play_ci(&snd_powerup);
+    track_remove_obstacles(ch.z + 250.0f * normalized_speed());
+    /* Game.Revive */
+    guard_mute();
+    guard_reset_catch_up();
+    stumble_set(0);
+    guard_restart(0);
+    mods_stop_no_ending();
+    clear_powerups();
+    gu.catching = 0; gu.hit_train = 0;
+    gu.enabled = 1;
+    guard_show(0);   /* FollowingGuard.HandleReviveJump: escondidos hasta el siguiente tropiezo */
+    isDead = 0;
+    nrt[n_colChar].active = 1;
+    cc.detect = 1;
+    in_left = in_right = in_up = in_down = in_board = 0;
+    change_state(GS_RUNNING);
+    ginfo.state = GS_RUNNING;
+    /* OnReviveJump: salto alto */
+    ch.jumping = 1; ch.falling = 0; ch.rolling = 0;
+    ch.verticalSpeed = jump_vs(15.0f);
+    SetRunAnim();
+    anim_play(&anim_char, an.jump);
+    anim_crossfade_queued(&anim_char, an.run, 0.1f);
+    game_save_bg();
+}
+
 static void die_tick(float dt)
 {
     if (state == GS_DIEFALL) {
@@ -2927,7 +3004,26 @@ static void die_tick(float dt)
     if (state == GS_DIE) {
         float e = game_time - state_time;
         if (e < 0.5f) return;
-        if (e < 2.0f && !in_up) return;
+        if (game_saveme_on() && !saveme_done) {
+            /* Game.DieSequence de la 1.9: a los 0,5 s la ventana de Save Me (SaveMePopup), 3 s con el reloj. X revive si
+             * hay llaves; O o el tiempo, fin de partida */
+            if (saveme_t0 < 0) { saveme_t0 = game_time; in_up = 0; }
+            if (in_up) {
+                in_up = 0;
+                if (keys >= saveme_cost) { saveme_done = 0; saveme_revive(); return; }
+                /* sin llaves suficientes el original abria la compra de llaves; aqui solo se avisa */
+                snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+                char b[40];
+                snprintf(b, sizeof(b), TR("Tienes %d de %d", "You have %d of %d"), keys, saveme_cost);
+                hud_slide(TR("Faltan llaves", "Not enough Keys"), b);
+            }
+            if (game_time - saveme_t0 < 3.2f && !ginfo.saveme_skip) return;
+            saveme_done = 1;
+            saveme_t0 = -1;
+            ginfo.saveme_skip = 0;
+        } else {
+            if (e < 2.0f && !in_up) return;
+        }
         in_up = 0;
         /* fin de la partida: puntuacion final = puntos + monedas*2*multiplicador */
         lane_time_flush();
@@ -3775,7 +3871,7 @@ int shop_amount(int i)
  * version portada): sin el headstart pequeno, con el Score Booster y algo mas de fichas, hoverboards y Mega Headstart.
  * Las tres primeras cajas normales dan 1000 monedas, una ficha de Tricky y 3 hoverboards. Random.Range con enteros no
  * incluye el maximo */
-enum { LT_TOKEN, LT_TROPHY, LT_COINS, LT_HOVER, LT_HS500, LT_HS2000, LT_BOOSTER };
+enum { LT_TOKEN, LT_TROPHY, LT_COINS, LT_HOVER, LT_HS500, LT_HS2000, LT_BOOSTER, LT_KEYS };
 typedef struct { int type; float weight; int min, max; } Loot;
 static const Loot loot_normal[] = {
     {LT_TOKEN, 43, 1, 1}, {LT_TROPHY, 2, 1, 1}, {LT_COINS, 20, 200, 300}, {LT_COINS, 10.65f, 500, 500},
@@ -3791,10 +3887,29 @@ static const Loot loot_super[] = {
     {LT_COINS, 0.3f, 50000, 50000}, {LT_COINS, 0.1f, 300000, 300000},
 };
 
+/* las de la 1.9 con Save Me activo (_lootTables con llaves); sin el, las de arriba (iguales en la 1.9) */
+static const Loot loot_normal_keys[] = {
+    {LT_TOKEN, 43, 1, 1}, {LT_TROPHY, 2, 1, 1}, {LT_COINS, 20, 200, 300}, {LT_COINS, 8.67f, 500, 500},
+    {LT_HOVER, 8.8f, 2, 2}, {LT_COINS, 6, 1000, 1000}, {LT_COINS, 2, 1500, 1500}, {LT_HOVER, 1, 3, 9},
+    {LT_KEYS, 1, 1, 1}, {LT_HS2000, 3.7f, 1, 1}, {LT_COINS, 1, 2500, 2500}, {LT_BOOSTER, 2, 1, 1},
+    {LT_HOVER, 0.2f, 10, 10}, {LT_COINS, 0.3f, 5000, 5000}, {LT_HS2000, 0.2f, 2, 2}, {LT_HS2000, 0.1f, 3, 3},
+    {LT_COINS, 0.03f, 100000, 100000},
+};
+static const Loot loot_super_keys[] = {
+    {LT_TOKEN, 36, 3, 3}, {LT_HS2000, 3.5f, 1, 1}, {LT_COINS, 14.5f, 1500, 1500}, {LT_HOVER, 8.8f, 4, 8},
+    {LT_COINS, 10, 2000, 2000}, {LT_COINS, 7, 3000, 3000}, {LT_BOOSTER, 3, 1, 1}, {LT_KEYS, 3.5f, 1, 1},
+    {LT_KEYS, 1, 2, 2}, {LT_HS2000, 2, 2, 2}, {LT_HOVER, 0.8f, 10, 20}, {LT_COINS, 2, 5000, 5000},
+    {LT_KEYS, 0.5f, 3, 3}, {LT_HS2000, 1.5f, 3, 3}, {LT_BOOSTER, 2, 2, 2}, {LT_COINS, 1, 8000, 8000},
+    {LT_BOOSTER, 1, 3, 3}, {LT_HS2000, 1, 5, 5}, {LT_HOVER, 0.4f, 40, 40}, {LT_COINS, 0.4f, 50000, 50000},
+    {LT_COINS, 0.1f, 300000, 300000},
+};
+
 static const Loot *loot_roll(int super)
 {
-    const Loot *t = super ? loot_super : loot_normal;
-    int n = super ? (int)(sizeof(loot_super) / sizeof(Loot)) : (int)(sizeof(loot_normal) / sizeof(Loot));
+    int k = game_saveme_on();
+    const Loot *t = super ? (k ? loot_super_keys : loot_super) : (k ? loot_normal_keys : loot_normal);
+    int n = super ? (k ? (int)(sizeof(loot_super_keys) / sizeof(Loot)) : (int)(sizeof(loot_super) / sizeof(Loot)))
+                  : (k ? (int)(sizeof(loot_normal_keys) / sizeof(Loot)) : (int)(sizeof(loot_normal) / sizeof(Loot)));
     float tot = 0, acc = 0;
     for (int i = 0; i < n; i++) tot += t[i].weight;
     float r = rnd01() * tot;
@@ -3836,13 +3951,16 @@ static void mystery_open_type(int super)
     }
     if (super) { if (ginfo.sboxes_pending <= 0) return; ginfo.sboxes_pending--; ginfo.sboxes_opened++; }
     else { if (ginfo.boxes_pending <= 0) return; ginfo.boxes_pending--; ginfo.boxes_opened++; }
-    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1, bst = 0;
+    int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1, bst = 0, ky = 0;
     Loot first = {LT_COINS, 0, 0, 0};
     const Loot *l = &first;
     if (!super && ginfo.boxes_opened == 1) first.min = 1000;
     else if (!super && ginfo.boxes_opened == 2) { first.type = LT_TOKEN; first.min = 1; tc = 1; }   /* Tricky */
     else if (!super && ginfo.boxes_opened == 3) { first.type = LT_HOVER; first.min = 3; }
     else if (!super && rio_box_booster()) { first.type = LT_BOOSTER; first.min = 1; }
+    /* MysteryBox.Roll de la 1.9: con Save Me, la primera caja (tras las tres primeras) y la primera super dan una llave */
+    else if (!super && game_saveme_on() && !keys_first_mb) { first.type = LT_KEYS; first.min = 1; keys_first_mb = 1; }
+    else if (super && game_saveme_on() && !keys_first_smb) { first.type = LT_KEYS; first.min = 1; keys_first_smb = 1; }
     else l = loot_roll(super);
     int amount = l->max > l->min ? rnd_range(l->min, l->max) : l->min;
     switch (l->type) {
@@ -3851,6 +3969,7 @@ static void mystery_open_type(int super)
     case LT_HS500: h5 = amount; break;
     case LT_HS2000: h20 = amount; break;
     case LT_BOOSTER: bst = amount; break;
+    case LT_KEYS: ky = amount; break;
     case LT_TROPHY:
         trophy = trophy_roll();
         if (trophy < 0) coins = 500;          /* TROPHY_CONSOLATION_REWARD */
@@ -3870,6 +3989,7 @@ static void mystery_open_type(int super)
     }
     ginfo.total_coins += coins; ginfo.hoverboards += hb; ginfo.hs500 += h5; ginfo.hs2000 += h20; ginfo.tokens += tok;
     ginfo.boosters += bst;
+    keys += ky;
     if (coins) missions_did(M_EARNCOIN, coins);
     if (tok) missions_did(M_TOKENS, tok);
     if (trophy >= 0) {
@@ -3881,12 +4001,14 @@ static void mystery_open_type(int super)
     else if (hb) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d hoverboard%s", hb, hb > 1 ? "s" : "");
     else if (h5) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 250", h5);
     else if (bst) snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Score Booster", bst);
+    else if (ky) snprintf(ginfo.reward, sizeof(ginfo.reward), TR("%d llave%s", "%d Key%s"), ky, ky > 1 ? "s" : "");
     else snprintf(ginfo.reward, sizeof(ginfo.reward), "%d Headstart 1000", h20);
     /* el objeto que sale de la caja (MysteryBoxRewardLabelTemplate): un sprite del atlas de la interfaz, que ya esta
      * cargado; nada de memoria aparte */
     ginfo.reward_icon = trophy >= 0 ? trophies[trophy].sprite : tok ? chars[tc].tok_sprite :
                         coins ? (coins >= 1000 ? "Icon_coin_pouch_larger" : "icon_coin_large") :
                         hb ? "icon_upgrades_hoverboard" : h5 ? "icon_upgrades_headstart500" : bst ? "ui_booster" :
+                        ky ? "ui_key" :
                         "icon_upgrades_headstart2000";
     ginfo.reward_super = super;
     ginfo.reward_trophy = trophy >= 0;
@@ -4093,6 +4215,7 @@ void game_input(unsigned in)
         break;
     case GS_DIE:
         if (in & (IN_UP | IN_CROSS)) in_up = 1;
+        if ((in & IN_CIRCLE) && saveme_t0 >= 0) ginfo.saveme_skip = 1;   /* SaveMeCancelButton */
         break;
     case GS_INTRO:
     case GS_CHECKPOINT:
@@ -4127,7 +4250,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); keys_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -4171,9 +4294,10 @@ void game_update(float dt)
         } else if (raw >= 1 && counting) { counting = 0; snd_play(snd_coin.sfx, 0.3f, 2.0f, 0); }
         else if (raw <= 0) counting = 0;
     }
-        /* el escenario ya no se ve: se van escondiendo los tramos de la carrera (2 por fotograma, ~4 ms) mientras se
-         * mira el marcador, para que PLAY no tenga que hacerlo de golpe */
-        if (game_time - state_time > 0.3f) track_hide_used_step(2);
+        /* el escenario ya no se ve: se van quitando y escondiendo los tramos de la carrera (6 ms por fotograma, que
+         * sobran: en el fin de carrera la CPU va a ~4 ms) mientras se mira el marcador, para que PLAY no tenga que
+         * hacerlo de golpe (tras una carrera larga eran ~45 ms: un tiron al empezar la siguiente) */
+        if (game_time - state_time > 0.3f) track_hide_used_step(6000);
         break;
     default: break;
     }
@@ -4565,7 +4689,8 @@ static int save_fill(unsigned char *buf)
     /* de la 1.8: huevos de Pascua (y su ano, y la caja de la busqueda) y el ano del aviso de Roma */
     int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year,
                  (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year,
-                 ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16, sydney_popup_year};
+                 ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16, sydney_popup_year,
+                 (keys & 0xffff) | keys_popup_shown << 16 | keys_first_mb << 17 | keys_first_smb << 18 | 1 << 30};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
@@ -4652,6 +4777,10 @@ void game_load(void)
     ginfo.boosters = ne2 >= 1 && (e2[0] >> 30 & 1) ? e2[0] & 0xffff : 3;
     if (ne2 >= 3) rio_popup_year = e2[2];
     if (ne2 >= 7) sydney_popup_year = e2[6];
+    if (ne2 >= 8 && (e2[7] >> 30 & 1)) {
+        keys = e2[7] & 0xffff; keys_popup_shown = (e2[7] >> 16) & 1;
+        keys_first_mb = (e2[7] >> 17) & 1; keys_first_smb = (e2[7] >> 18) & 1;
+    }
     if (ne2 >= 6) { mb_booster_at = (e2[5] & 0xffff) - 1; mb_first_booster = (e2[5] >> 16) & 1; }
     if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }

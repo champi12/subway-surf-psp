@@ -12,13 +12,15 @@ typedef struct { float prob, dist_min, spawn_z; int field; } PickupType;
  * spawnProbability / minimumMeters de Upgrades.cs de la 1.9 (de la 1.4 a la 1.8: 2x 32, iman 32, zapatillas 22 y
  * caja 20; el port usaba los de la 1.0). Las letras van aparte: SpawnPointManager.CheckLetterSpawnRate */
 #define LETTER_PROB 1.5e9f
-static PickupType pk[6] = {
+#define NPK 7
+static PickupType pk[NPK] = {
     {LETTER_PROB, 0.0f, 0, 0},                 /* letras: spawnDistanceMin queda en 0 (bug del original) */
     {29.0f, 0.0f * DISTANCE_PER_METER, 0, 1},  /* 2x */
     {14.0f, 1000.0f * DISTANCE_PER_METER, 0, 2},/* jetpack: minimumMeters 1000 */
     {26.0f, 0.0f, 0, 3},                       /* super zapatillas */
     {29.0f, 0.0f, 0, 4},                       /* iman */
-    {12.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
+    {12.0f, 99999.0f * DISTANCE_PER_METER, 0, 5},/* caja misteriosa */
+    {0.0f, 0.0f, 0, 6}                         /* llave (1.9): 2 con Save Me (getKeySpawnProbability), si no 0 */
 };
 static float spawn_z, spawn_spacing;
 /* SpawnPointEgg.lastSpawn (static, a 0 en ResetSpawn al empezar cada carrera) */
@@ -38,7 +40,7 @@ void spawn_restart(void)
     spawn_z = 40.0f * DISTANCE_PER_METER;
     spawn_spacing = 50.0f * DISTANCE_PER_METER;
 #endif
-    for (int i = 0; i < 6; i++) pk[i].spawn_z = -FLT_MAX;
+    for (int i = 0; i < NPK; i++) pk[i].spawn_z = -FLT_MAX;
     egg_last = 0;
 }
 
@@ -71,19 +73,29 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
 
 void spawn_perform_selection(int sp, int *visit, int *nv, int max)
 {
-    const uint32_t *c = node_comp(sp, C_SPAWNPOINT, NULL);
+    int nw = 0;
+    const uint32_t *c = node_comp(sp, C_SPAWNPOINT, &nw);
     if (!c) return;
     float z = node_pos(sp).z;
+    /* la llave solo en los puntos que la traen (mapa de la 1.9) y con Save Me activo */
+#ifdef AT_KEYSHOW
+    pk[6].prob = nw >= 7 ? 500.0f : 0.0f;   /* prueba: casi siempre llave */
+#else
+    pk[6].prob = nw >= 7 && game_saveme_on() ? 2.0f : 0.0f;
+#endif
     int chosen = -1;
 #if !defined(AT_LETTERS) && !defined(AT_PKTEST)
     /* CheckLetterSpawnRate (1.4 en adelante): mientras quede alguna letra de la palabra del dia por coger, sale letra
      * en cada punto que toque (probabilidad 1.5e9 frente a las ~120 del resto); con la palabra completa, ninguna */
     pk[0].prob = game_letter_pending() ? LETTER_PROB : 0.0f;
 #endif
+#ifdef AT_KEYSHOW
+    pk[0].prob = 0;   /* prueba de las llaves: sin letras */
+#endif
     if (z > spawn_z) {
-        int list[6], n = 0;
-        float acc[6], tot = 0;
-        for (int i = 0; i < 6; i++)
+        int list[NPK], n = 0;
+        float acc[NPK], tot = 0;
+        for (int i = 0; i < NPK; i++)
             if (pk[i].spawn_z < z) { list[n] = i; tot += pk[i].prob; acc[n] = tot; n++; }
         if (n > 0) {
             float r = rnd_rangef(0, tot);
@@ -96,7 +108,7 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
             spawn_z = z + spawn_spacing;
         }
     }
-    for (int k = 0; k < 6; k++) {
+    for (int k = 0; k < NPK && k < nw; k++) {
         int g = (int)c[k];
         if (g < 0) continue;
         if (k == chosen) { if (*nv < max) visit[(*nv)++] = g; }

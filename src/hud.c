@@ -851,6 +851,7 @@ static void draw_boards_popup(void);
 static void draw_ny_popup(void);
 static void draw_rio_popup(void);
 static void draw_rome_popup(void);
+static void draw_keys_popup(void);
 static void draw_sydney_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
@@ -926,6 +927,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_RIO) draw_rio_popup();
         if (ginfo.popup == POPUP_ROME) draw_rome_popup();
         if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
+        if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -947,6 +949,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_RIO) draw_rio_popup();
     if (ginfo.popup == POPUP_ROME) draw_rome_popup();
     if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
+    if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -1136,6 +1139,73 @@ static void draw_sydney_popup(void)
     ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
     labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* icono de la llave (ui_key, de la hoja de la 1.9) */
+static void key_icon(float cx, float cy, float s)
+{
+    static int tk = -2;
+    if (tk == -2) tk = data_tex_find("ui_key");
+    if (tk >= 0) r_sprite(tk, cx - s * 0.5f, cy - s * 0.5f, s, s, 0, 0, 1, 1, C_WHITE);
+    else r_rect(cx - s * 0.3f, cy - s * 0.3f, s * 0.6f, s * 0.6f, 0xff20c0ffu);
+}
+
+/* ShowKeysPopup de la 1.9 ("Want a second chance?"): la primera vez en el mapa de Sidney */
+static void draw_keys_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_KEY = 0xffd88a1eu;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_KEY);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_KEY);
+    labc(1, bx, by - U(32), 22, C_WHITE, 1, 1, TR("¿Quieres otra", "Want a second"));
+    labfit(1, bx, by - U(4), 22, U(150), C_WHITE, 1, 1, TR("oportunidad?", "chance?"));
+    key_icon(bx, by + U(34), U(36));
+    static const char *const lines[3][4] = {
+        {"¡Los accidentes pasan!", "Accidents happen!", "Pulsa Save Me para seguir corriendo", "Hit 'Save Me' to continue your run!"},
+        {"Sigue con las llaves", "Get another go with Keys", "¡El inspector sigue detrás de ti!", "The Inspector is still on your trail!"},
+        {"Busca llaves por el camino", "Find Keys along the way", "¡O en las cajas misteriosas!", "Or in Mystery Boxes!"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* SaveMePopup de la 1.9: al chocar, 3 s con el reloj vaciandose; el boton dice cuantas llaves cuesta y arriba las que
+ * se tienen (el contador de llaves de la ventana) */
+static void draw_saveme(void)
+{
+    char buf[32];
+    float left = game_saveme_left(), f = left / 3.0f;
+    if (f < 0) f = 0;
+    if (f > 1) f = 1;
+    r_rect(0, 0, SCR_W, SCR_H, 0x60000000);
+    float cx = SCR_W * 0.5f, cy = 120;
+    panel(cx - 120, cy - 70, 240, 150);
+    labc(1, cx, cy - 46, 26, C_SCORE, 1, 1, "Save Me!");
+    /* reloj: barra que se vacia (SaveMeAnimateClock) */
+    float bw = 180, bx = cx - bw * 0.5f, by = cy - 22;
+    r_rect(bx, by, bw, 10, 0xffd8f3fbu);
+    r_rect(bx, by, bw * f, 10, f > 0.33f ? 0xff00cff5u : 0xff3030e0u);
+    /* boton: X y el precio en llaves */
+    ui_sliced(a_ui, "button_green_buy", cx - U(90), cy - 2, U(180), U(42), UIS, C_WHITE);
+    snprintf(buf, sizeof(buf), "X  %d", game_saveme_cost());
+    float tw = labw(1, 22, buf);
+    labc(1, cx - 12, cy + 19, 22, C_WHITE, 1, 1, buf);
+    key_icon(cx - 12 + tw * 0.5f + 16, cy + 19, 26);
+    /* llaves que se tienen y O para no usarlas */
+    snprintf(buf, sizeof(buf), TR("Tienes %d", "You have %d"), game_keys());
+    labc(0, cx - 10, cy + 56, 15, C_NAVY, 1, 1, buf);
+    key_icon(cx + labw(0, 15, buf) * 0.5f, cy + 56, 18);
+    labc(0, cx, cy + 74, 13, C_NAVY, 1, 1, TR("O: terminar", "O: end run"));
 }
 
 /* HalloweenThemePopup: "Happy Halloween Everyone!" la primera vez de cada temporada */
@@ -1462,13 +1532,13 @@ static int a_rewards = -2, rewards_loaded;
 /* w < 0: dado la vuelta (el reves del premio mientras gira) */
 static void reward_spr(const char *name, const char *fallback, float cx, float cy, float k, float wk, unsigned int col)
 {
-    if (!strcmp(name, "ui_booster") || !strcmp(name, "ui_egg")) {
+    if (!strcmp(name, "ui_booster") || !strcmp(name, "ui_egg") || !strcmp(name, "ui_key")) {
         /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7); el huevo de la caja de la busqueda de
-         * huevos (1.8), igual */
-        static int tbb = -2, tbe = -2;
-        int egg = name[3] == 'e';
-        if (egg ? tbe == -2 : tbb == -2) { if (egg) tbe = data_tex_find("ui_egg"); else tbb = data_tex_find("ui_booster"); }
-        int tb = egg ? tbe : tbb;
+         * huevos (1.8) y la llave (1.9), igual */
+        static int tbb = -2, tbe = -2, tbk = -2;
+        int *tp = name[3] == 'e' ? &tbe : name[3] == 'k' ? &tbk : &tbb;
+        if (*tp == -2) *tp = data_tex_find(name);
+        int tb = *tp;
         float w = 70 * k * (wk < 0 ? -wk : wk), hh = 70 * k;
         if (tb >= 0) { r_sprite(tb, (int)(cx - w * 0.5f), (int)(cy - hh * 0.5f), w, hh, 0, 0, 1, 1, col); return; }
         name = fallback = "icon_upgrades_doubleScore";
@@ -1639,6 +1709,14 @@ static void draw_gameover(void)
     coin_box_value = (int)lroundf(ginfo.total_coins - c0 + c0 * cf);
     coin_box(SCR_W - 8, 15);
     coin_box_value = -1;
+    /* GameOverScreen de la 1.9: con Save Me, las llaves que se tienen junto a las monedas */
+    if (game_saveme_on()) {
+        snprintf(buf, sizeof(buf), "%d", game_keys());
+        float kw = labw(0, 18, buf) + 30;
+        ui_sliced(a_ui, "background_ingame_beatThis", SCR_W - 8 - kw, 32, kw, 22, UIS * 0.7f, BOX_COL);
+        key_icon(SCR_W - 8 - kw + 12, 43, 18);
+        labc(0, SCR_W - 8 - (kw - 22) * 0.5f, 43, 18, C_WHITE, 1, 1, buf);
+    }
     /* PrizeListPopup: debajo del marcador (arriba tapaba el titulo "Puntos") */
     if (!ginfo.boxes_pending && !ginfo.sboxes_pending && !ginfo.reward[0])
         labc(0, 350, 172, 13, C_NAVY, 1, 1, TR("Cuadrado: premios", "Square: prizes"));
@@ -2043,6 +2121,7 @@ void hud_draw(void)
     default:
         if (ginfo.paused && ginfo.countdown <= 0) draw_pause();
         else draw_ingame();
+        if (game_saveme_left() >= 0) draw_saveme();
         break;
     }
     if (ginfo.popup == POPUP_SETTINGS) draw_settings_popup();

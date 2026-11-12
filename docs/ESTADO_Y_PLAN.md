@@ -187,7 +187,15 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Probabilidades de los power-ups de la 1.9 (2x 29, imán 29, zapatillas 26, jetpack 14, caja 12). La 1.9 no tiene
    búsqueda de huevos (la nuestra solo va en Roma). Medido en el emulador (120 s, misma semilla): 1.5.2 312 llamadas
    de media y 17084 triángulos; Nueva York 311 / 19157; Río 340 / 19008; Roma 219 / 18349; Sídney 226 / 18059. Save
-   Me (llaves): pendiente, de momento solo para el mapa de Sídney.
+   Me (llaves), de momento solo en el mapa de Sídney: la primera vez sale el aviso de las llaves (ShowKeysPopup) y
+   desde entonces las llaves salen en la vía (probabilidad 2) y en las cajas (tablas de premios de la 1.9 con llaves;
+   la primera caja y la primera super dan una). Al chocar, 3 s para revivir con X (1 llave, luego 2, 4...; vuelve a 1
+   cada carrera) u O para terminar; al revivir se quitan los obstáculos de delante (250 por la velocidad), el
+   inspector se va y el personaje sale de un salto, con el sonido de la 1.9. Sin llaves suficientes solo avisa (el
+   original abría la compra). Las llaves se ven en la ventana y en el fin de carrera. También de la 1.9, en todos los
+   mapas: de frente solo se choca si el golpe es por delante (antes chocaba aunque se tocara de lado o por detrás).
+   Volver a jugar tras una carrera larga: la vía se vacía durante el fin de carrera (6 ms por fotograma) y no dos
+   veces seguidas al pulsar JUGAR (era el tirón de ~50-67 ms de la intro).
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

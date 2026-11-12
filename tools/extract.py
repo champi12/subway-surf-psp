@@ -52,7 +52,8 @@ TAG_IDS = {'Untagged': 0, 'Player': 1, 'HitMovingTrain': 2, 'JumpTrain': 3, 'Dod
            'JumpHighBarrier': 12, 'MainCamera': 13}
 
 PICKUP_KIND = {'Coin': 0, 'CoinMagnetPickup': 1, 'SuperSneakersPickup': 2, 'JetpackPickup': 3,
-               'DoubleScoreMultiplierPickup': 4, 'MysteryBoxPickup': 5, 'DailyLetterPickup': 6, 'EasterEggPickup': 7}
+               'DoubleScoreMultiplierPickup': 4, 'MysteryBoxPickup': 5, 'DailyLetterPickup': 6, 'EasterEggPickup': 7,
+               'SaveMeTokenPickup': 8}
 
 BLEND_OPAQUE, BLEND_ALPHA, BLEND_ADD, BLEND_MUL, BLEND_ADDALPHA = range(5)
 
@@ -313,6 +314,8 @@ class Exporter:
                 elif cl == 'SpawnPoint':
                     ks = ['dailyLetter', 'doubleScoreMultiplier', 'jetpackPickup', 'jumpBooster', 'magnetBooster',
                           'mysteryBox']
+                    if 'saveMeToken' in f:   # la 1.9: la llave (Save Me)
+                        ks.append('saveMeToken')
                     out.append((C_SPAWNPOINT, [self.ref(o, f[k_]) & 0xffffffff for k_ in ks]))
                     if go.get('egg_child'):      # huevo de Pascua anadido (inject_eggs): el ultimo hijo
                         out.append((C_SPAWNEGG, [n['children'][-1]]))
@@ -1913,6 +1916,16 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
             if ic is not None:
                 ex.textures.append(('generada', 'ui_booster', ic.resize((32, 32), Image.LANCZOS), True))
                 print('  icono del Score Booster de la 1.7: %dx%d' % ic.size)
+        # la llave de la 1.9 (Save Me, de momento solo en el mapa de Sidney): su icono de la hoja normal
+        sc19_ = getattr(ex, 'sc19', None)
+        if sc19_ is not None and getattr(ex, 'level_sc', None) is sc19_:
+            ic = sprite_from_raw_atlas(sc19_, 'icon_key', small=True)
+            if ic is not None:
+                w_, h_ = ic.size
+                sq = Image.new('RGBA', (max(w_, h_),) * 2, (0, 0, 0, 0))
+                sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
+                ex.textures.append(('generada', 'ui_key', sq.resize((32, 32), Image.LANCZOS), True))
+                print('  icono de la llave de la 1.9: %dx%d' % (w_, h_))
         # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
         sc18_ = getattr(ex, 'sc18', None) or getattr(ex, 'sc19', None)
         if sc18_ is not None:
@@ -2770,6 +2783,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     ex.sc17 = sc17   # y de la 1.7 (Carmen)
     ex.sc18 = sc18   # y de la 1.8 (Roberto)
     ex.sc19 = sc19   # y de la 1.9 (Kim)
+    ex.level_sc = level_sc
     trees = []
     for r in sc.roots('level0'):
         go = sc.go_tree(r)
@@ -2837,6 +2851,19 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                     o = msc.resolve_ptr(c['obj'], v)
                     if o is not None and o.type.name == 'AudioClip':
                         ex.audio_id(o)
+    # Save Me de la 1.9 (mapa de Sidney): el sonido de revivir (AudioStateLoop.reviveSound de su escena)
+    if sc19 is not None and level_sc is sc19:
+        for r in sc19.roots('level0'):
+            st = [sc19.go_tree(r)]
+            while st:
+                g = st.pop()
+                st += g['children']
+                for c in g['comps']:
+                    if c.get('class') == 'AudioStateLoop' and c.get('fields') and c['fields'].get('reviveSound'):
+                        o = sc19.resolve_ptr(c['obj'], c['fields']['reviveSound'])
+                        if o is not None:
+                            ex.audio_id(o)
+                            print('  sonido de revivir (Save Me): %s' % o.read(check_read=False).m_Name)
     # el resto de clips de audio del juego (por si acaso)
     for o in sc.env.objects:
         if o.type.name == 'AudioClip':
