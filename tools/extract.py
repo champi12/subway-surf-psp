@@ -234,7 +234,7 @@ class Exporter:
 
     def hunt_slots(self, n, o, f):
         out = []
-        for kind in ('egg', 'doll'):
+        for kind in ('egg', 'doll', 'miami'):
             v = n['go']['hunt'].get(kind)
             if v == 'native':
                 out.append(self.ref(o, f['easterEgg']) & 0xffffffff)
@@ -647,6 +647,9 @@ def export_meshes(ex):
                 body += b'\0\0'
             if skin:
                 bw, bi = h.m_BoneWeights, h.m_BoneIndices
+                rm_ = getattr(ex, 'bone_remap', {}).get(id(mo))
+                if rm_ is not None:
+                    bi = [[rm_[0][int(x)] for x in b] for b in bi]
                 for i in order:
                     body += struct.pack('<4f4B', *[float(x) for x in bw[i]], *[int(x) for x in bi[i]])
             for cell, uvq in (LOD_LEVELS if nlod else ()):
@@ -660,6 +663,11 @@ def export_meshes(ex):
             bp = d.m_BindPose
             # lotes para el skinning por hardware del GE (como mucho 8 huesos por lote)
             bw, bi = h.m_BoneWeights, h.m_BoneIndices
+            rm = getattr(ex, 'bone_remap', {}).get(id(mo))
+            if rm is not None:
+                # accesorio de un traje (1.11): sus huesos al orden del esqueleto del personaje y las poses de ese
+                bmap, bp = rm
+                bi = [[bmap[int(x)] for x in b] for b in bi]
             batches = []
             # Antes se cortaba un lote cada vez que el siguiente triangulo (en el orden de la malla) pasaba de 8 huesos:
             # el perro salia en 35 lotes y el inspector en 21 (cada lote es un dibujo y sus matrices). Ahora se juntan
@@ -1870,7 +1878,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
         prev = char_previews(sc14)
         for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7'),
                          (getattr(ex, 'sc18', None), '1.8'), (getattr(ex, 'sc19', None), '1.9'),
-                         (getattr(ex, 'sc110', None), '1.10')):
+                         (getattr(ex, 'sc110', None), '1.10'), (getattr(ex, 'sc111', None), '1.11')):
             if not prev or scx is None:
                 continue
             # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
@@ -1943,7 +1951,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 print('  icono del Score Booster para la tienda, con el fondo de rayos')
         # la llave de la 1.9 (Save Me, de momento solo en el mapa de Sidney): su icono de la hoja normal
         sc19_ = getattr(ex, 'level_sc', None)
-        if sc19_ is not None and sc19_ in (getattr(ex, 'sc19', None), getattr(ex, 'sc110', None)):
+        if sc19_ is not None and sc19_ in (getattr(ex, 'sc19', None), getattr(ex, 'sc110', None), getattr(ex, 'sc111', None)):
             ic = sprite_from_raw_atlas(sc19_, 'icon_key', small=True)
             if ic is not None:
                 w_, h_ = ic.size
@@ -1961,6 +1969,28 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
                 ex.textures.append(('generada', 'ui_doll', sq.resize((32, 32), Image.LANCZOS), True))
                 print('  icono de la muneca de la caza semanal: %dx%d' % (w_, h_))
+        # 1.11: icono del objeto de la caza de Miami, fondo de sus cajas y la celebracion de los desbloqueos
+        sc111_ = getattr(ex, 'sc111', None)
+        if sc111_ is not None:
+            ic = sprite_from_raw_atlas(sc111_, 'icon_hunt_item_big', small=True)
+            if ic is not None:
+                w_, h_ = ic.size
+                sq = Image.new('RGBA', (max(w_, h_),) * 2, (0, 0, 0, 0))
+                sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
+                ex.textures.append(('generada', 'ui_hunt111', sq.resize((32, 32), Image.LANCZOS), True))
+                print('  icono del objeto de la caza de Miami: %dx%d' % (w_, h_))
+            tb = find_texture(sc111_, 'mysterybox_bg_miami')
+            if tb is not None:
+                ex.textures.append(('generada', 'ui_mbox_miami', tb.convert('RGB').resize((128, 8), Image.LANCZOS)))
+            ts = find_texture(sc111_, 'tokyo_stripe')
+            if ts is not None and getattr(ex, 'sc110', None) is None:
+                ex.textures.append(('generada', 'ui_stripe', ts.convert('RGBA').resize((16, 256), Image.LANCZOS), True))
+            cb = find_texture(sc111_, 'celebration_background')
+            cs = find_texture(sc111_, 'celebration_stripe')
+            if cb is not None and cs is not None:
+                ex.textures.append(('generada', 'ui_celeb_bg', cb.convert('RGB').resize((64, 8), Image.NEAREST)))
+                ex.textures.append(('generada', 'ui_celeb_stripe', cs.convert('RGBA').resize((256, 16), Image.LANCZOS), True))
+                print('  fondo de Miami de las cajas de la caza y la celebracion de los desbloqueos')
         # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
         sc18_ = getattr(ex, 'sc18', None) or getattr(ex, 'sc19', None)
         if sc18_ is not None:
@@ -2246,6 +2276,9 @@ BOARDS_19 = BOARDS_18 + [(17, 'Outback', 50000, 7, 0), (18, 'Great White', 20000
 # la 1.10: Cherry (19, "Item Hunt": unlock 9, premio de la cuarta semana de la caza semanal; "price" son munecas) y
 # Kitty (20, "Fortune": 50000, "Tokyo Special", unlock 8)
 BOARDS_110 = BOARDS_19 + [(19, 'Cherry', 60, 9, 0), (20, 'Kitty', 50000, 8, 0)]
+# la 1.11: Hotrod (21, 280000 siempre; tabla de velocidad con la suya propia: effect 4) y Flamingo (22,
+# "miaminewboard": 50000, "Miami Special", unlock 10)
+BOARDS_111 = BOARDS_110 + [(21, 'Hotrod', 280000, 2, 4), (22, 'Flamingo', 50000, 10, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2358,7 +2391,10 @@ def export_boards(sc15, ex, clip_names10, table=None):
 def export_extras_only(outdir, hq, extra):
     """Sin la 1.4: chars14.bin (mallas que se leen al usarlas) y hw_tex.bin (texturas nuevas) solo con lo de la 1.5.2."""
     from types import SimpleNamespace
-    cbin, cstats = export_meshes(SimpleNamespace(meshes=extra.meshes, mesh_world=[False] * len(extra.meshes)))
+    xn = getattr(extra, 'names', {})
+    cbin, cstats = export_meshes(SimpleNamespace(meshes=extra.meshes, mesh_world=[False] * len(extra.meshes),
+                                                 mesh_names=[xn.get(id(m_), m_.read(check_read=False).m_Name) for m_ in extra.meshes],
+                                                 bone_remap=getattr(extra, 'bone_remap', {})))
     with open(os.path.join(outdir, 'chars14.bin'), 'wb') as f:
         f.write(cbin)
     tbin = export_textures(SimpleNamespace(textures=extra.gen), hq=hq)
@@ -2487,7 +2523,10 @@ def export_halloween(sc, outdir, ex, hq, extra=None):
     if extra is not None:
         cmeshes = cmeshes + extra.meshes
         gen = gen + extra.gen
-    cm = SimpleNamespace(meshes=cmeshes, mesh_world=[False] * len(cmeshes))
+    xn = getattr(extra, 'names', {}) if extra is not None else {}
+    cm = SimpleNamespace(meshes=cmeshes, mesh_world=[False] * len(cmeshes),
+                         mesh_names=[xn.get(id(m_), m_.read(check_read=False).m_Name) for m_ in cmeshes],
+                         bone_remap=getattr(extra, 'bone_remap', {}) if extra is not None else {})
     cbin, cstats = export_meshes(cm)
     with open(os.path.join(outdir, 'chars14.bin'), 'wb') as f:
         f.write(cbin)
@@ -2666,7 +2705,7 @@ def inject_hunts(ex, trees, level_sc, scs):
     if level_sc is not None:
         nt = egg_template(level_sc)
         if nt is not None:
-            native = 'doll' if level_sc is scs.get('doll') else 'egg'
+            native = 'miami' if level_sc is scs.get('miami') else 'doll' if level_sc is scs.get('doll') else 'egg'
     cnt = 0
     for t in trees:
         if t['name'] != 'Level':
@@ -2684,7 +2723,7 @@ def inject_hunts(ex, trees, level_sc, scs):
                 if native is not None and 'SpawnPointEgg' not in cls:
                     continue
                 hunt = {}
-                for kind in ('egg', 'doll'):
+                for kind in ('egg', 'doll', 'miami'):
                     if 'SpawnPointEgg' in cls and kind == native:
                         hunt[kind] = 'native'
                         continue
@@ -2704,7 +2743,8 @@ def inject_hunts(ex, trees, level_sc, scs):
     for kind, (tp, _) in tpls.items():
         if kind != native:
             egg_materials(ex, tp, (64, 128) if kind == 'egg' else (128, 256))
-    print('  cazas por fecha: %s en %d puntos' % (', '.join('huevo' if k == 'egg' else 'muneca' for k in tpls), cnt))
+    print('  cazas por fecha: %s en %d puntos' % (', '.join({'egg': 'huevo', 'doll': 'muneca', 'miami': 'objeto de Miami'}[k]
+                                                         for k in tpls), cnt))
 
 
 def egg_materials(ex, tpl, maxsz=(64, 128)):
@@ -2847,14 +2887,15 @@ def swap_guard16(ex, sc16):
 
 
 def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None,
-               sc19=None, sc110=None):
+               sc19=None, sc110=None, sc111=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
     scl = [sc] + ([level_sc] if level_sc is not sc else []) + \
         ([sc18] if sc18 is not None and sc18 is not level_sc else []) + \
-        ([sc110] if sc110 is not None and sc110 is not level_sc and sc110 is not sc18 else [])
+        ([sc110] if sc110 is not None and sc110 is not level_sc and sc110 is not sc18 else []) + \
+        ([sc111] if sc111 is not None and sc111 is not level_sc else [])
     eggsrc = sc18 or sc19
     msc = scl[0] if len(scl) == 1 else MultiScene(scl)
     ex = Exporter(msc)
@@ -2863,6 +2904,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     ex.sc18 = sc18   # y de la 1.8 (Roberto)
     ex.sc19 = sc19   # y de la 1.9 (Kim)
     ex.sc110 = sc110 # y de la 1.10 (Harumi, la muneca de la caza semanal)
+    ex.sc111 = sc111 # y de la 1.11 (Nick, Hotrod, Flamingo, la caza de Miami, los trajes)
     ex.level_sc = level_sc
     trees = []
     for r in sc.roots('level0'):
@@ -2901,9 +2943,9 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         add_jetpack_clips(ex, sc18 or sc19 or sc110)
     # busqueda de huevos de la 1.8 (por fecha, en todos los mapas): el de Roma ya trae sus SpawnPointEgg
     # (la 1.8, la 1.9 y la 1.10 traen sus propios puntos; a los demas mapas se les anaden en los de power-ups)
-    if eggsrc is not None or sc110 is not None:
-        native = level_sc if level_sc in (sc18, sc19, sc110) and level_sc is not sc else None
-        inject_hunts(ex, trees, native, {'egg': eggsrc, 'doll': sc110})
+    if eggsrc is not None or sc110 is not None or sc111 is not None:
+        native = level_sc if level_sc in (sc18, sc19, sc110, sc111) and level_sc is not sc else None
+        inject_hunts(ex, trees, native, {'egg': eggsrc, 'doll': sc110, 'miami': sc111})
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -2933,7 +2975,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                     if o is not None and o.type.name == 'AudioClip':
                         ex.audio_id(o)
     # Save Me de la 1.9 (mapa de Sidney): el sonido de revivir (AudioStateLoop.reviveSound de su escena)
-    scr = level_sc if level_sc is not sc and level_sc in (sc19, sc110) else None
+    scr = level_sc if level_sc is not sc and level_sc in (sc19, sc110, sc111) else None
     if scr is not None:
         for r in scr.roots('level0'):
             st = [scr.go_tree(r)]
@@ -2961,8 +3003,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         # con la 1.7 (en pruebas) las tablas salen de ella: trae las de la 1.6 y Daredevil
         # con la 1.8 salen de ella: trae las 14 anteriores, Chicky, Scoot y Kick-Off
         # con la 1.9, de ella: trae las 17 anteriores, Outback y Great White
-        bsrc = sc110 or sc19 or sc18 or sc17 or sc16 or sc15
-        boards = export_boards(bsrc, ex, names10, BOARDS_110 if sc110 is not None else
+        bsrc = sc111 or sc110 or sc19 or sc18 or sc17 or sc16 or sc15
+        boards = export_boards(bsrc, ex, names10, BOARDS_111 if sc111 is not None else BOARDS_110 if sc110 is not None else
                                BOARDS_19 if sc19 is not None else BOARDS_18 if sc18 is not None
                                else BOARDS_17 if sc17 is not None else BOARDS_16 if sc16 is not None else BOARDS_15)
         # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special") y Carmen (la 1.7: 95000, "Rio Special"):
@@ -2979,8 +3021,11 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         if sc19 is not None or sc110 is not None:
             extra_chars.append((sc19 or sc110, 'kim', 'avatar_kim', '1.9'))
         # Harumi (la 1.10: 95000, "Tokyo Special")
-        if sc110 is not None:
-            extra_chars.append((sc110, 'harumi', 'avatar_harumi', '1.10'))
+        if sc110 is not None or sc111 is not None:
+            extra_chars.append((sc110 or sc111, 'harumi', 'avatar_harumi', '1.10'))
+        # Nick (la 1.11: 95000, "Miami Special")
+        if sc111 is not None:
+            extra_chars.append((sc111, 'nick', 'avatar_nick', '1.11'))
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':
@@ -3124,6 +3169,7 @@ def main():
         return None
     apk14, apk15, apk16 = opt('--apk14', '--halloween'), opt('--apk15', '--world'), opt('--apk16')
     apk17, apk18, apk19, apk110 = opt('--apk17'), opt('--apk18'), opt('--apk19'), opt('--apk110')
+    apk111 = opt('--apk111')
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
@@ -3158,13 +3204,17 @@ def main():
     if apk110:
         print('Descomprimiendo el APK de la 1.10...')
         sc110 = Scene(unpack_apk(apk110))
+    sc111 = None
+    if apk111:
+        print('Descomprimiendo el APK de la 1.11...')
+        sc111 = Scene(unpack_apk(apk111))
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
@@ -3172,7 +3222,7 @@ def main():
     w16 = os.path.join(outdir, 'w16')
     if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
         print('== Mapa de la 1.6 (data/w16/, en pruebas)')
-        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110)
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
     # mapa de la 1.7 (data/w17/, EN PRUEBAS: Rio de Janeiro, se juega con WORLD17=1). Mismo trazado que el de la 1.6;
@@ -3182,7 +3232,7 @@ def main():
         print('== Mapa de la 1.7 (data/w17/, en pruebas)')
         # la interfaz (libreta, ME, SHOP, manchas...) de la 1.5.2: la de la 1.7 es de Unity 4 y no se lee entera
         export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17,
-                   sc18=sc18, sc19=sc19, sc110=sc110)
+                   sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w17):
         shutil.rmtree(w17, True)
     # mapa de la 1.8 (data/w18/: Roma, del 28 de febrero al 3 de abril; WORLD18=1 lo deja siempre). Mismo trazado;
@@ -3191,7 +3241,7 @@ def main():
     if sc18 is not None:
         print('== Mapa de la 1.8 (data/w18/)')
         export_set(sc, sc18, sc14, w18, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc18,
-                   sc17=sc17 or sc18, sc18=sc18, sc19=sc19, sc110=sc110)
+                   sc17=sc17 or sc18, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w18):
         shutil.rmtree(w18, True)
     # mapa de la 1.9 (data/w19/: Sidney, del 4 de abril al 1 de mayo; WORLD19=1 lo deja siempre). Mismo trazado; su
@@ -3200,7 +3250,7 @@ def main():
     if sc19 is not None:
         print('== Mapa de la 1.9 (data/w19/)')
         export_set(sc, sc19, sc14, w19, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc19,
-                   sc17=sc17 or sc19, sc18=sc18, sc19=sc19, sc110=sc110)
+                   sc17=sc17 or sc19, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w19):
         shutil.rmtree(w19, True)
     # mapa de la 1.10 (data/w110/: Tokio, del 2 al 29 de mayo; WORLD110=1 lo deja siempre)
@@ -3208,9 +3258,18 @@ def main():
     if sc110 is not None:
         print('== Mapa de la 1.10 (data/w110/)')
         export_set(sc, sc110, sc14, w110, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc110,
-                   sc17=sc17 or sc110, sc18=sc18, sc19=sc19, sc110=sc110)
+                   sc17=sc17 or sc110, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w110):
         shutil.rmtree(w110, True)
+    # mapa de la 1.11 (data/w111/: Miami, del 30 de mayo al 27 de junio; WORLD111=1 lo deja siempre). Sin mipmaps,
+    # con su inspector y su perro; trae sus puntos de caza (el objeto de Miami)
+    w111 = os.path.join(outdir, 'w111')
+    if sc111 is not None:
+        print('== Mapa de la 1.11 (data/w111/)')
+        export_set(sc, sc111, sc14, w111, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc111,
+                   sc17=sc17 or sc111, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
+    elif os.path.isdir(w111):
+        shutil.rmtree(w111, True)
     print('Listo.')
 
 

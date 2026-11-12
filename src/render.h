@@ -70,6 +70,7 @@ extern unsigned int r_clear_color;   /* ABGR; color de fondo (solo asoma por las
 void r_begin_2d(void);
 void r_sprite(int tex, float x, float y, float w, float h, float u0, float v0, float u1, float v1, unsigned int abgr);
 void r_background(int tex);   /* fondo a pantalla completa antes del 3D */
+void r_sprite_rot(int tex, float cx, float cy, float w, float h, float ang, unsigned int abgr);
 void r_rect(float x, float y, float w, float h, unsigned int abgr);
 void r_sprites(int tex, const float *quads, int n, unsigned int abgr);   /* n x (x, y, w, h, u0, v0, u1, v1) */
 void r_bind_texture(int tex);

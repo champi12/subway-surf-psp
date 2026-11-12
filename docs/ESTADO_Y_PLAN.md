@@ -211,6 +211,14 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Tablas no de temporada de cada actualización (Miami, Monster, Skull Fire, Daredevil, Lumberjack, Scoot, Great
    White...): aparecen después de jugar una vez durante la temporada de su actualización y desde entonces se quedan
    en la partida guardada y en la tienda. Las de temporada solo en su fecha (salvo compradas); las de la 1.5.2 siempre.
+4i. 1.11 (Miami): su mapa en data/w111 (`--apk111`) del 30 de mayo al 27 de junio (`WORLD111=1` lo deja siempre),
+   sin mipmaps, con su inspector y su perro. Medido (120 s): 194 llamadas de media (249 máx.), ~13.200 triángulos
+   (15.500 máx.), CPU 4 ms, 30 FPS fijos. Nick (95000, "Especial de Miami"), Flamingo (50000, de temporada) y Hotrod
+   (280000; tabla de velocidad con la suya propia, 135-230; sale tras jugar en la temporada de Miami y se queda). Save
+   Me también en Miami. Caza semanal de Miami (su objeto, 33 puntos propios): 30 may-5 jun 40 → 6 Score Boosters,
+   6-12 jun 25 → 5 Headstart 1000, 13-19 jun 60 → 10 llaves, 20-27 jun 30 → súper caja; fondo de Miami en sus cajas.
+   Jackpot de las cajas (100.000 / 300.000) con su cartel. Celebración (fondo de colores con rayas) al desbloquear un
+   personaje. Los trajes de la 1.11 (Jake y Tricky) no se hacen. chars14.bin admite hasta 48 mallas (eran 32).
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los
@@ -232,6 +240,7 @@ Antes de añadir nada, comparar con la versión anterior y decir si se puede pas
   tienda y mejoras, probabilidades de aparición, Save Me / llaves, cazas y eventos por fecha.
 * **Detalles de interfaz:** botones de la portada, ventanas, contadores e iconos (tienda, fin de partida, cajas).
 * Pantalla de carga de la ciudad y sus avisos de temporada.
+* Personajes: cuántos trajes ("usos") tiene cada uno en esa versión.
 * Botones de la consola: que no se repitan entre ventanas (O = tablas de regalo, flecha izquierda = caza de la
   temporada, START = ajustes, triángulo = misiones, cuadrado = reto diario, L/R = personajes/tienda).
 

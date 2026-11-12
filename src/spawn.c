@@ -56,7 +56,7 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
     int nw = 0;
     const uint32_t *c = node_comp(node, C_SPAWNEGG, &nw);
     if (!c) return;
-    int ge = (int)c[0], gdl = nw >= 2 ? (int)c[1] : -1;   /* [huevo, muneca] */
+    int ge = (int)c[0], gd2 = nw >= 2 ? (int)c[1] : -1, gd3 = nw >= 3 ? (int)c[2] : -1;   /* [huevo, muneca, Miami] */
     int kind = game_hunt_kind();
     int put_egg = 0, put_doll = 0;
     if (kind == 1 && ge >= 0) {
@@ -76,7 +76,10 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
             dlog("HUEVO sale en z=%.0f", z);
 #endif
         }
-    } else if (kind == 2 && gdl >= 0 && chosen < 0) {
+    }
+    /* caza semanal: la muneca de Tokio (1.10) o el objeto de Miami (1.11), con la misma regla */
+    int gdl = kind == 3 ? gd3 : gd2;
+    if (kind >= 2 && gdl >= 0 && chosen < 0) {
         /* SpawnPointEgg.PerformSelection de la 1.10: nunca antes de 5 s desde la anterior, seguro pasados 240 s y si no
          * un 4 % en cada punto */
         float t = game_hunt_time();
@@ -91,7 +94,8 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
         if (flag) { put_doll = 1; doll_last = t; }
     }
     if (ge >= 0) { if (put_egg) { if (*nv < max) visit[(*nv)++] = ge; } else scene_set_active_recursive(ge, 0); }
-    if (gdl >= 0) { if (put_doll) { if (*nv < max) visit[(*nv)++] = gdl; } else scene_set_active_recursive(gdl, 0); }
+    if (gd2 >= 0) { if (put_doll && gdl == gd2) { if (*nv < max) visit[(*nv)++] = gd2; } else scene_set_active_recursive(gd2, 0); }
+    if (gd3 >= 0) { if (put_doll && gdl == gd3) { if (*nv < max) visit[(*nv)++] = gd3; } else scene_set_active_recursive(gd3, 0); }
 }
 
 void spawn_perform_selection(int sp, int *visit, int *nv, int max)

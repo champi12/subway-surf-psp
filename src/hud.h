@@ -20,4 +20,5 @@ void hud_loading(float progress);   /* pantalla de carga (un fotograma) */
 /* page: 1 resumen, 2 memoria y VRAM, 3 grafica de tiempos */
 void perf_draw(int page, float cpu_ms, float gpu_ms, float fps);
 
+void hud_celebrate(void);   /* pantalla de personajes: celebracion de un desbloqueo (1.11) */
 #endif

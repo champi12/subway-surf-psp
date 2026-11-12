@@ -1922,6 +1922,27 @@ void r_sprites(int tex, const float *q, int n, unsigned int abgr)
     sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, n * 2, 0, v);
 }
 
+/* sprite girado: rectangulo de w x h centrado en (cx, cy) y girado ang radianes (dos triangulos en 2D) */
+void r_sprite_rot(int tex, float cx, float cy, float w, float h, float ang, unsigned int abgr)
+{
+    if (list_full(1024)) return;
+    r_bind_texture(tex);
+    float tw = 1, th = 1;
+    if (tex >= 0) { tw = gd.tex[tex].w; th = gd.tex[tex].h; }
+    float c = cosf(ang), sn = sinf(ang);
+    const float px[4] = {-0.5f, 0.5f, 0.5f, -0.5f}, py[4] = {-0.5f, -0.5f, 0.5f, 0.5f};
+    const float pu[4] = {0, 1, 1, 0}, pv[4] = {0, 0, 1, 1};
+    static const int ord[6] = {0, 1, 2, 0, 2, 3};
+    SV *v = (SV *)sceGuGetMemory(6 * sizeof(SV));
+    for (int i = 0; i < 6; i++) {
+        int k = ord[i];
+        float x = px[k] * w, y = py[k] * h;
+        v[i].u = pu[k] * tw; v[i].v = pv[k] * th; v[i].c = abgr;
+        v[i].x = cx + x * c - y * sn; v[i].y = cy + x * sn + y * c; v[i].z = 0;
+    }
+    sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, 6, 0, v);
+}
+
 void r_rect(float x, float y, float w, float h, unsigned int abgr)
 {
     if (list_full(1024)) return;

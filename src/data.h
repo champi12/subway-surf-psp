@@ -147,7 +147,7 @@ int data_tex_find(const char *name);
 
 /* tablas de la 1.5.2 (boards.bin): acciones en el orden de HoverboardRendering */
 enum { BA_RUN, BA_LAND, BA_JUMP, BA_HANG, BA_ROLL, BA_LEFT, BA_RIGHT, BA_GRIND, BA_GRINDLAND, BA_GETON, BOARD_NACT };
-enum { BOARD_ALWAYS, BOARD_FREE, BOARD_COINS, BOARD_SEASON, BOARD_SEASON_RIO, BOARD_SEASON_ROME, BOARD_EGGS, BOARD_SEASON_SYDNEY, BOARD_SEASON_TOKYO, BOARD_HUNT };   /* SEASON: de monedas, solo en su temporada (Nueva York / Rio) */
+enum { BOARD_ALWAYS, BOARD_FREE, BOARD_COINS, BOARD_SEASON, BOARD_SEASON_RIO, BOARD_SEASON_ROME, BOARD_EGGS, BOARD_SEASON_SYDNEY, BOARD_SEASON_TOKYO, BOARD_HUNT, BOARD_SEASON_MIAMI };   /* SEASON: de monedas, solo en su temporada (Nueva York / Rio) */
 enum { BOARD_FX_NONE, BOARD_FX_SUPERJUMP, BOARD_FX_LOW };
 #define BOARD_MAX_CLIPS 32
 typedef struct {
