@@ -70,7 +70,7 @@ static int find_parent_collider(int n)
 static int is_selector(int n)
 {
     return node_comp(n, C_RANDOMIZER, NULL) || node_comp(n, C_RANDTARGET, NULL) || node_comp(n, C_SPAWNPOINT, NULL) ||
-           node_comp(n, C_RANDHOLD, NULL);
+           node_comp(n, C_RANDHOLD, NULL) || node_comp(n, C_SPAWNEGG, NULL);
 }
 
 static int is_group(int n) { return node_comp(n, C_GROUP, NULL) || node_comp(n, C_SSGROUP, NULL); }
@@ -510,7 +510,7 @@ void scene_pickup_diag(V3 ch, int (*overlaps)(int col_node))
         }
     }
 }
-#ifdef AT_PKTEST
+#if defined(AT_PKTEST) || defined(AT_EGGS)
 int scene_pickup_ahead(float z, V3 *out)
 {
     float best = 1e9f;
@@ -860,6 +860,10 @@ static void perform_selection(int n, int *visit, int *nv)
     const uint32_t *c;
     if (node_comp(n, C_SPAWNPOINT, NULL)) {
         spawn_perform_selection(n, visit, nv, MAXV);
+        return;
+    }
+    if (node_comp(n, C_SPAWNEGG, NULL)) {   /* SpawnPointEgg de la 1.8 (mapa de Roma) */
+        spawn_egg_selection(n, -1, visit, nv, MAXV);
         return;
     }
     if ((c = node_comp(n, C_RANDHOLD, NULL))) {

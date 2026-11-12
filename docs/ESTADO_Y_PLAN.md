@@ -156,6 +156,16 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    aviso de bienvenida de Río y las animaciones nuevas del inspector y el perro (esquivar y rodar) en todos los
    mapas, y las tablas de premios de las cajas de la 1.7 (con el Score Booster). Volver del modo reposo ya no
    congela la consola (se reabren los archivos de la Memory Stick).
+4c. 1.8 (Roma): su mapa en data/w18 (`--apk18`) del 28 de febrero al 3 de abril (tras Río; `WORLD18=1` lo deja
+   siempre), con su inspector. Por fecha y en todos los mapas: Roberto (95000), Kick-Off (50000), Scoot (35000) y la
+   búsqueda de huevos de Pascua (EggHuntManager): sale un huevo como mucho cada 80 s de carrera (en Roma en sus
+   SpawnPointEgg; en los demás mapas en los puntos de power-ups donde no ha salido ninguno), contador "N/100" en la
+   carrera y con 100 se gana Chicky (y su caja al acabar). Los huevos son de la temporada: cada año se empieza de
+   cero. El huevo de los demás mapas lleva solo su trozo de textura (64x128), no la hoja de la 1.8 entera. También en
+   todos los mapas: el inspector rueda solo al pasar el personaje por debajo de una barrera (OnRollGuard de la 1.8)
+   y las animaciones del jetpack de la 1.8 (al cambiar de carril gira, BarrelRoll, o se inclina, changeLane, al
+   azar; ~80 KB). La 1.8 quita la regla de la 1.7 del Score Booster seguro en la cuarta caja (el port ya iba así).
+   Coste por mapa ~110 KB de datos; 30 FPS en el clásico, el de la 1.5.2 y el de Roma.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 

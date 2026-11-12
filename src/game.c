@@ -386,13 +386,68 @@ static int hb_used, hb_runs, hb_should, hb_shown, hb_fixed;   /* hb_fixed: parti
 static void hb_run_completed(void);
 /* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
 int rio_season(void);
+int rome_season(void);
 static int board_avail(int i)
 {
     if (i < 0 || i >= gd_nboards) return 0;
     int u = gd_boards[i].unlock;
     if (board_has(i)) return 1;
-    return u == BOARD_SEASON ? ny_season() : u == BOARD_SEASON_RIO ? rio_season() : 1;
+    return u == BOARD_SEASON ? ny_season() : u == BOARD_SEASON_RIO ? rio_season() :
+           u == BOARD_SEASON_ROME || u == BOARD_EGGS ? rome_season() : 1;
 }
+/* EggHuntManager de la 1.8: durante la temporada de Roma salen huevos de Pascua (en cualquier mapa); con 100 se gana
+ * Chicky (la tabla de unlock eggHunt, cuyo "precio" es el numero de huevos) y una caja de la busqueda. Los huevos son
+ * de la temporada (amountOfSeasonalEggs): cada ano se empieza de cero */
+#define EGGS_MAX 100
+static int console_date(ScePspDateTime *t);
+static int eggs, egg_year, egg_box;   /* huevos; ano (- 2000) de esos huevos; caja de la busqueda por abrir */
+static int egg_hunt_run;              /* ShouldSpawnEggs al empezar la carrera: contador en pantalla y huevos */
+static int chick_row(void)
+{
+    for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_EGGS) return i;
+    return -1;
+}
+static int season_year(void)
+{
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (console_date(&t) >= 0) y = t.year - 2000;
+#endif
+    return y;
+}
+/* EggHuntManager.ShouldSpawnEggs: temporada, menos de 100 y sin Chicky */
+static int egg_hunt_active(void)
+{
+    int r = chick_row();
+    if (r < 0 || !rome_season() || board_has(r)) return 0;
+    int y = season_year();
+    if (egg_year != y) { egg_year = y; eggs = 0; }
+    return eggs < EGGS_MAX;
+}
+int egg_should_spawn(void) { return egg_hunt_run; }
+int game_eggs(void) { return eggs < EGGS_MAX ? eggs : EGGS_MAX; }
+int game_eggs_max(void) { return EGGS_MAX; }
+int game_egg_counter(void) { return egg_hunt_run; }
+float game_level_speed(void) { return currentLevelSpeed; }
+static int save_pending;
+static void egg_picked(void)
+{
+    /* EggHuntManager.EggPickedUp: con el ultimo se desbloquea Chicky, se pone en cola la caja de la busqueda y sale
+     * el aviso "Egg Hunt complete" */
+    eggs++;
+    dlog("HUEVO de Pascua %d/%d", eggs, EGGS_MAX);
+    int r = chick_row();
+    if (eggs >= EGGS_MAX && r >= 0 && !board_has(r)) {
+        board_owned |= 1 << r;
+        egg_box = 1;
+        ginfo.sboxes_pending++;   /* se abre con las cajas, al acabar la carrera (la primera) */
+        egg_hunt_run = 0;
+        hud_slide(TR("¡Búsqueda de huevos completada!", "Egg Hunt complete!"), gd_boards[r].name);
+    }
+    save_pending = 1;
+}
+
 static const BoardDef *board_def(void) { return board_applied >= 0 && board_applied < gd_nboards ? &gd_boards[board_applied] : NULL; }
 /* lista de animaciones de una accion: la de la tabla o, si no trae ninguna (Superhero, Starboard), la de la normal */
 static const BoardDef *board_anim_src(int i)
@@ -930,6 +985,21 @@ static void track_change_update(float t)
 
 static void notify_stumble(const ClipInfo *snd, const char *name);
 
+/* CharacterRendering.jetpackAnimations de la 1.8: volando, Jetpack_forward o Jetpack_forward_2, y al cambiar de carril
+ * un giro (BarrelRoll) o inclinarse (changeLane), al azar cada vez (GetRandomAnimationName). Hasta la 1.7 todo era
+ * jetpack_forward. Si los datos no traen las de la 1.8, como antes */
+static int jet18;
+static const char *jet_run(void)
+{
+    if (!jet18) return "jetpack_forward";
+    return rnd_i(2) ? "Jetpack_forward_2" : "Jetpack_forward";
+}
+static const char *jet_dodge(int left)
+{
+    if (left) return rnd_i(2) ? "Jetpack_changeLane_left" : "Jetpack_BarrelRoll_left";
+    return rnd_i(2) ? "Jackpack_changeLane_Right" : "Jetpack_BarrelRoll_right";
+}
+
 static void change_track_start(int move, float duration)
 {
     ch.trackMovement = move;
@@ -939,6 +1009,12 @@ static void change_track_start(int move, float duration)
     float dir = signf((float)(newIdx - ch.trackIndexTarget));
     if (cc.grounded) {
         const char *da = dir < 0 ? an.dodgeLeft : an.dodgeRight;
+        if (state == GS_JETPACK && jet18) {
+            da = jet_dodge(dir < 0); an.run = jet_run();
+#ifdef AUTOTEST
+            dlog("JETPACK cambio de carril: %s", da);
+#endif
+        }
         AnimState *s;
         if ((s = anim_get(&anim_char, "dodgeRight"))) s->speed = normalized_speed();
         if ((s = anim_get(&anim_char, "dodgeLeft"))) s->speed = normalized_speed();
@@ -1066,7 +1142,6 @@ static void character_roll(void)
     ch.ssj = 0;
     ch.rolling = 1;
     ch.roll_started = 0;
-    guard_react("Guard_Roll", NULL);   /* la 1.7 no trae voltereta del perro */
     run_rolls++;
     missions_reset(M_NOROLLSBEFORESCORE);
     missions_did(M_ROLL, 1);
@@ -1370,6 +1445,9 @@ static void on_char_exit(const Col *c)
     const uint32_t *te = node_comp(c->node, C_TUTORIAL, NULL);
     if (te && !ch.stopColliding) tutorial_event(te);
     if (c->tag == TAG_SUBWAY) { ch.isInsideSubway = 0; return; }
+    /* Character.OnRollGuard de la 1.8: el inspector rueda cuando el personaje pasa por debajo de una barrera de rodar
+     * (al salir de su collider), no cada vez que se rueda (1.7) */
+    if (c->tag == TAG_ROLLBARRIER) guard_react("Guard_Roll", NULL);
     int ot = obstacle_type(c->tag);
     if (ot != OB_NONE && ot == ch.lastObstacle && ch.lastObstacleTrack == ch.trackIndex) {
         switch (ot) {
@@ -1749,6 +1827,11 @@ static void notify_pickup(int node)
         missions_did(M_MYSTERYBOXES, 1);
         play_ci(&snd_powerup);
         break;
+    case PK_EGG:
+        /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp y las particulas de los power-ups */
+        egg_picked();
+        play_ci(&snd_powerup);
+        break;
     case PK_LETTER: {
         /* DailyLetterPickup.PickupCoroutine */
         char l = daily_next_letter();
@@ -2042,6 +2125,22 @@ int rio_season(void)
 #endif
 }
 
+/* Roma de la 1.8 (Roberto, Kick-Off, la busqueda de huevos de Pascua y su mapa): en el original del 7 de febrero al 4
+ * de abril a las 00:00 (Characters.cs / Hoverboards.cs de la 1.8: ultimo dia el 3 de abril); aqui empieza al acabar
+ * Rio, el 28 de febrero, y acaba igual, el 3 de abril */
+int rome_season(void)
+{
+#if defined(AT_ROME)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return (t.month == 2 && t.day >= 28) || t.month == 3 || (t.month == 4 && t.day <= 3);
+#endif
+}
+
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): en el original del 2 de diciembre al 1 de
  * febrero a las 00:00 (Characters.cs / Hoverboards.cs de la 1.6: ultimo dia el 31 de enero); aqui empieza al acabar
  * la Navidad, el 2 de enero, para no pisarla, y acaba igual, el 31 de enero, cada ano */
@@ -2063,7 +2162,8 @@ int ny_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() || ny_season() || rio_season() ? 10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
+    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() ?
+           10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
@@ -2072,6 +2172,10 @@ int season_seconds_left(void)
     else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 1 : 1 - t.day;   /* hasta el 1 de enero */
     else if (ny_season()) days = 31 - t.day;                                     /* hasta el 31 de enero */
     else if (rio_season()) days = 27 - t.day;                                    /* hasta el 27 de febrero */
+    else if (rome_season()) {                                                    /* hasta el 3 de abril */
+        int feb = (t.year % 4 == 0 && (t.year % 100 != 0 || t.year % 400 == 0)) ? 29 : 28;
+        days = t.month == 2 ? feb - t.day + 31 + 3 : t.month == 3 ? 31 - t.day + 3 : 3 - t.day;
+    }
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2132,8 +2236,8 @@ static void xmas_popup_check(void)
 /* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
-static int ny_popup_year, rio_popup_year;
-int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16 o 17 */
+static int ny_popup_year, rio_popup_year, rome_popup_year;
+int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16, 17 o 18 */
 static int tony_ready(void);
 /* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
 static int carmen_ready(void);
@@ -2148,6 +2252,22 @@ static void rio_popup_check(void)
     if (rio_popup_year == y) return;
     rio_popup_year = y;
     ginfo.popup = POPUP_RIO;
+    game_save();
+}
+/* aviso de la temporada de Roma (1.8: Roberto, las tablas nuevas y la busqueda de huevos): la primera vez que se abre
+ * el menu en cada temporada. Los huevos salen en cualquier mapa, asi que no hace falta estar en el de Roma */
+static int roberto_ready(void);
+static void rome_popup_check(void)
+{
+    if (!rome_season() || ginfo.popup || !roberto_ready()) return;
+    int y = 26;
+#ifndef AUTOTEST
+    ScePspDateTime t;
+    if (console_date(&t) >= 0) y = t.year - 2000;
+#endif
+    if (rome_popup_year == y) return;
+    rome_popup_year = y;
+    ginfo.popup = POPUP_ROME;
     game_save();
 }
 static void ny_popup_check(void)
@@ -2268,6 +2388,10 @@ static void game_start_run(void)
     unsigned int rt0 = sceKernelGetSystemTimeLow();
 #endif
     character_restart();
+#ifdef AT_EGGS
+    { static int once; if (!once) { once = 1; egg_year = season_year(); eggs = 96; } }   /* prueba: casi completa */
+#endif
+    egg_hunt_run = egg_hunt_active();   /* IngameScreen.Show: el contador de huevos solo si la busqueda sigue */
     spawn_restart();
 #if DEVLOG
     unsigned int rt1 = sceKernelGetSystemTimeLow();
@@ -2544,7 +2668,11 @@ static void start_jetpack(int headstart, float hs_dist)
     stumble_set(0);
     set_node_active(n_meshJetpack, 1);
     ch.shadow_on = 0;
-    an.run = "jetpack_forward"; an.dodgeLeft = "jetpack_forward"; an.dodgeRight = "jetpack_forward";
+    jet18 = anim_find(&anim_char, "Jetpack_forward") >= 0 && anim_find(&anim_char, "Jetpack_forward_2") >= 0 &&
+            anim_find(&anim_char, "Jetpack_BarrelRoll_left") >= 0 && anim_find(&anim_char, "Jetpack_changeLane_left") >= 0 &&
+            anim_find(&anim_char, "Jetpack_BarrelRoll_right") >= 0 && anim_find(&anim_char, "Jackpack_changeLane_Right") >= 0;
+    an.run = jet_run(); an.dodgeLeft = an.run; an.dodgeRight = an.run;
+    dlog("JETPACK con las animaciones de la 1.8: %s", jet18 ? "si (giro y cambio de carril)" : "no (jetpack_forward)");
     anim_crossfade(&anim_char, an.run, 0.3f);
 #if DEVLOG
     jt1 = sceKernelGetSystemTimeLow();
@@ -3052,12 +3180,14 @@ static const CharDef chars[] = {
     {"slick", "Tony", UL_COINS, TK_JAKE, 95000, "", "", NULL, 3, "tony", "avatar_tony"},
     /* 1.7: Carmen, "Rio Special" (event 4, temporada de Rio); comprada se queda */
     {"slick", "Carmen", UL_COINS, TK_JAKE, 95000, "", "", NULL, 4, "carmen", "avatar_carmen"},
+    /* 1.8: Roberto, "Rome Special" (event 5, temporada de Roma); comprado se queda */
+    {"slick", "Roberto", UL_COINS, TK_JAKE, 95000, "", "", NULL, 5, "roberto", "avatar_roberto"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -3073,6 +3203,8 @@ static int owned_14(int i) { return owned14 >> (i - CH_FIRST14) & 1; }
 #define CH_CARMEN 18
 static int tony_ready(void) { return CH_TONY < NCHARS && ext_ready(CH_TONY); }
 static int carmen_ready(void) { return CH_CARMEN < NCHARS && ext_ready(CH_CARMEN); }
+#define CH_ROBERTO 19
+static int roberto_ready(void) { return CH_ROBERTO < NCHARS && ext_ready(CH_ROBERTO); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3086,6 +3218,7 @@ static int char_available(int i)
     case 2: return xmas_season();
     case 3: return ny_season();
     case 4: return rio_season();
+    case 5: return rome_season();
     }
     return 0;
 }
@@ -3253,7 +3386,7 @@ static void zombie_init(int slick_node)
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -3279,11 +3412,12 @@ int board_step(int row, int dir)
     }
     return row;
 }
-/* 1: de Nueva York (Liberty), 2: de Rio (Toucan) */
+/* 1: de Nueva York (Liberty), 2: de Rio (Toucan), 3: de Roma (Kick-Off), 4: la de la busqueda de huevos (Chicky) */
 int board_is_season(int row)
 {
     if (row < 0 || row >= gd_nboards) return 0;
-    return gd_boards[row].unlock == BOARD_SEASON ? 1 : gd_boards[row].unlock == BOARD_SEASON_RIO ? 2 : 0;
+    int u = gd_boards[row].unlock;
+    return u == BOARD_SEASON ? 1 : u == BOARD_SEASON_RIO ? 2 : u == BOARD_SEASON_ROME ? 3 : u == BOARD_EGGS ? 4 : 0;
 }
 int board_is_new(int row)
 {
@@ -3387,6 +3521,12 @@ static void boards_input(unsigned in, int confirm)
             board_sel = r;
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
             game_save();
+        } else if (d->unlock == BOARD_EGGS) {
+            /* PurchaseHandler de la 1.8: Chicky no se compra, se gana con los huevos (TryToUnlockEggBoard) */
+            char b[40];
+            snprintf(b, sizeof(b), TR("Huevos: %d/%d", "Eggs: %d/%d"), game_eggs(), EGGS_MAX);
+            snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+            hud_slide(TR("Búscalos corriendo", "Find them while running"), b);
         } else if (d->unlock == BOARD_FREE) {
             /* regalo: se reclama y queda elegida */
             board_owned |= 1 << r;
@@ -3589,6 +3729,20 @@ static const Loot *loot_roll(int super)
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
 static void mystery_open_type(int super)
 {
+    if (super && egg_box) {
+        /* MysteryBox.Roll(EggHunt): el premio es Chicky (ya desbloqueada al coger el huevo 100) */
+        if (ginfo.sboxes_pending > 0) ginfo.sboxes_pending--;
+        egg_box = 0;
+        int r = chick_row();
+        snprintf(ginfo.reward, sizeof(ginfo.reward), TR("Tabla %s", "%s board"), r >= 0 ? gd_boards[r].name : "Chicky");
+        ginfo.reward_icon = "ui_egg";
+        ginfo.reward_super = 1;
+        ginfo.reward_trophy = 0;
+        ginfo.reward_t = game_time;
+        snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+        game_save();
+        return;
+    }
     if (super) { if (ginfo.sboxes_pending <= 0) return; ginfo.sboxes_pending--; ginfo.sboxes_opened++; }
     else { if (ginfo.boxes_pending <= 0) return; ginfo.boxes_pending--; ginfo.boxes_opened++; }
     int coins = 0, hb = 0, h5 = 0, h20 = 0, tok = 0, trophy = -1, tc = -1, bst = 0;
@@ -3864,7 +4018,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -3946,9 +4100,19 @@ void game_update(float dt)
         }
     }
     if (dw_next_t > 0 && game_time >= dw_next_t) { dw_next_t = 0; scene_set_daily_letter(daily_next_letter()); }
-#if defined(AT_LETTERS) || defined(AT_PKTEST)
+#ifdef AT_JETLANE
+    if (state == GS_JETPACK && !ch.trackMovement) {   /* prueba: cambiar de carril volando */
+        static float jl_t;
+        if (game_time - jl_t > 1.5f) {
+            jl_t = game_time;
+            int d = ch.trackIndex == 0 ? 1 : ch.trackIndex == 2 ? -1 : (rnd_i(2) ? 1 : -1);
+            change_track(d, 0.2f);
+        }
+    }
+#endif
+#if defined(AT_LETTERS) || defined(AT_PKTEST) || defined(AT_EGGS)
     {   /* prueba: ir al carril de la letra (o del power-up) que viene */
-#ifdef AT_PKTEST
+#if defined(AT_PKTEST) || defined(AT_EGGS)
         extern int scene_pickup_ahead(float z, V3 *out);
 #define scene_letter_ahead scene_pickup_ahead
 #else
@@ -4289,7 +4453,9 @@ static int save_fill(unsigned char *buf)
                 (hb_used & 0xfff) | (hb_runs & 15) << 12 | hb_should << 16 | hb_shown << 17 | (board_seen & 0xfff) << 18 |
                 hb_fixed << 30};
     /* de la 1.7: Score Boosters, tablas vistas (todas) y el ano del aviso de Rio */
-    int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year};
+    /* de la 1.8: huevos de Pascua (y su ano, y la caja de la busqueda) y el ano del aviso de Roma */
+    int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year,
+                 (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
@@ -4375,6 +4541,7 @@ void game_load(void)
     /* Score Booster: las partidas de antes empiezan con 3, como en la 1.7 (PlayerInfo: si no lo tiene, 3) */
     ginfo.boosters = ne2 >= 1 && (e2[0] >> 30 & 1) ? e2[0] & 0xffff : 3;
     if (ne2 >= 3) rio_popup_year = e2[2];
+    if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }
     if (ne2 >= 2) board_seen = e2[1];
     audio_set_mute(ginfo.opt_sound_off);

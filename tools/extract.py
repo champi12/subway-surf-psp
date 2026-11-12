@@ -45,14 +45,14 @@ C_MESH, C_SKIN, C_BOX, C_SPHERE, C_CAPSULE, C_TRACKCHUNK, C_RANDOMIZER, C_RANDTA
     C_SPAWNPOINT, C_RANDOFFSET, C_MIRROR, C_MOVINGTRAIN, C_MOVINGCOIN, C_COINPLACE, C_COINLINE, \
     C_COINJUMP, C_PICKUP, C_PICKUPROTATE, C_PICKUPDEFAULT, C_TUNNEL, C_TRACKOBJECT, C_RENDACT, \
     C_SNAP, C_GLOW, C_TUTORIAL, C_ANIMATION, C_CHARCTRL, C_CAMERA, C_COIN, C_VISIBLE, C_SSGROUP, \
-    C_ONTRIGGER, C_DAILYLETTER, C_CURVEPOINT, C_JETCLOUD, C_RANDHOLD = range(1, 38)
+    C_ONTRIGGER, C_DAILYLETTER, C_CURVEPOINT, C_JETCLOUD, C_RANDHOLD, C_SPAWNEGG = range(1, 39)
 
 TAG_IDS = {'Untagged': 0, 'Player': 1, 'HitMovingTrain': 2, 'JumpTrain': 3, 'DodgeTrain': 4, 'RollBarrier': 5,
            'JumpBarrier': 6, 'HitBarrier': 7, 'HitTrain': 8, 'Ground': 9, 'Station': 10, 'Subway': 11,
            'JumpHighBarrier': 12, 'MainCamera': 13}
 
 PICKUP_KIND = {'Coin': 0, 'CoinMagnetPickup': 1, 'SuperSneakersPickup': 2, 'JetpackPickup': 3,
-               'DoubleScoreMultiplierPickup': 4, 'MysteryBoxPickup': 5, 'DailyLetterPickup': 6}
+               'DoubleScoreMultiplierPickup': 4, 'MysteryBoxPickup': 5, 'DailyLetterPickup': 6, 'EasterEggPickup': 7}
 
 BLEND_OPAQUE, BLEND_ALPHA, BLEND_ADD, BLEND_MUL, BLEND_ADDALPHA = range(5)
 
@@ -203,15 +203,20 @@ class Exporter:
         return self.audio_idx[k]
 
     # -- nodos --
-    def add_tree(self, go, parent=-1):
+    def add_tree(self, go, parent=-1, remap=None):
+        # una copia del huevo de Pascua (inject_eggs) lleva su propio mapa: sus referencias internas (PickupRotate,
+        # PickupDefault) apuntan a sus propios nodos y no a los de otra copia
+        if go.get('copy'):
+            remap = {}
         idx = len(self.nodes)
-        n = {'go': go, 'parent': parent, 'children': []}
+        n = {'go': go, 'parent': parent, 'children': [], 'remap': remap}
         self.nodes.append(n)
-        self.objmap[key(go['obj'])] = idx
+        m = self.objmap if remap is None else remap
+        m[key(go['obj'])] = idx
         for c in go['comps']:
-            self.objmap[key(c['obj'])] = idx
+            m[key(c['obj'])] = idx
         for ch in go['children']:
-            n['children'].append(self.add_tree(ch, idx))
+            n['children'].append(self.add_tree(ch, idx, remap))
         return idx
 
     def ref(self, obj, ptr):
@@ -221,11 +226,15 @@ class Exporter:
         o = self.sc.resolve_ptr(obj, ptr)
         if o is None:
             return -1
+        rm = getattr(self, 'cur_remap', None)
+        if rm is not None and key(o) in rm:
+            return rm[key(o)]
         return self.objmap.get(key(o), -1)
 
     def comps_of(self, n):
         go = n['go']
         out = []
+        self.cur_remap = n.get('remap')
         classes = {c.get('class') for c in go['comps'] if c['type'] == 'MonoBehaviour'}
         for c in go['comps']:
             t = c['type']
@@ -305,6 +314,11 @@ class Exporter:
                     ks = ['dailyLetter', 'doubleScoreMultiplier', 'jetpackPickup', 'jumpBooster', 'magnetBooster',
                           'mysteryBox']
                     out.append((C_SPAWNPOINT, [self.ref(o, f[k_]) & 0xffffffff for k_ in ks]))
+                    if go.get('egg_child'):      # huevo de Pascua anadido (inject_eggs): el ultimo hijo
+                        out.append((C_SPAWNEGG, [n['children'][-1]]))
+                elif cl == 'SpawnPointEgg':
+                    # la 1.8: punto propio del huevo de Pascua (SpawnPointEgg, un Selector)
+                    out.append((C_SPAWNEGG, [self.ref(o, f['easterEgg']) & 0xffffffff]))
                 elif cl == 'RandomizeOffset':
                     r = f['randomOffsets']
                     out.append((C_RANDOFFSET, [int(bool(r['left'])), int(bool(r['mid'])), int(bool(r['right']))]))
@@ -1836,7 +1850,8 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
         # pantalla de personajes como la de la 1.4 (CharacterModelPreviewFactory): miniaturas del carrusel y, para
         # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
         prev = char_previews(sc14)
-        for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7')):
+        for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7'),
+                         (getattr(ex, 'sc18', None), '1.8')):
             if not prev or scx is None:
                 continue
             # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
@@ -1873,7 +1888,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
             print('  premios girando en 3D: %d (12 vistas cada uno)' % len(spins))
         if prev:
             # el Animation del personaje recibe solo la primera: el juego cambia el clip de ese estado
-            ex.extra_anim['avatar_prefab'] = [len(ex.clips)]
+            ex.extra_anim['avatar_prefab'] = ex.extra_anim.get('avatar_prefab', []) + [len(ex.clips)]
             for c in prev[2]:
                 ex.clips.append(('pose', c['clip'], 'pose_' + c['name']))
         if boards is not None and boards.thumbs is not None:
@@ -1898,6 +1913,16 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
             if ic is not None:
                 ex.textures.append(('generada', 'ui_booster', ic.resize((32, 32), Image.LANCZOS), True))
                 print('  icono del Score Booster de la 1.7: %dx%d' % ic.size)
+        # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
+        sc18_ = getattr(ex, 'sc18', None)
+        if sc18_ is not None:
+            ic = sprite_from_raw_atlas(sc18_, 'icon_egg', small=True)
+            if ic is not None:
+                w_, h_ = ic.size
+                sq = Image.new('RGBA', (max(w_, h_),) * 2, (0, 0, 0, 0))
+                sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
+                ex.textures.append(('generada', 'ui_egg', sq.resize((32, 32), Image.LANCZOS), True))
+                print('  icono del huevo de la 1.8: %dx%d' % (w_, h_))
         mb = find_texture(sc15, 'mysterybox_bg') if sc15 is not None else None
         if mb is not None:
             # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256
@@ -2149,6 +2174,9 @@ BOARDS_16 = BOARDS_15 + [(7, 'Miami', 12000, 2, 0), (8, 'Monster', 30000, 2, 0),
 # la 1.7: Daredevil (speedboard, 11), que acelera el juego mientras dura (effect 3), 85000 monedas como el original
 # Toucan (12, "Rio Special": unlock 4, solo en la temporada de Rio) y Lumberjack (13, "Treehugger" en el codigo)
 BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 2, 3), (12, 'Toucan', 50000, 4, 0), (13, 'Lumberjack', 4000, 2, 0)]
+# la 1.8: Chicky (14, "Egg Hunt Special": unlock 6, se gana con 100 huevos de Pascua; "price" es el numero de huevos),
+# Scoot (15, "rome" en el codigo) y Kick-Off (16, "Rome Special": unlock 5, solo en la temporada de Roma)
+BOARDS_18 = BOARDS_17 + [(14, 'Chicky', 100, 6, 0), (15, 'Scoot', 35000, 2, 0), (16, 'Kick-Off', 50000, 5, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2227,6 +2255,9 @@ def export_boards(sc15, ex, clip_names10, table=None):
         # miniaturas para la pantalla de tablas (como las de personajes): de pie e inclinadas, 64x64 cada una
         texa = np.asarray(tex_rgba(props).convert('RGBA'))
         sheet = Image.new('RGBA', (256, 128 if len(thumb_src) <= 8 else 256), (0, 0, 0, 0))   # 4 por fila
+        # con mas de 16 (la 1.8 trae 17) van a 51x51, 5 por fila: la misma hoja de 256x256 (el juego las escala a 64)
+        cell = 64 if len(thumb_src) <= 16 else 51
+        cols = 256 // cell
         sprites = []
         rot = np.eye(4)
         rot[:3, :3] = quat_mat(np.array(euler_quat(-25.0, 0.0, 62.0)))
@@ -2237,10 +2268,10 @@ def export_boards(sc15, ex, clip_names10, table=None):
             Wv = (rot @ np.c_[V, np.ones(len(V))].T).T[:, :3]
             tris = np.array([t for sm in mesh_triangles(mo, h) for t in sm], np.int64)
             parts = [(Wv, np.array(h.m_UV0, np.float64).reshape(-1, 2), tris, texa)]
-            im = draw_parts(parts, 64, (Wv.min(axis=0), Wv.max(axis=0)))
-            x, y = (k % 4) * 64, (k // 4) * 64
+            im = draw_parts(parts, cell, (Wv.min(axis=0), Wv.max(axis=0)))
+            x, y = (k % cols) * cell, (k // cols) * cell
             sheet.paste(im, (x, y))
-            r_ = {'x': x, 'y': y, 'width': 64, 'height': 64}
+            r_ = {'x': x, 'y': y, 'width': cell, 'height': cell}
             sprites.append({'name': sname, 'outer': r_, 'inner': dict(r_)})
         thumbs = (sheet, sprites)
     out = bytearray(b'SSB1') + struct.pack('<I', len(rows))
@@ -2528,6 +2559,105 @@ def export_eboot_art(data_dir, outdir):
     sp.crop((x0, 0, x0 + w, int(w * 80 / 144))).resize((144, 80), Image.LANCZOS).save(os.path.join(outdir, 'ICON0.PNG'))
 
 
+def egg_template(sc18):
+    """El huevo de Pascua de la 1.8 (easterEgg: Pickup, EasterEggPickup, PickupRotate, su malla y el brillo) tal
+    como esta en uno de sus SpawnPointEgg del Level."""
+    for r in sc18.roots('level0'):
+        g = sc18.go_tree(r)
+        if g['name'] != 'Level':
+            continue
+        st = [g]
+        while st:
+            n = st.pop()
+            st += n['children']
+            if n['name'] == 'easterEgg' and any(c.get('class') == 'EasterEggPickup' for c in n['comps']):
+                return n
+    return None
+
+
+def inject_eggs(ex, trees, sc18):
+    """Busqueda de huevos de la 1.8 en los mapas que no la traen: a cada SpawnPoint (power-ups) se le anade de hijo
+    una copia del huevo, en su sitio (como los power-ups, a 0,0,0 del punto). El juego lo saca con la regla de
+    SpawnPointEgg (uno cada 80 s de carrera como mucho) donde no ha salido ningun power-up. Para no cargar la hoja
+    props entera de la 1.8 (512x512), sus materiales llevan solo el trozo que usan (egg_materials)."""
+    tpl = egg_template(sc18)
+    if tpl is None:
+        print('  AVISO: la 1.8 no trae el huevo de Pascua')
+        return
+    td = tpl['tr']['data']
+    zero = dict(tpl['tr'])
+    zero['data'] = dict(td)
+    zero['data']['m_LocalPosition'] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+    cnt = 0
+    for t in trees:
+        if t['name'] != 'Level':
+            continue
+        st = [t]
+        while st:
+            g = st.pop()
+            st += g['children']
+            if any(c.get('class') == 'SpawnPoint' for c in g['comps']) and not g.get('egg_child'):
+                cp = dict(tpl)
+                cp['tr'] = zero
+                cp['copy'] = True
+                g['children'] = g['children'] + [cp]
+                g['egg_child'] = True
+                cnt += 1
+    egg_materials(ex, tpl)
+    print('  huevos de Pascua (1.8): en %d puntos de power-ups' % cnt)
+
+
+def egg_materials(ex, tpl):
+    """Los materiales del huevo (props y EFX de la 1.8) con solo el trozo de la hoja que usan sus mallas: textura
+    pequena generada y escala/desplazamiento del material para que las UV de siempre caigan en ella."""
+    st = [tpl]
+    while st:
+        g = st.pop()
+        st += g['children']
+        mf = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
+        mr = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
+        if mf is None or mr is None:
+            continue
+        mo = ex.sc.resolve_ptr(mf['obj'], mf['data']['m_Mesh'])
+        ma = ex.sc.resolve_ptr(mr['obj'], mr['data']['m_Materials'][0])
+        if mo is None or ma is None or key(ma) in ex.mat_idx:
+            continue
+        h = MeshHandler(mo.read(check_read=False))
+        h.process()
+        uv = np.array(h.m_UV0, np.float64).reshape(-1, 2)
+        tex = None
+        for _, t in ma.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+            to = ex.sc.resolve(ma.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+            if to is not None:
+                tex = to.read()
+                break
+        orig = ex.tex_id
+        ex.tex_id = lambda o: -1
+        mi = ex.mat_id(ma)
+        ex.tex_id = orig
+        if tex is None:
+            continue
+        img = tex_rgba(tex)
+        W, H = img.size
+        u0, v0 = uv.min(axis=0)
+        u1, v1 = uv.max(axis=0)
+        # un pixel de margen; en pixeles enteros
+        x0, x1 = max(0, int(np.floor(u0 * W)) - 1), min(W, int(np.ceil(u1 * W)) + 1)
+        y0, y1 = max(0, int(np.floor((1 - v1) * H)) - 1), min(H, int(np.ceil((1 - v0) * H)) + 1)
+        crop = img.crop((x0, y0, x1, y1))
+        cw = 1 << max(3, (crop.size[0] - 1).bit_length())
+        chh = 1 << max(3, (crop.size[1] - 1).bit_length())
+        cw, chh = min(cw, 64), min(chh, 128)
+        crop = crop.resize((cw, chh), Image.LANCZOS)
+        ua, ub = x0 / W, x1 / W
+        va, vb = 1 - y1 / H, 1 - y0 / H
+        ex.textures.append(('gen', ('egg_' + ex.materials[mi]['name'])[:31], crop, True))
+        m = ex.materials[mi]
+        m['tex'] = len(ex.textures) - 1
+        m['st'] = (1.0 / (ub - ua), 1.0 / (vb - va), -ua / (ub - ua), -va / (vb - va))
+        print('  huevo: material %s, trozo %dx%d de %s' % (m['name'], cw, chh, tex.m_Name))
+
+
 def add_guard_clips(ex, scx):
     """FollowingGuard de la 1.7: animaciones nuevas del inspector y el perro (esquivar a cada lado, rodar y el perro en
     el aire). Se anaden a sus Animation (guard_prefab / dog_prefab) en todos los mapas; mismo esqueleto."""
@@ -2551,6 +2681,29 @@ def add_guard_clips(ex, scx):
             got += [n for n in names if n in found]
     if got:
         print('  animaciones nuevas del inspector y el perro: %s' % ', '.join(got))
+
+
+def add_jetpack_clips(ex, scx):
+    """CharacterRendering.jetpackAnimations de la 1.8: con el jetpack el personaje vuela con Jetpack_forward o
+    Jetpack_forward_2 y al cambiar de carril hace un giro (BarrelRoll) o se inclina (changeLane), al azar (hasta la 1.7
+    era siempre jetpack_forward). Mismo esqueleto: se anaden al Animation del personaje (avatar_prefab) en todos los
+    mapas; ~80 KB."""
+    want = ['Jetpack_forward', 'Jetpack_forward_2', 'Jetpack_BarrelRoll_left', 'Jetpack_changeLane_left',
+            'Jetpack_BarrelRoll_right', 'Jackpack_changeLane_Right']
+    found = {}
+    for o in scx.env.objects:
+        if o.type.name != 'AnimationClip':
+            continue
+        try:
+            n = o.read(check_read=False).m_Name
+        except Exception:
+            continue
+        if n in want and n not in found:
+            found[n] = o
+    ids = [ex.clip_id(found[n]) for n in want if n in found]
+    if ids:
+        ex.extra_anim['avatar_prefab'] = ex.extra_anim.get('avatar_prefab', []) + ids
+    print('  animaciones del jetpack de la 1.8: %s' % (', '.join(n for n in want if n in found) or 'no encontradas'))
 
 
 def swap_guard16(ex, sc16):
@@ -2588,15 +2741,18 @@ def swap_guard16(ex, sc16):
     print('  inspector y perro de la 1.6: %s' % (', '.join(done) or 'AVISO: no encontrados'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
-    msc = sc if level_sc is sc else MultiScene([sc, level_sc])
+    scl = [sc] + ([level_sc] if level_sc is not sc else []) + \
+        ([sc18] if sc18 is not None and sc18 is not level_sc else [])
+    msc = scl[0] if len(scl) == 1 else MultiScene(scl)
     ex = Exporter(msc)
     ex.sc16 = sc16   # contenido de la 1.6 (Tony, tablas) en la interfaz del mundo clasico
     ex.sc17 = sc17   # y de la 1.7 (Carmen)
+    ex.sc18 = sc18   # y de la 1.8 (Roberto)
     trees = []
     for r in sc.roots('level0'):
         go = sc.go_tree(r)
@@ -2627,8 +2783,14 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         trees.append(msc.go_tree(o))
     # las animaciones nuevas del inspector y el perro de la 1.7 en todos los mapas (mismo esqueleto en todas las
     # versiones; solo cambia que animacion suena)
-    if sc17 is not None:
-        add_guard_clips(ex, sc17)
+    if sc17 is not None or sc18 is not None:
+        add_guard_clips(ex, sc17 or sc18)
+    # y las del jetpack de la 1.8 (giro y cambio de carril), tambien en todos los mapas
+    if sc18 is not None:
+        add_jetpack_clips(ex, sc18)
+    # busqueda de huevos de la 1.8 (por fecha, en todos los mapas): el de Roma ya trae sus SpawnPointEgg
+    if sc18 is not None and level_sc is not sc18:
+        inject_eggs(ex, trees, sc18)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -2670,16 +2832,20 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                 names10.add(c.read_typetree()['m_Name'])
         # con la 1.6 todas las tablas salen de ella (la misma hoja de texturas para las 11)
         # con la 1.7 (en pruebas) las tablas salen de ella: trae las de la 1.6 y Daredevil
-        bsrc = sc17 or sc16 or sc15
-        boards = export_boards(bsrc, ex, names10, BOARDS_17 if sc17 is not None else
-                               BOARDS_16 if sc16 is not None else BOARDS_15)
+        # con la 1.8 salen de ella: trae las 14 anteriores, Chicky, Scoot y Kick-Off
+        bsrc = sc18 or sc17 or sc16 or sc15
+        boards = export_boards(bsrc, ex, names10, BOARDS_18 if sc18 is not None else BOARDS_17 if sc17 is not None
+                               else BOARDS_16 if sc16 is not None else BOARDS_15)
         # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special") y Carmen (la 1.7: 95000, "Rio Special"):
         # mismo esqueleto que Jake, a chars14.bin como los de la 1.4
         extra_chars = []
-        if sc16 is not None or sc17 is not None:
-            extra_chars.append((sc16 or sc17, 'tony', 'avatar_tony', '1.6'))
-        if sc17 is not None:
-            extra_chars.append((sc17, 'carmen', 'avatar_carmen', '1.7'))
+        if sc16 is not None or sc17 is not None or sc18 is not None:
+            extra_chars.append((sc16 or sc17 or sc18, 'tony', 'avatar_tony', '1.6'))
+        if sc17 is not None or sc18 is not None:
+            extra_chars.append((sc17 or sc18, 'carmen', 'avatar_carmen', '1.7'))
+        # Roberto (Characters.cs de la 1.8: 95000 monedas, "Rome Special")
+        if sc18 is not None:
+            extra_chars.append((sc18, 'roberto', 'avatar_roberto', '1.8'))
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':
@@ -2819,7 +2985,7 @@ def main():
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         return None
     apk14, apk15, apk16 = opt('--apk14', '--halloween'), opt('--apk15', '--world'), opt('--apk16')
-    apk17 = opt('--apk17')
+    apk17, apk18 = opt('--apk17'), opt('--apk18')
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
@@ -2842,13 +3008,17 @@ def main():
     if apk17:
         print('Descomprimiendo el APK de la 1.7 (en pruebas)...')
         sc17 = Scene(unpack_apk(apk17))
+    sc18 = None
+    if apk18:
+        print('Descomprimiendo el APK de la 1.8...')
+        sc18 = Scene(unpack_apk(apk18))
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
@@ -2856,7 +3026,7 @@ def main():
     w16 = os.path.join(outdir, 'w16')
     if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
         print('== Mapa de la 1.6 (data/w16/, en pruebas)')
-        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17)
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
     # mapa de la 1.7 (data/w17/, EN PRUEBAS: Rio de Janeiro, se juega con WORLD17=1). Mismo trazado que el de la 1.6;
@@ -2865,9 +3035,19 @@ def main():
     if sc17 is not None:
         print('== Mapa de la 1.7 (data/w17/, en pruebas)')
         # la interfaz (libreta, ME, SHOP, manchas...) de la 1.5.2: la de la 1.7 es de Unity 4 y no se lee entera
-        export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17)
+        export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17,
+                   sc18=sc18)
     elif os.path.isdir(w17):
         shutil.rmtree(w17, True)
+    # mapa de la 1.8 (data/w18/: Roma, del 28 de febrero al 3 de abril; WORLD18=1 lo deja siempre). Mismo trazado;
+    # su inspector y su perro se cambian igual; trae sus propios puntos de huevos (SpawnPointEgg)
+    w18 = os.path.join(outdir, 'w18')
+    if sc18 is not None:
+        print('== Mapa de la 1.8 (data/w18/)')
+        export_set(sc, sc18, sc14, w18, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc18,
+                   sc17=sc17 or sc18, sc18=sc18)
+    elif os.path.isdir(w18):
+        shutil.rmtree(w18, True)
     print('Listo.')
 
 

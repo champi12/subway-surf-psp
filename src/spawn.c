@@ -2,6 +2,7 @@
 #include <float.h>
 #include "spawn.h"
 #include "scene.h"
+#include "devlog.h"
 
 int upgrade_tier[PW_COUNT];
 
@@ -18,6 +19,8 @@ static PickupType pk[6] = {
     {5.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
 };
 static float spawn_z, spawn_spacing;
+/* SpawnPointEgg.lastSpawn (static, a 0 en ResetSpawn al empezar cada carrera) */
+static float egg_last;
 
 /* UpgradeFirstSpawnMeters = 250, UpgradeSpawnSpacingMeters = 300 */
 void spawn_restart(void)
@@ -34,6 +37,34 @@ void spawn_restart(void)
     spawn_spacing = 50.0f * DISTANCE_PER_METER;
 #endif
     for (int i = 0; i < 6; i++) pk[i].spawn_z = -FLT_MAX;
+    egg_last = 0;
+}
+
+/* SpawnPointEgg.PerformSelection: un huevo si desde el ultimo han pasado al menos 80 s de carrera (distancia entre
+ * la velocidad del nivel) y la busqueda sigue (temporada, menos de 100 y sin Chicky). En los mapas sin huevos propios
+ * el huevo va de hijo de cada SpawnPoint y solo sale si alli no ha salido ningun power-up */
+void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
+{
+    const uint32_t *c = node_comp(node, C_SPAWNEGG, NULL);
+    if (!c) return;
+    int g = (int)c[0];
+    if (g < 0) return;
+    float z = node_pos(node).z;
+    float sp = game_level_speed();
+#if defined(AT_EGGSHOW)
+    const float egg_gap = 0.0f;   /* prueba: un huevo en cada punto libre, para verlos */
+#elif defined(AT_EGGS)
+    const float egg_gap = 3.0f;   /* prueba: huevos muy seguidos */
+#else
+    const float egg_gap = 80.0f;
+#endif
+    if (chosen < 0 && sp > 0 && (z - egg_last) / sp >= egg_gap && egg_should_spawn()) {
+        if (*nv < max) visit[(*nv)++] = g;
+        egg_last = z;
+#ifdef AT_EGGS
+        dlog("HUEVO sale en z=%.0f", z);
+#endif
+    } else scene_set_active_recursive(g, 0);
 }
 
 void spawn_perform_selection(int sp, int *visit, int *nv, int max)
@@ -64,6 +95,7 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
         if (k == chosen) { if (*nv < max) visit[(*nv)++] = g; }
         else scene_set_active_recursive(g, 0);
     }
+    spawn_egg_selection(sp, chosen, visit, nv, max);
 }
 
 static const float dur_tab[PW_COUNT][6] = {

@@ -219,10 +219,24 @@ int main(int argc, char **argv)
                 if (!(halloween_season() && has_hw)) wdir = "data/w17";
             }
         }
+        /* el mapa de la 1.8 (Roma, data/w18) en su temporada (28 de febrero - 3 de abril, tras Rio); make WORLD18=1
+         * lo deja siempre, para probarlo */
+        {
+            extern int rome_season(void);
+#if defined(WORLD18) && WORLD18
+            int rome = 1;
+#else
+            int rome = rome_season();
+#endif
+            if (rome && (f = sceIoOpen("data/w18/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+                sceIoClose(f);
+                if (!(halloween_season() && has_hw)) wdir = "data/w18";
+            }
+        }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }
         { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17"); }   /* Rio: sin texturas reducidas, como el original */
-        { extern int game_world; game_world = !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
-        dlog("Mundo: %s", !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
+        { extern int game_world; game_world = !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        dlog("Mundo: %s", !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
 #endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
@@ -433,6 +447,14 @@ int main(int argc, char **argv)
         if (frame_no == 30) pr |= PSP_CTRL_CROSS;    /* cierra el aviso del evento */
         if (frame_no == 50) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no == 80) pr |= PSP_CTRL_LEFT;
+#elif defined(AT_ROMETEST)
+        /* prueba de la 1.8 (con AT_ROME): el aviso de Roma, personajes (arriba: Roberto) y tablas hasta Chicky */
+        if (frame_no == 30) ginfo.total_coins = 200000;
+        if (frame_no == 60) pr |= PSP_CTRL_CROSS;    /* cierra el aviso */
+        if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;
+        if (frame_no == 110) pr |= PSP_CTRL_UP;
+        if (frame_no == 150) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no >= 180 && frame_no < 420 && frame_no % 15 == 0) pr |= PSP_CTRL_RIGHT;
 #elif defined(AT_NYTEST)
         /* prueba de la 1.6 (con AT_NY): personajes, arriba (Tony), comprarlo; tablas y recorrerlas hasta Liberty */
         if (frame_no == 30) ginfo.total_coins = 200000;

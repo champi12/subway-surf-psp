@@ -380,6 +380,18 @@ static void draw_ingame(void)
     ui_sliced(a_ui, "background_ingame_beatThis", x1 - cw, cy, cw, bh, UIS, BOX_COL);
     ui_sprite_wh(a_ui, "coin2d", x1 - cw + 5 * UIS, cy + 6 * UIS, 18 * UIS, 18 * UIS, 0xffffffff);
     ui_text(f_big, x1 - 8 * UIS, cy + 3 * UIS, LBL, 0xffffffff, 2, buf);
+    /* contador de huevos de Pascua (eggCounter de IngameScreen, UIEggLabelChanger de la 1.8): "N/100" debajo de las
+     * monedas mientras dura la busqueda */
+    if (game_egg_counter()) {
+        static int t_egg = -2;
+        if (t_egg == -2) t_egg = data_tex_find("ui_egg");
+        snprintf(buf, sizeof(buf), "%d/%d", game_eggs(), game_eggs_max());
+        tw = ui_text_width(f_big, LBL, buf);
+        float ew = tw + 34 * UIS, ey = cy + bh + 5 * UIS;
+        ui_sliced(a_ui, "background_ingame_beatThis", x1 - ew, ey, ew, bh, UIS, BOX_COL);
+        if (t_egg >= 0) r_sprite(t_egg, x1 - ew + 4 * UIS, ey + 4 * UIS, 22 * UIS, 22 * UIS, 0, 0, 1, 1, 0xffffffffu);
+        ui_text(f_big, x1 - 8 * UIS, ey + 3 * UIS, LBL, 0xffffffff, 2, buf);
+    }
     /* boton de pausa (arriba a la izquierda) */
     ui_sliced(a_ui, "background_ingame_button", 4, 4, 40 * UIS, 40 * UIS, UIS, 0xffffffff);
     ui_sprite_wh(a_ui, "pause", 4 + 14 * UIS, 4 + 13 * UIS, 13 * UIS, 14 * UIS, 0xffffffff);
@@ -837,6 +849,7 @@ static void draw_xmas_popup(void);
 static void draw_boards_popup(void);
 static void draw_ny_popup(void);
 static void draw_rio_popup(void);
+static void draw_rome_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -909,6 +922,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
         if (ginfo.popup == POPUP_NY) draw_ny_popup();
         if (ginfo.popup == POPUP_RIO) draw_rio_popup();
+        if (ginfo.popup == POPUP_ROME) draw_rome_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -928,6 +942,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_BOARDS) draw_boards_popup();
     if (ginfo.popup == POPUP_NY) draw_ny_popup();
     if (ginfo.popup == POPUP_RIO) draw_rio_popup();
+    if (ginfo.popup == POPUP_ROME) draw_rome_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -1048,6 +1063,37 @@ static void draw_rio_popup(void)
         {"Recorre el metro de Río", "Run through Rio's subway", "Nuevo mapa en febrero", "New map in February"},
         {"Conoce a Carmen", "Meet Carmen", "Solo por tiempo LIMITADO", "LIMITED time only"},
         {"Tablas y Score Booster nuevos", "New boards and Score Booster", "Toucan, Lumberjack y Daredevil", "Toucan, Lumberjack and Daredevil"},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* aviso de la temporada de Roma (1.8): Roberto, las tablas nuevas y la busqueda de huevos de Pascua con lo que se
+ * lleva (EggHuntPopup: "N / 100"). Misma disposicion que los demas, con el rojo de Roma */
+static void draw_rome_popup(void)
+{
+    char buf[48];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_ROME = 0xff2c3cc8u;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_ROME);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_ROME);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Roma!", "to Rome!"));
+    snprintf(buf, sizeof(buf), TR("Llevas %d de %d huevos: gana Chicky", "%d of %d eggs: win Chicky"), game_eggs(), game_eggs_max());
+    const char *lines[3][4] = {
+        {"Recorre las calles de Roma", "Run through the streets of Rome", "Nuevo mapa hasta el 3 de abril", "New map until April 3"},
+        {"Conoce a Roberto", "Meet Roberto", "Solo por tiempo LIMITADO", "LIMITED time only"},
+        {"Busca huevos de Pascua", "Hunt for Easter eggs", buf, buf},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {
@@ -1221,8 +1267,13 @@ static void draw_boards(void)
     int fx = board_effect(i);
     if (fx) lab(0, 16, 40, 15, C_LIMITED, 0, 0, fx == 1 ? TR("Súper salto", "Super Jump") : fx == 3 ? TR("Más velocidad", "Speed Boost")
                                                                      : TR("Va agachado", "Stays Low"));
-    else if (board_is_season(i)) lab(0, 16, 40, 15, C_LIMITED, 0, 0, board_is_season(i) == 2 ? TR("Especial de Río", "Rio Special")
-                                                                                             : TR("Especial de Nueva York", "New York Special"));
+    else if (board_is_season(i)) {
+        int bs = board_is_season(i);
+        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 4 ? TR("Especial Búsqueda de huevos", "Egg Hunt Special")
+                                           : bs == 3 ? TR("Especial de Roma", "Rome Special")
+                                           : bs == 2 ? TR("Especial de Río", "Rio Special")
+                                                     : TR("Especial de Nueva York", "New York Special"));
+    }
     if (board_is_gift(i) && !board_is_owned(i)) {
         /* BoardScreen: pegatina "FREE GIFT" mientras la de regalo no se ha reclamado */
         float sx = 14 + labw(0, 30, board_name(i)) + U(36), sy = 26;
@@ -1238,6 +1289,14 @@ static void draw_boards(void)
         labc(0, bx, by, 20, C_WHITE, 1, 1, board_is_selected(i) ? TR("ELEGIDA", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
     } else if (board_is_gift(i)) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, TR("GRATIS (X)", "FREE (X)"));
+    } else if (board_is_season(i) == 4) {
+        /* Chicky (HoverboardBuyButton de la 1.8): no se compra; los huevos que se llevan de los que hacen falta */
+        static int t_egg = -2;
+        if (t_egg == -2) t_egg = data_tex_find("ui_egg");
+        snprintf(buf, sizeof(buf), "%d/%d", game_eggs(), game_eggs_max());
+        float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
+        if (t_egg >= 0) r_sprite(t_egg, px - U(30), by - U(14), U(28), U(28), 0, 0, 1, 1, C_WHITE);
+        labc(0, px, by, 20, C_WHITE, 0, 1, buf);
     } else {
         snprintf(buf, sizeof(buf), "%d", board_price(i));
         float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
@@ -1298,7 +1357,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 4 ? TR("Especial de Río", "Rio Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 5 ? TR("Especial de Roma", "Rome Special")
+                                                   : limited == 4 ? TR("Especial de Río", "Rio Special")
                                                    : limited == 3 ? TR("Especial de Nueva York", "New York Special")
                                                    : limited == 2 ? TR("Especial de Navidad", "Holiday Special")
                                                               : TR("Especial de Halloween", "Halloween Special"));
@@ -1368,10 +1428,13 @@ static int a_rewards = -2, rewards_loaded;
 /* w < 0: dado la vuelta (el reves del premio mientras gira) */
 static void reward_spr(const char *name, const char *fallback, float cx, float cy, float k, float wk, unsigned int col)
 {
-    if (!strcmp(name, "ui_booster")) {
-        /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7) */
-        static int tb = -2;
-        if (tb == -2) tb = data_tex_find("ui_booster");
+    if (!strcmp(name, "ui_booster") || !strcmp(name, "ui_egg")) {
+        /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7); el huevo de la caja de la busqueda de
+         * huevos (1.8), igual */
+        static int tbb = -2, tbe = -2;
+        int egg = name[3] == 'e';
+        if (egg ? tbe == -2 : tbb == -2) { if (egg) tbe = data_tex_find("ui_egg"); else tbb = data_tex_find("ui_booster"); }
+        int tb = egg ? tbe : tbb;
         float w = 70 * k * (wk < 0 ? -wk : wk), hh = 70 * k;
         if (tb >= 0) { r_sprite(tb, (int)(cx - w * 0.5f), (int)(cy - hh * 0.5f), w, hh, 0, 0, 1, 1, col); return; }
         name = fallback = "icon_upgrades_doubleScore";

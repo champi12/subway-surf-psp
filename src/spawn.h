@@ -6,6 +6,10 @@ enum { PW_LETTERS, PW_DOUBLE, PW_JETPACK, PW_SNEAKERS, PW_MAGNET, PW_MYSTERY, PW
 
 void spawn_restart(void);
 void spawn_perform_selection(int spawnpoint, int *visit, int *nv, int max);
+/* SpawnPointEgg (1.8): chosen >= 0 si en ese punto ya ha salido un power-up (los huevos anadidos a los SpawnPoint) */
+void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max);
+int egg_should_spawn(void);   /* EggHuntManager.ShouldSpawnEggs (game.c) */
+float game_level_speed(void);
 /* duraciones de los power-ups (Upgrades.cs, nivel 0 si no se ha mejorado) */
 float powerup_duration(int type);
 extern int upgrade_tier[PW_COUNT];

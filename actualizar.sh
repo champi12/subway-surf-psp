@@ -30,6 +30,7 @@ for f in *.apk; do
     case "$(python3 tools/apk_kind.py "$f")" in
         16) [ -z "$APK16" ] && APK16="$f" ;;
         17) [ -z "$APK17" ] && APK17="$f" ;;
+        18) [ -z "$APK18" ] && APK18="$f" ;;
         15) [ -z "$APK15" ] && APK15="$f" ;;
         14) [ -z "$APK14" ] && APK14="$f" ;;
         10) [ -z "$APK10" ] && APK10="$f" ;;
@@ -43,7 +44,7 @@ fi
 if [ -n "$APK15" ]; then echo "APK de la 1.5.2: $APK15 (mundo nuevo, Navidad y tablas)"; fi
 if [ -n "$APK14" ]; then echo "APK de la 1.4 clasica: $APK14"
 else echo "AVISO: no hay APK de la 1.4 clasica (1.4.0, la de Halloween de 2012): sin Halloween ni contenido de la 1.4"; fi
-VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15 w15:${WORLD15:-1} apk16:$APK16 apk17:$APK17") | sha1sum | cut -c1-16)
+VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15 w15:${WORLD15:-1} apk16:$APK16 apk17:$APK17 apk18:$APK18") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
 else
@@ -61,6 +62,9 @@ else
     if [ -n "$APK16" ] && [ -f "$APK16" ]; then echo "Con el contenido de la 1.6 de $APK16"; OPTS+=(--apk16 "$APK16"); fi
     # la 1.7: Carmen, sus tablas y su mapa de Rio en data/w17 (del 1 al 27 de febrero)
     if [ -n "$APK17" ] && [ -f "$APK17" ]; then echo "Con la 1.7 de $APK17 (en pruebas)"; OPTS+=(--apk17 "$APK17"); fi
+    # la 1.8: Roberto, sus tablas, la busqueda de huevos (en todos los mapas) y su mapa de Roma en data/w18 (del 28 de
+    # febrero al 3 de abril)
+    if [ -n "$APK18" ] && [ -f "$APK18" ]; then echo "Con la 1.8 de $APK18"; OPTS+=(--apk18 "$APK18"); fi
     export WORLD15=${WORLD15:-1}
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
     echo "$VER" > data/.version
@@ -71,6 +75,7 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
+if [ -f data/w18/world.bin ]; then echo "Mapa de la 1.8 (Roma): incluido (del 28 de febrero al 3 de abril; WORLD18=1 lo deja siempre)"; fi
 if [ -f data/w17/world.bin ]; then echo "Mapa de la 1.7 (Rio): incluido (del 1 al 27 de febrero; WORLD17=1 lo deja siempre)"; fi
 if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 2 al 31 de enero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
 if [ -f data/hw_tex.bin ]; then
