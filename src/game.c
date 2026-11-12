@@ -953,6 +953,7 @@ static void char_set_pos(V3 p) { cc.pos = p; nrt[n_character].lpos = p; }
 
 static void stumble_set(int v);
 
+static void subway_leave_all(void);
 static void character_restart(void)
 {
     ch.trackIndex = ch.trackIndexTarget = 1;
@@ -973,6 +974,7 @@ static void character_restart(void)
     guard_restart(1);
     stumble_set(1);
     ch.startedJumpFromGround = 0;
+    subway_leave_all();   /* Character.Restart: subwayColliders.Clear() */
 }
 
 static void track_change_update(float t)
@@ -1326,12 +1328,22 @@ static void notify_stumble(const ClipInfo *snd, const char *name)
 
 static const char *node_name(int n) { return gd.strings[gd.nodes[n].name]; }
 
+/* Character.subwayColliders: los colliders "Subway" en los que esta el personaje. Se sigue dentro mientras quede
+ * alguno (las piezas de las estaciones y los tuneles se solapan: techos a 59,5 dentro del metro de 75). Antes el
+ * port salia del tunel al dejar cualquiera de ellos y la camara se quedaba sin techo y atravesaba el de la estacion */
+#define MAX_SUBWAY_COLS 8
+static int subway_cols[MAX_SUBWAY_COLS], nsubway_cols;
+static void subway_leave_all(void) { nsubway_cols = 0; ch.isInsideSubway = 0; }   /* ForceLeaveSubway */
+
 static void on_char_enter(const Col *c)
 {
     int n = c->node;
     /* 1.5.2 (Character.OnCharacterColliderEnter): el techo de la camara es el del collider del tunel menos 3 */
     if (c->tag == TAG_SUBWAY) {
-        ch.isInsideSubway = 1;
+        int k = 0;
+        while (k < nsubway_cols && subway_cols[k] != c->node) k++;
+        if (k == nsubway_cols && nsubway_cols < MAX_SUBWAY_COLS) subway_cols[nsubway_cols++] = c->node;
+        ch.isInsideSubway = nsubway_cols > 0;
         ch.subwayMaxY = c->bmax.y - 3.0f;
 #ifdef AUTOTEST
         dlog("TUNEL entra en %s: techo de la camara %.1f (camara %.1f)", node_name(c->node), ch.subwayMaxY, cam_pos.y);
@@ -1444,7 +1456,15 @@ static void on_char_exit(const Col *c)
 {
     const uint32_t *te = node_comp(c->node, C_TUTORIAL, NULL);
     if (te && !ch.stopColliding) tutorial_event(te);
-    if (c->tag == TAG_SUBWAY) { ch.isInsideSubway = 0; return; }
+    if (c->tag == TAG_SUBWAY) {
+        for (int k = 0; k < nsubway_cols; k++)
+            if (subway_cols[k] == c->node) { subway_cols[k] = subway_cols[--nsubway_cols]; break; }
+        ch.isInsideSubway = nsubway_cols > 0;
+#ifdef AUTOTEST
+        dlog("TUNEL sale de %s: quedan %d (camara %.1f)", node_name(c->node), nsubway_cols, cam_pos.y);
+#endif
+        return;
+    }
     /* Character.OnRollGuard de la 1.8: el inspector rueda cuando el personaje pasa por debajo de una barrera de rodar
      * (al salir de su collider), no cada vez que se rueda (1.7) */
     if (c->tag == TAG_ROLLBARRIER) guard_react("Guard_Roll", NULL);
@@ -2677,6 +2697,8 @@ static void start_jetpack(int headstart, float hs_dist)
 #if DEVLOG
     jt1 = sceKernelGetSystemTimeLow();
 #endif
+    /* Jetpack de la 1.5+: al despegar dentro de un tunel se rompe el techo y se sale de el (ForceLeaveSubway) */
+    if (ch.isInsideSubway) subway_leave_all();
     jp.cam_off0 = v3sub(cam_pos, cc.pos);
     jp.aim0 = CAM_AIM;
     jp.startY = cc.pos.y;

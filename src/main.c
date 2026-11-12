@@ -234,7 +234,9 @@ int main(int argc, char **argv)
             }
         }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }
-        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17"); }   /* Rio: sin texturas reducidas, como el original */
+        /* Rio y Roma: sin texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a lo
+         * lejos y salian lineas */
+        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17") || !strcmp(wdir, "data/w18"); }
         { extern int game_world; game_world = !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
         dlog("Mundo: %s", !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : "clasico (data/)");
     }
@@ -384,6 +386,9 @@ int main(int argc, char **argv)
         if (frame_no == 60) ginfo.settings_sel = AT_POPUP_KEY;   /* 0 sonido, 1 temporada */
         if (frame_no == 70) pr |= PSP_CTRL_CROSS;
 #endif
+#endif
+#ifdef AT_SNEAK
+        { extern void game_debug_powerup(int k); if (frame_no % 300 == 0) game_debug_powerup(1); }   /* zapatillas */
 #endif
 #ifdef AT_JET
         /* prueba: jetpack en el fotograma AT_JET (si se esta corriendo) */

@@ -167,6 +167,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    azar; ~80 KB). La regla de la 1.7 del Score Booster seguro en la cuarta caja (y otro tres cajas después), que la 1.8
    quitó, queda como cosa de la temporada de Río: solo funciona del 1 al 27 de febrero.
    Coste por mapa ~110 KB de datos; 30 FPS en el clásico, el de la 1.5.2 y el de Roma.
+   Roma va sin mipmaps como Río (había errores gráficos a lo lejos; además ahorra ~0,6 MB de RAM).
+4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
+   los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
+   la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los
+   mapas, y se vacía al reiniciar y al despegar con el jetpack (ForceLeaveSubway), como el original.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
