@@ -191,7 +191,7 @@ int main(int argc, char **argv)
         if (f >= 0) sceIoClose(f);
         if ((f = sceIoOpen("data/hw_tex.bin", PSP_O_RDONLY, 0)) >= 0) { has_hw = 1; sceIoClose(f); }
         if (has15 && !(halloween_season() && has_hw)) wdir = "data/w15";
-        /* el mapa de la 1.6 (data/w16, la ciudad de Nueva York) sale en su temporada (del 2 al 31 de enero,
+        /* el mapa de la 1.6 (data/w16, la ciudad de Nueva York) sale en su temporada (del 3 al 29 de enero,
          * tras la Navidad); make WORLD16=1 lo deja siempre, para probarlo */
         {
             extern int ny_season(void);
@@ -205,7 +205,7 @@ int main(int argc, char **argv)
                 if (!(halloween_season() && has_hw)) wdir = "data/w16";
             }
         }
-        /* el mapa de la 1.7 (Rio de Janeiro, data/w17) en su temporada (1-27 de febrero, tras Nueva York); make
+        /* el mapa de la 1.7 (Rio de Janeiro, data/w17) en su temporada (30 de enero - 27 de febrero, tras Nueva York); make
          * WORLD17=1 lo deja siempre, para probarlo */
         {
             extern int rio_season(void);
@@ -452,6 +452,11 @@ int main(int argc, char **argv)
         if (frame_no == 30) pr |= PSP_CTRL_CROSS;    /* cierra el aviso del evento */
         if (frame_no == 50) pr |= PSP_CTRL_LTRIGGER;
         if (frame_no == 80) pr |= PSP_CTRL_LEFT;
+#elif defined(AT_SHOPTEST)
+        /* prueba de la tienda (1.8: nivel 6 de las mejoras): R a la tienda y comprar 7 veces la primera mejora */
+        if (frame_no == 30) ginfo.total_coins = 200000;
+        if (frame_no == 50) pr |= PSP_CTRL_RTRIGGER;
+        if (frame_no >= 90 && frame_no <= 210 && frame_no % 20 == 10) pr |= PSP_CTRL_CROSS;
 #elif defined(AT_ROMETEST)
         /* prueba de la 1.8 (con AT_ROME): el aviso de Roma, personajes (arriba: Roberto) y tablas hasta Chicky */
         if (frame_no == 30) ginfo.total_coins = 200000;

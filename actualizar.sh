@@ -58,9 +58,9 @@ else
     if [ -n "$APK14" ] && [ -f "$APK14" ]; then echo "Con el contenido de la 1.4 de $APK14"; OPTS+=(--apk14 "$APK14"); fi
     # de la 1.5.2: las tablas, Elf Tricky y su mapa (el principal; WORLD15=0 deja solo el clasico)
     if [ -n "$APK15" ] && [ -f "$APK15" ]; then echo "Con el contenido de la 1.5.2 de $APK15"; OPTS+=(--apk15 "$APK15"); fi
-    # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 2 al 31 de enero)
+    # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 3 al 29 de enero)
     if [ -n "$APK16" ] && [ -f "$APK16" ]; then echo "Con el contenido de la 1.6 de $APK16"; OPTS+=(--apk16 "$APK16"); fi
-    # la 1.7: Carmen, sus tablas y su mapa de Rio en data/w17 (del 1 al 27 de febrero)
+    # la 1.7: Carmen, sus tablas y su mapa de Rio en data/w17 (del 30 de enero al 27 de febrero)
     if [ -n "$APK17" ] && [ -f "$APK17" ]; then echo "Con la 1.7 de $APK17 (en pruebas)"; OPTS+=(--apk17 "$APK17"); fi
     # la 1.8: Roberto, sus tablas, la busqueda de huevos (en todos los mapas) y su mapa de Roma en data/w18 (del 28 de
     # febrero al 3 de abril)
@@ -76,8 +76,8 @@ echo "== 3/3 Compilando =="
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
 if [ -f data/w18/world.bin ]; then echo "Mapa de la 1.8 (Roma): incluido (del 28 de febrero al 3 de abril; WORLD18=1 lo deja siempre)"; fi
-if [ -f data/w17/world.bin ]; then echo "Mapa de la 1.7 (Rio): incluido (del 1 al 27 de febrero; WORLD17=1 lo deja siempre)"; fi
-if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 2 al 31 de enero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
+if [ -f data/w17/world.bin ]; then echo "Mapa de la 1.7 (Rio): incluido (del 30 de enero al 27 de febrero; WORLD17=1 lo deja siempre)"; fi
+if [ -f data/w16/world.bin ]; then echo "Contenido de la 1.6: incluido (Tony y Liberty del 3 al 29 de enero, con su mapa; WORLD16=1 deja su mapa siempre)"; fi
 if [ -f data/hw_tex.bin ]; then
     echo "Halloween y contenido de la 1.4: INCLUIDOS (el tema se activa solo del 24 de octubre al 4 de noviembre,"
     echo "segun la fecha de la consola: compruebala en Ajustes del sistema > Fecha y hora)"

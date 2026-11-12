@@ -258,6 +258,7 @@ static struct {
     int tw; float tw_start, tw_dur, tw_from, tw_to;
     int hide_pending; float hide_at;
     float jump_at; int jump_pending;
+    float roll_at; int roll_pending;   /* FollowingGuard.OnRollNoAnimation de la 1.8 */
     int catching; float catch_start; float catch_dur; int catch_weight; float catch_weight_start;
     int hit_train; float ht_start;
     float vol;
@@ -723,7 +724,7 @@ static void guard_show(int vis)
 
 static void guard_restart(int close)
 {
-    gu.tw = 0; gu.hide_pending = 0; gu.jump_pending = 0; gu.catching = 0; gu.hit_train = 0;
+    gu.tw = 0; gu.hide_pending = 0; gu.jump_pending = 0; gu.roll_pending = 0; gu.catching = 0; gu.hit_train = 0;
     gu.close = close;
     gu.dist = close ? GUARD_DIST_MIN : GUARD_DIST_MAX;
 }
@@ -860,6 +861,12 @@ static void guard_late_update(float dt)
             anim_crossfade_queued(&anim_dog, "Dog_Fast Run", 0.2f);
             gu.vs = jump_vs(ch.jumpHeight) * 0.6f;
         }
+    }
+    if (gu.roll_pending && game_time >= gu.roll_at) {
+        /* RollCoroutine de la 1.8: al rodar el personaje, el inspector baja en seco donde lo hizo el (si estaba en el
+         * aire cae enseguida; en el suelo no cambia nada). Sin animacion: la de rodar solo bajo las barreras */
+        gu.roll_pending = 0;
+        gu.vs = -jump_vs(ch.jumpHeight);
     }
     if (gu.catching) {
         float t = (game_time - gu.catch_start) / gu.catch_dur;
@@ -1148,6 +1155,7 @@ static void character_roll(void)
     missions_reset(M_NOROLLSBEFORESCORE);
     missions_did(M_ROLL, 1);
     missions_did(ch.trackIndex == 0 ? M_ROLLLEFT : ch.trackIndex == 1 ? M_ROLLCENTER : M_ROLLRIGHT, 1);
+    if (gu.enabled) { gu.roll_pending = 1; gu.roll_at = game_time + gu.dist / (currentSpeed > 1 ? currentSpeed : 1); }
 }
 
 static void roll_tick(void)
@@ -2130,8 +2138,8 @@ int halloween_season(void)
 #endif
 }
 
-/* Rio de la 1.7 (Carmen, la tabla Toucan y su mapa): en el original del 28 de enero al 28 de febrero a las 00:00
- * (Characters.cs / Hoverboards.cs de la 1.7); aqui empieza al acabar Nueva York, el 1 de febrero, y acaba igual, el 27 */
+/* Rio de la 1.7 (Carmen, la tabla Toucan y su mapa): la temporada de la actualizacion 1.7, del 30 de enero al 27 de
+ * febrero (Carmen y Toucan se vendian del 28 de enero al 28 de febrero a las 00:00: Characters.cs / Hoverboards.cs) */
 int rio_season(void)
 {
 #if defined(AT_RIO)
@@ -2141,7 +2149,7 @@ int rio_season(void)
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
-    return t.month == 2 && t.day <= 27;
+    return (t.month == 1 && t.day >= 30) || (t.month == 2 && t.day <= 27);
 #endif
 }
 
@@ -2161,9 +2169,9 @@ int rome_season(void)
 #endif
 }
 
-/* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): en el original del 2 de diciembre al 1 de
- * febrero a las 00:00 (Characters.cs / Hoverboards.cs de la 1.6: ultimo dia el 31 de enero); aqui empieza al acabar
- * la Navidad, el 2 de enero, para no pisarla, y acaba igual, el 31 de enero, cada ano */
+/* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): la temporada de la actualizacion 1.6, del 3 al 29
+ * de enero (Tony y Liberty se vendian del 2 de diciembre al 1 de febrero a las 00:00: Characters.cs / Hoverboards.cs);
+ * despues viene Rio. El 2 de enero, tras la Navidad, el mapa normal */
 int ny_season(void)
 {
 #if defined(AT_NY)
@@ -2173,7 +2181,7 @@ int ny_season(void)
 #else
     ScePspDateTime t;
     if (console_date(&t) < 0) return 0;
-    return t.month == 1 && t.day >= 2;
+    return t.month == 1 && t.day >= 3 && t.day <= 29;
 #endif
 }
 
@@ -2190,8 +2198,8 @@ int season_seconds_left(void)
     int days;                                                  /* dias enteros despues de hoy */
     if (halloween_season()) days = t.month == 10 ? 31 - t.day + 4 : 4 - t.day;
     else if (xmas_season()) days = t.month == 12 ? 31 - t.day + 1 : 1 - t.day;   /* hasta el 1 de enero */
-    else if (ny_season()) days = 31 - t.day;                                     /* hasta el 31 de enero */
-    else if (rio_season()) days = 27 - t.day;                                    /* hasta el 27 de febrero */
+    else if (ny_season()) days = 29 - t.day;                                     /* hasta el 29 de enero */
+    else if (rio_season()) days = t.month == 1 ? 31 - t.day + 27 : 27 - t.day;  /* hasta el 27 de febrero */
     else if (rome_season()) {                                                    /* hasta el 3 de abril */
         int feb = (t.year % 4 == 0 && (t.year % 100 != 0 || t.year % 400 == 0)) ? 29 : 28;
         days = t.month == 2 ? feb - t.day + 31 + 3 : t.month == 3 ? 31 - t.day + 3 : 3 - t.day;
@@ -3696,7 +3704,8 @@ static const char *const shop_descs[][2] = {
     {"Salta tu misión 3 actual.", "Skip your current mission 3"},
 };
 const char *shop_desc(int i) { return TR(shop_descs[i][0], shop_descs[i][1]); }
-static const int tier_prices[6] = {0, 500, 1500, 3000, 10000, 30000};
+/* Upgrades.cs de la 1.8: un nivel mas (7 en total) por 60000 monedas */
+static const int tier_prices[7] = {0, 500, 1500, 3000, 10000, 30000, 60000};
 
 int shop_price(int i)
 {
@@ -3705,7 +3714,7 @@ int shop_price(int i)
     if (it->kind == SK_SKIP) return missions_done(it->idx) ? -1 : missions_skip_price();
     if (it->kind == SK_AMOUNT) return it->idx == 0 ? 300 : it->idx == 1 ? 400 : it->idx == 3 ? 3000 : 2000;
     int t = upgrade_tier[it->idx];
-    return t >= 5 ? -1 : tier_prices[t + 1];
+    return t >= UPGRADE_MAX_TIER ? -1 : tier_prices[t + 1];
 }
 
 int shop_amount(int i)
@@ -4639,7 +4648,7 @@ void game_debug_unlock_all(void)
     for (int i = 0; i < NCHARS; i++) if (!chars[i].event) char_tokens[chars[i].token] = chars[i].price;
     owned14 = 0x3f;
     trophies_mask = (1 << NTROPHIES) - 1;
-    for (int k = 0; k < PW_COUNT; k++) upgrade_tier[k] = 5;
+    for (int k = 0; k < PW_COUNT; k++) upgrade_tier[k] = UPGRADE_MAX_TIER;
     ginfo.total_coins = 999999; ginfo.hoverboards = 99; ginfo.hs500 = 20; ginfo.hs2000 = 20;
     ginfo.boxes_pending = 5;
     ginfo.character = ext_ready(15) ? 15 : 0;   /* Prince K */

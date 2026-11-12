@@ -98,12 +98,12 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
     spawn_egg_selection(sp, chosen, visit, nv, max);
 }
 
-static const float dur_tab[PW_COUNT][6] = {
+static const float dur_tab[PW_COUNT][UPGRADE_MAX_TIER + 1] = {
     {0},                                     /* letras */
-    {10, 11.5f, 13.4f, 15.8f, 19, 24},       /* 2x */
-    {8, 9, 10.5f, 12.5f, 15, 19},            /* jetpack */
-    {10, 11.5f, 13.4f, 15.8f, 19, 24},       /* super zapatillas */
-    {10, 11.5f, 13.4f, 15.8f, 19, 24},       /* iman */
+    {10, 11.5f, 13.4f, 15.8f, 19, 24, 30},   /* 2x (la 1.8 anade el ultimo nivel) */
+    {8, 9, 10.5f, 12.5f, 15, 19, 25},        /* jetpack */
+    {10, 11.5f, 13.4f, 15.8f, 19, 24, 30},   /* super zapatillas */
+    {10, 11.5f, 13.4f, 15.8f, 19, 24, 30},   /* iman */
     {0},
 };
 
@@ -112,6 +112,6 @@ float powerup_duration(int type)
     if (type < 0 || type >= PW_COUNT) return 0;
     int t = upgrade_tier[type];
     if (t < 0) t = 0;
-    if (t > 5) t = 5;
+    if (t > UPGRADE_MAX_TIER) t = UPGRADE_MAX_TIER;
     return dur_tab[type][t];
 }

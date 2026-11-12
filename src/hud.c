@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <pspkernel.h>
 #include "hud.h"
+#include "spawn.h"
 #include "render.h"
 #include "data.h"
 #include "game.h"
@@ -1163,8 +1164,8 @@ static void shop_card(int i, float x, float y, int sel)
     /* lo que se tiene: niveles (UITierHelper), cantidad ("You have: 0") o la mision que se salta */
     float ly = cy + 9;
     if (shop_items[i].kind == 1) {
-        for (int k = 0; k < 5; k++)
-            ui_sprite_wh(a_ui, k < am ? "progressbar_bar_on" : "progressbar_bar_off", cx - 93 * K + k * 17, ly - 4, 15, 9, C_WHITE);
+        for (int k = 0; k < UPGRADE_MAX_TIER; k++)   /* 6 barras desde la 1.8 */
+            ui_sprite_wh(a_ui, k < am ? "progressbar_bar_on" : "progressbar_bar_off", cx - 93 * K + k * 15, ly - 4, 13, 9, C_WHITE);
     } else if (shop_items[i].kind == 0 || shop_items[i].kind == 2) {
         snprintf(buf, sizeof(buf), TR("Tienes: %d", "You have: %d"), am);
         labc(0, cx - 93 * K, ly, 14, C_WHITE, 0, 1, buf);
@@ -1618,7 +1619,9 @@ static void draw_gameover(void)
     spr_c("scoreboard", cx, cy, U(160) * 1.15f, U(121) * 1.15f, C_WHITE);
     snprintf(buf, sizeof(buf), "%d", (int)lroundf(ginfo.gameover_score0 + (ginfo.final_score - ginfo.gameover_score0) * cf));
     labfit(1, cx, cy - U(34), 30, U(150), C_WHITE, 1, 1, buf);
-    snprintf(buf, sizeof(buf), "%d", (int)lroundf(c0 * (1 - cf)));
+    /* GameOverScreen.CountUpCoins de la 1.8: las monedas de la carrera suben de 0 a lo cogido (hasta la 1.7 bajaban
+     * a 0 mientras pasaban a la hucha) */
+    snprintf(buf, sizeof(buf), "%d", (int)lroundf(c0 * cf));
     float tw = labw(0, 20, buf);
     spr_c("coin2d", cx - tw * 0.5f - U(12), cy + U(4), U(18), U(18), C_WHITE);
     labc(0, cx + U(6), cy + U(4), 20, C_WHITE, 1, 1, buf);

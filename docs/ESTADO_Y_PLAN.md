@@ -45,7 +45,7 @@ con `tools/extract.py`. El repositorio no lleva ningún recurso del juego.
   el mapa clásico.
 * **Contenido por fecha, no por mapa:** los personajes y tablas de temporada salen en cualquier mapa, pero solo en
   sus fechas (si no se compran, desaparecen hasta el año siguiente): Zombie Jake del 24 de octubre al 4 de noviembre,
-  Elf Tricky del 18 de diciembre al 1 de enero, Tony y Liberty del 2 al 31 de enero (en la 1.6 empezaban el
+  Elf Tricky del 18 de diciembre al 1 de enero, Tony y Liberty del 3 al 29 de enero (en la 1.6 empezaban el
   2 de diciembre; aquí tras la Navidad para no pisarla). Los APK no traen fecha de inicio (lo encendía el servidor):
   solo el fin (Halloween 5 nov 00:00, Navidad 2 ene 00:00, Tony/Liberty 1 feb 00:00); el inicio es una semana antes
   de la fiesta (31 de octubre, 25 de diciembre). El mapa de la 1.6 sale también solo en su temporada;
@@ -148,7 +148,7 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    del servidor. El guardia de las demás versiones: 1.0 = 1.4 = 1.5.2 (verde); Halloween (zombi) y Navidad (Papá
    Noel) ya tenían sus mallas y texturas. Queda el fallo de "letras con líneas negras" en el mapa de la 1.4 (falta
    captura).
-4b. 1.7 (Río): su mapa en data/w17 (`--apk17`) del 1 al 27 de febrero (tras Nueva York; `WORLD17=1` lo deja
+4b. 1.7 (Río): su mapa en data/w17 (`--apk17`) del 30 de enero al 27 de febrero (tras Nueva York; `WORLD17=1` lo deja
    siempre), sin texturas reducidas (como el original: en Río cambiaban el color de las paredes a lo lejos), con su
    inspector y la interfaz de la 1.5.2 (la de la 1.7 es de Unity 4 y no se lee entera). Carmen y Toucan por fecha
    (temporada de Río), Lumberjack y Daredevil (85000; acelera y abre la cámara), Score Booster
@@ -165,9 +165,16 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    todos los mapas: el inspector rueda solo al pasar el personaje por debajo de una barrera (OnRollGuard de la 1.8)
    y las animaciones del jetpack de la 1.8 (al cambiar de carril gira, BarrelRoll, o se inclina, changeLane, al
    azar; ~80 KB). La regla de la 1.7 del Score Booster seguro en la cuarta caja (y otro tres cajas después), que la 1.8
-   quitó, queda como cosa de la temporada de Río: solo funciona del 1 al 27 de febrero.
+   quitó, queda como cosa de la temporada de Río: solo funciona del 30 de enero al 27 de febrero.
    Coste por mapa ~110 KB de datos; 30 FPS en el clásico, el de la 1.5.2 y el de Roma.
    Roma va sin mipmaps como Río (había errores gráficos a lo lejos; además ahorra ~0,6 MB de RAM).
+4e. Fechas de las ciudades como las actualizaciones del original: Nueva York (1.6) del 3 al 29 de enero, Río (1.7)
+   del 30 de enero al 27 de febrero, Roma (1.8) del 28 de febrero al 3 de abril (Sídney 1.9 y Tokio 1.10 irían del 4
+   de abril al 1 de mayo y del 2 al 29 de mayo, si se añaden). Más de la 1.8 en todos los mapas: sexto nivel de las
+   mejoras (60000 monedas; jetpack 25 s y el resto 30 s), el inspector baja en seco cuando el personaje rueda
+   (OnRollNoAnimation), las monedas de la carrera suben de 0 en el fin de carrera y los puntos de huevos se ordenan
+   con los de power-ups. Revisadas las clases de la 1.5 a la 1.8: lo demás que cambia es interfaz online, avisos o
+   cambios de sintaxis de Unity 4.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

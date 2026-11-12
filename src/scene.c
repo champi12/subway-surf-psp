@@ -811,7 +811,9 @@ static void recursive_selection(int parent, int sort_spawn)
     visit[nv++] = parent;
     while (head < nv) {
         int g = visit[head++];
-        if (sort_spawn && node_comp(g, C_SPAWNPOINT, NULL)) {
+        /* Track.PerformRecursiveSelection de la 1.8: los puntos de los huevos (SpawnPointEgg) se ordenan por z junto
+         * con los de los power-ups */
+        if (sort_spawn && (node_comp(g, C_SPAWNPOINT, NULL) || node_comp(g, C_SPAWNEGG, NULL))) {
             if (nsp < 256) sps[nsp++] = g;
             continue;
         }
