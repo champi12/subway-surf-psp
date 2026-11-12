@@ -4305,8 +4305,10 @@ void game_update(float dt)
      * de golpe al aparecer (~110 ms de Memory Stick en la consola, un tiron). Se pide una cada fotograma: el cargador
      * lleva una a la vez */
     if (state == GS_DIEFALL || state == GS_DIE) {
-        static const char *const fin_tex[] = {"ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
-        for (int i = 0; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++) {
+        /* con Save Me (1.9) primero las de su ventana (sale a los 0,5 s): el panel y la llave; antes se leian de golpe
+         * al abrirse (~70 ms, un tiron) */
+        static const char *const fin_tex[] = {"ui_settings", "ui_key", "ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
+        for (int i = game_saveme_on() ? 0 : 2; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++) {
             int t = data_tex_find(fin_tex[i]);
             if (t >= 0 && !r_tex_request(t)) break;   /* esta se esta leyendo: las demas, despues */
         }

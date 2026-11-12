@@ -1916,6 +1916,15 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
             if ic is not None:
                 ex.textures.append(('generada', 'ui_booster', ic.resize((32, 32), Image.LANCZOS), True))
                 print('  icono del Score Booster de la 1.7: %dx%d' % ic.size)
+            # en la tienda el original lo pone sobre el fondo de rayos azul de los iconos (icon_background_normal):
+            # los de la 1.4 ya lo llevan dibujado, este no
+            bgi = sprite_from_raw_atlas(sc17_, 'icon_background_normal', small=True)
+            if ic is not None and bgi is not None:
+                c = bgi.convert('RGBA').resize((32, 32), Image.LANCZOS)
+                st_ = ic.convert('RGBA').resize((29, 29), Image.LANCZOS)
+                c.alpha_composite(st_, ((32 - 29) // 2, (32 - 29) // 2))
+                ex.textures.append(('generada', 'ui_booster_shop', c, True))
+                print('  icono del Score Booster para la tienda, con el fondo de rayos')
         # la llave de la 1.9 (Save Me, de momento solo en el mapa de Sidney): su icono de la hoja normal
         sc19_ = getattr(ex, 'sc19', None)
         if sc19_ is not None and getattr(ex, 'level_sc', None) is sc19_:

@@ -1251,7 +1251,7 @@ static void shop_card(int i, float x, float y, int sel)
     if (!strcmp(shop_items[i].icon, "ui_booster")) {
         /* el icono del Score Booster va aparte (sacado de la hoja de la 1.7 por el conversor) */
         static int tb = -2;
-        if (tb == -2) tb = data_tex_find("ui_booster");
+        if (tb == -2) { tb = data_tex_find("ui_booster_shop"); if (tb < 0) tb = data_tex_find("ui_booster"); }
         float s = 35 * K * 1.15f;
         if (tb >= 0) r_sprite(tb, cx - 115 * K - s * 0.5f, cy - 2 - s * 0.5f, s, s, 0, 0, 1, 1, C_WHITE);
         else spr_c("icon_upgrades_doubleScore", cx - 115 * K, cy - 2, s, s, C_WHITE);
