@@ -3726,6 +3726,21 @@ static const Loot *loot_roll(int super)
     return &t[n - 1];
 }
 
+/* MysteryBox.Roll de la 1.7 (hasFirstMBoxScoreBooster / firstMBoxScoreBoosterAtNumber): la primera caja normal
+ * despues de las tres primeras da un Score Booster, y otro la tercera caja despues de esa. La 1.8 lo quito; aqui es
+ * de la temporada de Rio (la de la 1.7): solo da el booster en esas fechas */
+static int mb_first_booster, mb_booster_at = -1;
+static int rio_box_booster(void)
+{
+    if (!rio_season()) return 0;
+    if (ginfo.boxes_opened > 3 && !mb_first_booster) {
+        mb_first_booster = 1;
+        mb_booster_at = ginfo.boxes_opened;
+        return 1;
+    }
+    return mb_booster_at >= 0 && mb_booster_at + 3 == ginfo.boxes_opened;
+}
+
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
 static void mystery_open_type(int super)
 {
@@ -3751,6 +3766,7 @@ static void mystery_open_type(int super)
     if (!super && ginfo.boxes_opened == 1) first.min = 1000;
     else if (!super && ginfo.boxes_opened == 2) { first.type = LT_TOKEN; first.min = 1; tc = 1; }   /* Tricky */
     else if (!super && ginfo.boxes_opened == 3) { first.type = LT_HOVER; first.min = 3; }
+    else if (!super && rio_box_booster()) { first.type = LT_BOOSTER; first.min = 1; }
     else l = loot_roll(super);
     int amount = l->max > l->min ? rnd_range(l->min, l->max) : l->min;
     switch (l->type) {
@@ -3799,6 +3815,9 @@ static void mystery_open_type(int super)
     ginfo.reward_super = super;
     ginfo.reward_trophy = trophy >= 0;
     ginfo.reward_t = game_time;
+#ifdef AUTOTEST
+    dlog("CAJA %s %d: %s", super ? "super" : "normal", super ? ginfo.sboxes_opened : ginfo.boxes_opened, ginfo.reward);
+#endif
     snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
     game_save();
 }
@@ -4455,7 +4474,8 @@ static int save_fill(unsigned char *buf)
     /* de la 1.7: Score Boosters, tablas vistas (todas) y el ano del aviso de Rio */
     /* de la 1.8: huevos de Pascua (y su ano, y la caja de la busqueda) y el ano del aviso de Roma */
     int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year,
-                 (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year};
+                 (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year,
+                 ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
@@ -4541,6 +4561,7 @@ void game_load(void)
     /* Score Booster: las partidas de antes empiezan con 3, como en la 1.7 (PlayerInfo: si no lo tiene, 3) */
     ginfo.boosters = ne2 >= 1 && (e2[0] >> 30 & 1) ? e2[0] & 0xffff : 3;
     if (ne2 >= 3) rio_popup_year = e2[2];
+    if (ne2 >= 6) { mb_booster_at = (e2[5] & 0xffff) - 1; mb_first_booster = (e2[5] >> 16) & 1; }
     if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }
     if (ne2 >= 2) board_seen = e2[1];

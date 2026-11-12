@@ -164,7 +164,8 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    cero. El huevo de los demás mapas lleva solo su trozo de textura (64x128), no la hoja de la 1.8 entera. También en
    todos los mapas: el inspector rueda solo al pasar el personaje por debajo de una barrera (OnRollGuard de la 1.8)
    y las animaciones del jetpack de la 1.8 (al cambiar de carril gira, BarrelRoll, o se inclina, changeLane, al
-   azar; ~80 KB). La 1.8 quita la regla de la 1.7 del Score Booster seguro en la cuarta caja (el port ya iba así).
+   azar; ~80 KB). La regla de la 1.7 del Score Booster seguro en la cuarta caja (y otro tres cajas después), que la 1.8
+   quitó, queda como cosa de la temporada de Río: solo funciona del 1 al 27 de febrero.
    Coste por mapa ~110 KB de datos; 30 FPS en el clásico, el de la 1.5.2 y el de Roma.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
