@@ -755,7 +755,11 @@ static void draw_missions_panel(float x, float y, float w)
         missions_text(i, buf, sizeof(buf));
         labfit(0, x + U(40), ry - (done ? 0 : U(7)), 16, w - U(44), C_NAVY, 0, 0, buf);
         if (!done) {
-            snprintf(buf, sizeof(buf), "%d/%d", missions_progress(i), missions_goal(i));
+            /* MissionPopup de la 1.10: la de "que te pillen" muestra los segundos que van (en la pausa) y la de "uno de
+             * cada" los power-ups distintos que faltan */
+            if (mission_is_type(i, M_TIMEDEATH)) snprintf(buf, sizeof(buf), TR("%d s", "%d s"), game_run_seconds());
+            else if (mission_is_type(i, M_ONEOFEACHPOWERUP)) snprintf(buf, sizeof(buf), TR("Faltan %d", "%d left"), game_oneofeach_left());
+            else snprintf(buf, sizeof(buf), "%d/%d", missions_progress(i), missions_goal(i));
             labc(0, x + U(40), ry + U(10), 14, C_LIMITED, 0, 0, buf);
         }
     }
@@ -852,6 +856,10 @@ static void draw_missions_popup(void)
         char t[64];
         missions_text(i, t, sizeof(t));
         if (done) snprintf(buf, sizeof(buf), TR("%s. ¡Hecha!", "%s. Done!"), t);
+        else if (mission_is_type(i, M_TIMEDEATH))   /* MissionPopup de la 1.10: en la pausa, los segundos que van */
+            snprintf(buf, sizeof(buf), TR("%s. Llevas %d s", "%s. %d seconds so far"), t, game_run_seconds());
+        else if (mission_is_type(i, M_ONEOFEACHPOWERUP))   /* ...y los power-ups distintos que faltan */
+            snprintf(buf, sizeof(buf), TR("%s. Faltan %d", "%s. %d left"), t, game_oneofeach_left());
         else snprintf(buf, sizeof(buf), TR("%s. Faltan %d", "%s. %d left"), t, missions_goal(i) - missions_progress(i));
         lab2(0, mx + 44, ry, 17, mw - 46, C_NAVY, buf);
     }
@@ -1229,23 +1237,57 @@ static void doll_icon(float cx, float cy, float h, unsigned int col)
  * de la semana; flecha izquierda abre la ventana */
 static void draw_hunt_button(void)
 {
-    if (!game_hunt_button() || ginfo.missions_open) return;
+    int kind = game_hunt_button();
+    if (!kind || ginfo.missions_open) return;
     char buf[16];
     int wk = game_hunt_week();
     float cx = U(30), cy = U(84), sz = U(40);
-    ui_sliced(a_ui, "whitebox", cx - sz * 0.5f, cy - sz * 0.5f, sz, sz, UIS, C_HUNT);
+    /* 1.8 (FrontScreen.eggButton): en Roma el huevo con los que se llevan de 100, en rojo de Roma */
+    ui_sliced(a_ui, "whitebox", cx - sz * 0.5f, cy - sz * 0.5f, sz, sz, UIS, kind == 1 ? 0xff2c3cc8u : C_HUNT);
     ui_sliced(a_ui, "button_generic_2_outline", cx - sz * 0.5f - U(2), cy - sz * 0.5f - U(2), sz + U(5), sz + U(6), UIS, C_OUTLINE);
-    doll_icon(cx, cy, sz * 0.8f, C_WHITE);
-    snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(wk), game_hunt_goal(wk));
+    if (kind == 1) {
+        static int te = -2;
+        if (te == -2) te = data_tex_find("ui_egg");
+        if (te >= 0) r_sprite(te, cx - sz * 0.4f, cy - sz * 0.4f, sz * 0.8f, sz * 0.8f, 0, 0, 1, 1, C_WHITE);
+        snprintf(buf, sizeof(buf), "%d/%d", game_eggs(), game_eggs_max());
+    } else {
+        doll_icon(cx, cy, sz * 0.8f, C_WHITE);
+        snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(wk), game_hunt_goal(wk));
+    }
     labc(0, cx, cy + sz * 0.5f + U(9), 14, C_WHITE, 1, 1, buf);
     labc(0, cx + sz * 0.5f + U(10), cy, 14, C_WHITE, 1, 1, "<");
 }
 
 /* ItemHuntPopup de la 1.10: "Caza semanal" de Tokio con las cuatro semanas. La de ahora en grande con lo que se
  * lleva; las pasadas con el tick si se completo o la X si no; las que faltan con "?" y cuantas pediran */
+/* EggHuntPopup de la 1.8: la busqueda de huevos de Roma, con Chicky de premio y los que se llevan */
+static void draw_egg_popup(void)
+{
+    char buf[48];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 360, h = 200, x = (SCR_W - w) * 0.5f, y = 36;
+    panel(x, y, w, h);
+    const unsigned C_ROME = 0xff2c3cc8u;
+    labc(1, SCR_W * 0.5f, y + 22, 26, C_NAVY, 1, 1, TR("Búsqueda de huevos", "Egg Hunt"));
+    labc(0, SCR_W * 0.5f, y + 44, 15, C_ROME, 1, 1, TR("Roma", "Rome"));
+    static int te = -2;
+    if (te == -2) te = data_tex_find("ui_egg");
+    float ix = x + 70, iy = y + 104;
+    spr_c("background_sticker_medium", ix, iy, 86, 86, C_ROME);
+    if (te >= 0) r_sprite(te, ix - 30, iy - 30, 60, 60, 0, 0, 1, 1, C_WHITE);
+    int have = game_eggs(), goal = game_eggs_max();
+    float tx = x + 130;
+    labfit(1, tx, y + 76, 20, w - 140, C_NAVY, 0, 1, TR("Gana la tabla Chicky", "Win the Chicky board"));
+    labfit(0, tx, y + 100, 15, w - 140, 0xffba9e5cu, 0, 1, TR("Busca huevos de Pascua corriendo", "Find Easter eggs while running"));
+    snprintf(buf, sizeof(buf), "%d / %d", have, goal);
+    labc(1, tx, y + 130, 24, have >= goal ? 0xff4acc8cu : C_ROME, 0, 1, have >= goal ? TR("¡Completada!", "Complete!") : buf);
+    labc(0, SCR_W * 0.5f, y + h - 12, 13, C_NAVY, 1, 1, TR("X / O: cerrar", "X / O: close"));
+}
+
 static void draw_hunt_popup(void)
 {
     char buf[48];
+    if (game_hunt_button() == 1) { draw_egg_popup(); return; }
     r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
     float w = 400, h = 252, x = (SCR_W - w) * 0.5f, y = 10;
     panel(x, y, w, h);
@@ -1790,19 +1832,51 @@ static int box_frame(int sup, int f, float cx, float cy)
     return 1;
 }
 
+/* MysteryBoxPopup.AnimateStripes de la 1.10: en las cajas de la caza semanal, el degradado de Tokio y 12 rayas verdes
+ * que suben a distinta velocidad (600-2000 en la pantalla del original, ~3,5 veces la nuestra); las rapidas mas
+ * opacas y grandes. Dos texturas pequenas (128x8 y 16x256) */
+static void draw_hunt_box_bg(void)
+{
+    static int tb = -2, ts = -2, init;
+    static float sx[12], sy[12], sp[12];
+    if (tb == -2) { tb = data_tex_find("ui_mbox_tokyo"); ts = data_tex_find("ui_stripe"); }
+    if (tb < 0) return;
+    r_sprite(tb, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE);
+    if (ts < 0) return;
+    const float k = SCR_H / 960.0f;
+    if (!init) {
+        init = 1;
+        for (int i = 0; i < 12; i++) { sx[i] = rnd_rangef(0, SCR_W); sy[i] = rnd_rangef(-50, SCR_H); sp[i] = rnd_rangef(600, 2000); }
+    }
+    static float last_t;
+    float dt = ginfo.time - last_t;
+    last_t = ginfo.time;
+    if (dt < 0 || dt > 0.1f) dt = 1.0f / 30.0f;
+    for (int i = 0; i < 12; i++) {
+        float f = sp[i] / 2000.0f, sc = 0.5f + 0.5f * f, h = 448 * k * 2.0f * sc, w = 10 * k * 2.0f * sc;
+        sy[i] -= sp[i] * k * dt;
+        if (sy[i] + h < 0) { sy[i] = SCR_H; sx[i] = rnd_rangef(0, SCR_W); sp[i] = rnd_rangef(600, 2000); }
+        unsigned a = (unsigned)(255 * (0.3f + 0.6f * f));
+        r_sprite(ts, sx[i] - w * 0.5f, sy[i], w, h, 0, 0, 1, 1, (a << 24) | 0x00a2ffaau);
+    }
+}
+
 static void draw_box_popup(int sup)
 {
     char buf[48];
     float bx = SCR_W * 0.5f, cy = 112;
+    int hunt = ginfo.reward[0] ? ginfo.reward_hunt : (sup && game_hunt_box_next());
     if (mbox_bg == -2) mbox_bg = data_tex_find("ui_mbox_bg");
-    if (mbox_bg >= 0) {
+    if (hunt) draw_hunt_box_bg();
+    else if (mbox_bg >= 0) {
         /* girando despacio, como el fondo del original: se dibuja algo mas grande que la pantalla */
         r_sprite(mbox_bg, 0, 0, SCR_W, SCR_H, 0.06f, 0.2f, 0.94f, 0.8f, C_WHITE);
         mbox_loaded = 1;
     }
     const char *box = sup ? "box_super" : "box_mystery", *box_open = sup ? "box_super_open" : "box_mystery_open";
     const char *old = sup ? "icon_bigSuperMysteryBox" : "icon_upgrades_mysteryBox";
-    if (sup) labc(1, bx, 26, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
+    if (hunt) labc(1, bx, 26, 26, C_WHITE, 1, 1, TR("Caza semanal", "Weekly Hunt"));   /* itemHuntTopTitle */
+    else if (sup) labc(1, bx, 26, 26, 0xff00dbffu, 1, 1, TR("Súper caja misteriosa", "Super Mystery Box"));
     if (!ginfo.reward[0]) {
         /* esperando: la caja flota arriba y abajo (BoxIdleAnimCoroutine) */
         if (!box_frame(sup, 0, bx, cy + sinf(ginfo.time * 2.0f) * 5.0f))

@@ -560,8 +560,14 @@ int main(int argc, char **argv)
         if (frame_no == 60 + 32 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
 #elif defined(AT_HUNTPOPUP)
         /* prueba: cierra los avisos de Tokio y de las llaves y abre la caza semanal con la flecha izquierda */
-        if (frame_no == 30 || frame_no == 50) pr |= PSP_CTRL_CROSS;
+        if ((frame_no == 30 || frame_no == 50) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_LEFT;
+#elif defined(AT_HUNTBOX)
+        /* prueba: caja de la caza semanal al acabar la carrera y la pausa con la mision de los segundos */
+        if (frame_no == 30 || frame_no == 50 || frame_no == 80) pr |= PSP_CTRL_CROSS;   /* avisos y jugar */
+        if (frame_no == 200) { extern void game_debug_huntbox(void); game_debug_huntbox(); }
+        if (frame_no == 300) pr |= PSP_CTRL_START;
+        if (frame_no == 360) pr |= PSP_CTRL_START;
 #elif defined(AT_KEYBOX)
         /* prueba: en la tienda, una caja que da la llave de la primera caja (el icono en el aviso) */
         if (frame_no == 30) pr |= PSP_CTRL_CROSS;      /* cierra el aviso de las llaves */

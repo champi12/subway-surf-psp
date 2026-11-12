@@ -1975,6 +1975,15 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
         if mb is not None:
             # remolino de colores detras de la caja misteriosa (MysteryBoxPopup): difuminado, basta con 256x256
             ex.textures.append(('generada', 'ui_mbox_bg', mb.convert('RGB').resize((256, 256), Image.LANCZOS)))
+        # 1.10 (MysteryBoxPopup.AnimateStripes): cajas de la caza semanal con el degradado de Tokio y rayas que suben
+        sc110b = getattr(ex, 'sc110', None)
+        if sc110b is not None:
+            tb = find_texture(sc110b, 'mysterybox_bg_tokyo')
+            ts = find_texture(sc110b, 'tokyo_stripe')
+            if tb is not None and ts is not None:
+                ex.textures.append(('generada', 'ui_mbox_tokyo', tb.convert('RGB').resize((128, 8), Image.LANCZOS)))
+                ex.textures.append(('generada', 'ui_stripe', ts.convert('RGBA').resize((16, 256), Image.LANCZOS), True))
+                print('  fondo y rayas de Tokio para las cajas de la caza semanal')
         fx = export_board_crash_fx(sc15) if sc15 is not None else None
         if fx is not None:
             ex.fx_bin = fx[0]

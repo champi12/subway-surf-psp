@@ -302,6 +302,16 @@ static float lane_t;
  * La de power-ups suma mientras no hay ninguno activo (la tabla no cuenta) */
 static int powerup_active_no_board(void);
 static int booster_on;   /* Score Booster activo (definido mas abajo) */
+int game_run_seconds(void)
+{
+    return (state == GS_RUNNING || state == GS_JETPACK || state == GS_INTRO) ? (int)(game_time - start_time) : 0;
+}
+/* MissionPopup.oneOfEach de la 1.10: de los cuatro power-ups (2x, iman, zapatillas, jetpack), cuantos faltan */
+int game_oneofeach_left(void)
+{
+    if (!(state == GS_RUNNING || state == GS_JETPACK)) return 4;
+    return 4 - (run_pk[0] > 0) - (run_pk[1] > 0) - (run_pk[2] > 0) - (run_pk[3] > 0);
+}
 static void score_missions(int num, int from_meters)
 {
     missions_did(M_SCORE, num);
@@ -503,7 +513,8 @@ int game_hunt_counter(int *have, int *goal)
 /* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (caza semanal) */
 int game_hunt_items(int w) { if (w < 1 || w > 4) return 0; hunt_active(); return hunt_items[w] < hunt_goal[w] ? hunt_items[w] : hunt_goal[w]; }
 int game_hunt_goal(int w) { return w >= 1 && w <= 4 ? hunt_goal[w] : 0; }
-int game_hunt_button(void) { return hunt_week_now() != 0; }
+int game_hunt_button(void) { return hunt_week_now() ? 2 : rome_season() ? 1 : 0; }   /* FrontScreen.eggButton: toda la temporada de Roma */
+int game_hunt_box_next(void) { return hunt_box != 0; }
 int game_hunt_kind(void) { return hunt_run ? 2 : egg_hunt_run ? 1 : 0; }
 float game_hunt_time(void) { return hunt_elapsed; }
 static void hunt_picked(void)
@@ -516,7 +527,7 @@ static void hunt_picked(void)
     dlog("MUNECA de la caza semanal %d/%d (semana %d)", hunt_items[w], hunt_goal[w], w);
     if (hunt_items[w] >= hunt_goal[w]) {
         ginfo.sboxes_pending++;
-        if (w != 3) hunt_box = w;
+        hunt_box = w;   /* la 3 es una super caja normal, pero con el fondo de la caza (ItemHuntPeriodThree) */
         if (w == 4) {
             for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_HUNT) board_owned |= 1 << i;
         }
@@ -4118,7 +4129,12 @@ static int rio_box_booster(void)
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
 static void mystery_open_type(int super)
 {
-    if (super && hunt_box) {
+    ginfo.reward_hunt = 0;
+    if (super && hunt_box == 3) {
+        /* ItemHuntPeriodThree: una super caja normal (MakeRoll(Super)), con el fondo de la caza */
+        hunt_box = 0;
+        ginfo.reward_hunt = 1;
+    } else if (super && hunt_box) {
         /* MysteryBox.Roll(ItemHuntPeriodOne/Two/Four) de la 1.10: 10 hoverboards, 7 llaves o la tabla Cherry */
         if (ginfo.sboxes_pending > 0) ginfo.sboxes_pending--;
         int w = hunt_box;
@@ -4127,6 +4143,7 @@ static void mystery_open_type(int super)
         else if (w == 2) { keys += 7; snprintf(ginfo.reward, sizeof(ginfo.reward), TR("7 llaves", "7 Keys")); ginfo.reward_icon = "ui_key"; }
         else { snprintf(ginfo.reward, sizeof(ginfo.reward), TR("Tabla Cherry", "Cherry board")); ginfo.reward_icon = "ui_doll"; }
         ginfo.reward_super = 1;
+        ginfo.reward_hunt = 1;
         ginfo.reward_trophy = 0;
         ginfo.reward_t = game_time;
         snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
@@ -5069,6 +5086,14 @@ void game_debug_unlock_all(void)
 
 /* para la prueba automatica: abrir n cajas misteriosas de golpe */
 /* prueba: una caja comprada en la tienda que debe dar la llave de la primera caja (MysteryBox.Roll de la 1.9) */
+/* prueba: la caja del premio de la primera semana de la caza y el grupo de misiones con "que te pillen en N s" */
+void game_debug_huntbox(void)
+{
+    hunt_box = 1;
+    ginfo.sboxes_pending++;
+    mission_set = 7;
+    dlog("PRUEBA caja de la caza semanal pendiente, misiones del grupo 8");
+}
 void game_debug_keybox(void)
 {
     if (ginfo.boxes_opened < 3) ginfo.boxes_opened = 3;

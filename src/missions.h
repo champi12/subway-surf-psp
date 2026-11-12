@@ -34,6 +34,7 @@ void missions_text(int i, char *buf, int n);
 int missions_progress(int i);
 int missions_goal(int i);
 int missions_done(int i);
+int mission_is_type(int i, int target);   /* la mision i es de ese objetivo (M_...) */
 int missions_skip_price(void);
 void missions_skip(int i);
 void missions_upgrade_110(void);   /* partidas de antes de la 1.10: el grupo repetible en la lista nueva */

@@ -40,6 +40,7 @@ typedef struct {
     int opt_sound_off, opt_season_off;   /* ajustes de la 1.5.2: sonido y temporada (Navidad) apagados */
     int sboxes_pending, sboxes_opened;   /* super cajas misteriosas (1.4) */
     int reward_super;             /* el ultimo premio era de una super caja */
+    int reward_hunt;              /* ...y de la caza semanal (fondo de Tokio con rayas) */
     int reward_trophy;            /* el ultimo premio es un trofeo nuevo ("NEW TROPHY!") */
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
@@ -86,7 +87,10 @@ int game_hunt_counter(int *have, int *goal);   /* 1 si en esta carrera se buscan
 int game_hunt_week(void);                       /* 1..4 en la temporada de Tokio, 0 fuera */
 int game_hunt_items(int w);                     /* munecas cogidas en la semana w (1-4) de la caza de este ano */
 int game_hunt_goal(int w);
-int game_hunt_button(void);                     /* boton de la caza semanal en la portada (temporada de Tokio) */
+int game_hunt_button(void);                     /* 0 nada, 1 huevos (Roma), 2 munecas (Tokio) */
+int game_hunt_box_next(void);                   /* la siguiente super caja es de la caza semanal */
+int game_run_seconds(void);                     /* segundos de la carrera en curso (0 fuera) */
+int game_oneofeach_left(void);                  /* power-ups distintos que faltan en la carrera (de 4) */                     /* boton de la caza semanal en la portada (temporada de Tokio) */
 /* busqueda de huevos de la 1.8 */
 int game_eggs(void);
 int game_eggs_max(void);

@@ -182,4 +182,9 @@ void missions_upgrade_110(void)
     if (MISSION_STORY + num2 < MISSION_SETS) mission_set = MISSION_STORY + num2;
 }
 
+int mission_is_type(int i, int target)
+{
+    return mission_set < MISSION_SETS && mission_tpl[mission_sets[mission_set][i].type].target == target;
+}
+
 int missions_done(int i) { return mission_set >= MISSION_SETS || mission_progress[i] >= missions_goal(i); }
