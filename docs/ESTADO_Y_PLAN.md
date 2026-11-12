@@ -218,6 +218,23 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
+## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
+
+Antes de añadir nada, comparar con la versión anterior y decir si se puede pasar a la consola:
+* **Rendimiento del mapa:** llamadas de dibujo y triángulos (media y máximo) frente a los mapas que ya hay, RAM y VRAM.
+  Sin mipmaps al principio; se añaden solo si el rendimiento lo pide.
+* **Clases nuevas, quitadas y cambiadas** (diff del código descompilado, ignorando los textos movidos a StringID).
+* **Animaciones de la carrera** (lo más importante): nuevas del personaje (jetpack, tabla, saltos...), del inspector y
+  del perro (como el rodar bajo las barreras de la 1.8), y si el código de la carrera cambia cuándo se usan
+  (Character, Jetpack, FollowingGuard, Revive, Game, Running, Hoverboard). Las de menús o poses que el código no usa
+  no hacen falta.
+* Personajes, tablas (y su regla de fecha o de actualización), misiones (story y repetibles), cajas y premios,
+  tienda y mejoras, probabilidades de aparición, Save Me / llaves, cazas y eventos por fecha.
+* **Detalles de interfaz:** botones de la portada, ventanas, contadores e iconos (tienda, fin de partida, cajas).
+* Pantalla de carga de la ciudad y sus avisos de temporada.
+* Botones de la consola: que no se repitan entre ventanas (O = tablas de regalo, flecha izquierda = caza de la
+  temporada, START = ajustes, triángulo = misiones, cuadrado = reto diario, L/R = personajes/tienda).
+
 ## 8. Cómo pasar información a Claude
 
 * El **devlog** de la versión de pruebas (`devlog.txt`, y `devlog_prev.txt` de la sesión anterior) es lo más útil:
