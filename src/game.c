@@ -403,7 +403,7 @@ static int board_has(int i)
 {
     if (i < 0 || i >= gd_nboards) return 0;
 #if defined(PRUEBA_TABLAS) && PRUEBA_TABLAS
-    /* PRUEBA (make PRUEBA_TABLAS=1): las tablas con efecto (Bouncer, Lowrider, Daredevil) salen como tuyas para
+    /* PRUEBA (make PRUEBA_TABLAS=1): las tablas con efecto (Bouncer, Lowrider, Daredevil, Hotrod...) salen como tuyas para
      * probarlas. No se marcan como compradas en la partida: sin la prueba vuelven a su precio */
     if (gd_boards[i].effect) return 1;
 #endif
