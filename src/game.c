@@ -374,7 +374,16 @@ static int board_default(void)
     return 0;
 }
 /* la normal es siempre tuya; las de monedas y la de regalo (Starboard, "FREE GIFT") hasta que se compran o se reclaman */
-static int board_has(int i) { return i >= 0 && i < gd_nboards && (gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1)); }
+static int board_has(int i)
+{
+    if (i < 0 || i >= gd_nboards) return 0;
+#if defined(PRUEBA_TABLAS) && PRUEBA_TABLAS
+    /* PRUEBA (make PRUEBA_TABLAS=1): las tablas con efecto (Bouncer, Lowrider, Daredevil) salen como tuyas para
+     * probarlas. No se marcan como compradas en la partida: sin la prueba vuelven a su precio */
+    if (gd_boards[i].effect) return 1;
+#endif
+    return gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1);
+}
 int ny_season(void);
 /* BoardsNotificationHelper / HoverboardOverlayHelper de la 1.6: las tablas nuevas de esta version (isNewInThisUpdate:
  * Miami, Monster y Skull Fire, detras de las 7 de la 1.5.2; Liberty no cuenta: lleva su limite de tiempo) llevan la
