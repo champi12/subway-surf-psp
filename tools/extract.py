@@ -1804,7 +1804,7 @@ def fix_glow_material(ex, mi):
           (round((u1 - u0) * W), round((v1 - v0) * H), src.read().m_Name))
 
 
-def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
+def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
     """Atlas de sprites (UIAtlas) y fuentes (UIFont) de NGUI."""
     atlases = []
     fonts = []
@@ -1933,7 +1933,13 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None):
             if fx[1] is not None:
                 ex.textures.append(('generada', 'fx_spray', fx[1].convert('RGBA'), True))
             print('  humo al romperse la tabla (hoverboardCrashParticleSystem): %d particulas' % struct.unpack_from('<I', fx[0], 4)[0])
-        sp15 = find_texture(sc15, 'splashScreen') if sc15 is not None else None
+        spc = find_texture(city_sc, 'splashScreen') if city_sc is not None else None
+        sp15 = find_texture(sc15, 'splashScreen') if sc15 is not None and spc is None else None
+        if spc is not None:
+            # mapas de ciudad (1.6 en adelante): cada uno con la imagen de inicio de su APK (su ciudad detras de Jake y
+            # Tricky), con la misma disposicion que la de la 1.5.2
+            sp15 = spc
+            print('  pantalla de carga de la ciudad (splashScreen de su APK)')
         if sp15 is not None:
             # pantalla de carga de la 1.5.2: la imagen de inicio es vertical (9:16, guardada en 1024x1024); para la
             # PSP se toma una franja apaisada de la parte de arriba (la libreta con el consejo tapa la de abajo).
@@ -2893,8 +2899,11 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                 break
     print('Exportando interfaz...')
     # los otros mundos (data/w15) tienen su propio ui.bin: tambien llevan las miniaturas de las tablas
+    # los mapas de ciudad (Nueva York, Rio, Roma...) llevan la pantalla de carga de su APK; el de la 1.5.2 y el
+    # clasico, la de la 1.5.2
+    city = level_sc if (not classic and level_sc is not sc and sc16 is level_sc) else None
     ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui,
-                   sc15 if sc15 is not None else (level_sc if level_sc is not sc else None))
+                   sc15 if sc15 is not None else (level_sc if level_sc is not sc else None), city_sc=city)
     print('Exportando mallas...')
     ex.adaptive_parts = not classic   # solo el mapa de la 1.5.2 (el clasico como antes)
     if sc16 is not None and level_sc is sc16:

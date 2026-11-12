@@ -175,6 +175,12 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    (OnRollNoAnimation), las monedas de la carrera suben de 0 en el fin de carrera y los puntos de huevos se ordenan
    con los de power-ups. Revisadas las clases de la 1.5 a la 1.8: lo demás que cambia es interfaz online, avisos o
    cambios de sintaxis de Unity 4.
+4f. Pantallas de carga: cada mapa de ciudad (Nueva York, Río, Roma) con la imagen de inicio de su APK (su ciudad),
+   con la misma disposición que la de la 1.5.2; el de la 1.5.2 (con su Navidad), Halloween y el clásico con la de la
+   1.5.2. Como el original, primero sale la imagen sola y después la libreta con el consejo y la barra.
+   Power-ups: el port usaba las probabilidades de la 1.0; desde la 1.4 son 2x 32, imán 32, zapatillas 22, jetpack 14
+   y caja 20, y las letras de la palabra del día salen en cada punto mientras quede alguna (CheckLetterSpawnRate).
+   PRUEBA: Bouncer, Lowrider y Daredevil desbloqueadas (PRUEBA_TABLAS=1 en build_dist.sh); quitar al terminar.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

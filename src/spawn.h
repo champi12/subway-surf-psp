@@ -9,6 +9,7 @@ void spawn_perform_selection(int spawnpoint, int *visit, int *nv, int max);
 /* SpawnPointEgg (1.8): chosen >= 0 si en ese punto ya ha salido un power-up (los huevos anadidos a los SpawnPoint) */
 void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max);
 int egg_should_spawn(void);
+int game_letter_pending(void);   /* PlayerInfo.GetNewDailyLetter != 0 (game.c) */
 #define UPGRADE_MAX_TIER 6   /* niveles 0-6 (la 1.8 anadio el sexto) */   /* EggHuntManager.ShouldSpawnEggs (game.c) */
 float game_level_speed(void);
 /* duraciones de los power-ups (Upgrades.cs, nivel 0 si no se ha mejorado) */

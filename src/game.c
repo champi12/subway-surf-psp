@@ -1784,6 +1784,8 @@ static char daily_next_letter(void)
     return 0;
 }
 
+int game_letter_pending(void) { return daily_next_letter() != 0; }
+
 /* nuevo dia: palabra nueva desde cero (InitDailyWord) */
 static void daily_word_check(void)
 {

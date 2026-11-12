@@ -1753,15 +1753,19 @@ static const char *const tips_en[] = {
     "Finishing missions raises your multiplier.",
 };
 static int splash_tex = -2, splash_tip = -1;
+static unsigned int splash_t0;
 static int loading_15(float p)
 {
     if (splash_tex == -2) splash_tex = gd.ntex > 0 ? data_tex_find("ui_splash") : -2;
     if (splash_tex < 0 || f_mid < 0) return 0;
     if (a_nb == -2) a_nb = ui_atlas("Notebook15");
-    if (splash_tip < 0) splash_tip = (int)(sceKernelGetSystemTimeLow() / 1000u) % 5;
+    if (splash_tip < 0) { splash_tip = (int)(sceKernelGetSystemTimeLow() / 1000u) % 5; splash_t0 = sceKernelGetSystemTimeLow(); }
+    /* la imagen de inicio de la version del mapa (la de su ciudad en los de Nueva York, Rio, Roma...) */
     r_sprite(splash_tex, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE);
-    /* hoja de libreta abajo con su espiral */
+    /* como el original: primero la imagen sola y despues la libreta con el consejo y la barra */
+    if (sceKernelGetSystemTimeLow() - splash_t0 < 600000u && p < 0.5f) return 1;
     float y0 = 150, x0 = 24, x1 = SCR_W - 24;
+    /* hoja de libreta abajo con su espiral */
     if (a_nb >= 0 && find_sprite(a_nb, "newbackground")) {
         ui_sliced(a_nb, "newbackground", x0, y0 + 6, x1 - x0, SCR_H - y0, 1.0f, C_WHITE);
         USprite *sp = find_sprite(a_nb, "metal_spiral_lo");

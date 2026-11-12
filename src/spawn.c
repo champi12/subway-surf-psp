@@ -9,14 +9,16 @@ int upgrade_tier[PW_COUNT];
 typedef struct { float prob, dist_min, spawn_z; int field; } PickupType;
 
 /* orden de SpawnPoint: dailyLetter, doubleScoreMultiplier, jetpackPickup, jumpBooster, magnetBooster, mysteryBox
- * spawnProbability / minimumMeters de Upgrades.cs */
+ * spawnProbability / minimumMeters de Upgrades.cs de la 1.4 a la 1.8 (el port usaba los de la 1.0: 15, 20, 10, 25,
+ * 25 y 5). Las letras van aparte: SpawnPointManager.CheckLetterSpawnRate */
+#define LETTER_PROB 1.5e9f
 static PickupType pk[6] = {
-    {15.0f, 0.0f, 0, 0},                       /* letras: spawnDistanceMin queda en 0 (bug del original) */
-    {20.0f, 0.0f * DISTANCE_PER_METER, 0, 1},  /* 2x */
-    {10.0f, 1000.0f * DISTANCE_PER_METER, 0, 2},/* jetpack: minimumMeters 1000 */
-    {25.0f, 0.0f, 0, 3},                       /* super zapatillas */
-    {25.0f, 0.0f, 0, 4},                       /* iman */
-    {5.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
+    {LETTER_PROB, 0.0f, 0, 0},                 /* letras: spawnDistanceMin queda en 0 (bug del original) */
+    {32.0f, 0.0f * DISTANCE_PER_METER, 0, 1},  /* 2x */
+    {14.0f, 1000.0f * DISTANCE_PER_METER, 0, 2},/* jetpack: minimumMeters 1000 */
+    {22.0f, 0.0f, 0, 3},                       /* super zapatillas */
+    {32.0f, 0.0f, 0, 4},                       /* iman */
+    {20.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
 };
 static float spawn_z, spawn_spacing;
 /* SpawnPointEgg.lastSpawn (static, a 0 en ResetSpawn al empezar cada carrera) */
@@ -73,6 +75,11 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
     if (!c) return;
     float z = node_pos(sp).z;
     int chosen = -1;
+#if !defined(AT_LETTERS) && !defined(AT_PKTEST)
+    /* CheckLetterSpawnRate (1.4 en adelante): mientras quede alguna letra de la palabra del dia por coger, sale letra
+     * en cada punto que toque (probabilidad 1.5e9 frente a las ~120 del resto); con la palabra completa, ninguna */
+    pk[0].prob = game_letter_pending() ? LETTER_PROB : 0.0f;
+#endif
     if (z > spawn_z) {
         int list[6], n = 0;
         float acc[6], tot = 0;
