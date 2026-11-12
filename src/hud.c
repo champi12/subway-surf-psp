@@ -343,9 +343,22 @@ static void draw_board_smoke(void)
     }
 }
 
+int game_powerup_flash(V3 *p, float *age);   /* game.c: destello al coger un power-up */
+/* PowerUpEFX: al coger un power-up, un brillo que crece y se apaga (0,35 s) sobre el personaje */
+static void draw_powerup_flash(void)
+{
+    V3 p; float f, sx, sy;
+    if (!game_powerup_flash(&p, &f) || !r_project(p, &sx, &sy)) return;
+    float sz = r_world_px(p, 10.0f + 26.0f * f);
+    if (sz > SCR_H * 0.6f) sz = SCR_H * 0.6f;
+    unsigned a = (unsigned)(230 * (1.0f - f));
+    spr_c("background_superglow", sx, sy, sz, sz, (a << 24) | 0xffffff);
+}
+
 static void draw_ingame(void)
 {
     draw_board_smoke();
+    draw_powerup_flash();
     /* avisos del tutorial (UIScreenController.QueueMessage) */
     if (ginfo.message && ginfo.time - ginfo.message_t < 2.5f && ginfo.time >= ginfo.message_t) {
         float a = clampf(2.5f - (ginfo.time - ginfo.message_t), 0, 1);

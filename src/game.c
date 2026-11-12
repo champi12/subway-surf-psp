@@ -322,8 +322,19 @@ static void score_missions(int num, int from_meters)
     if (from_meters && booster_on) missions_did(M_SCOREWITHBOOSTER, num);   /* 1.10 */
 }
 /* power-up recogido: jetpack, zapatillas, iman, multiplicador (OneOfEachPowerup: el producto de los cuatro) */
+/* CharacterPickupParticles.PickedUpPowerUp: un destello breve sobre el personaje (PowerUpEFX) */
+static float pw_flash_t = -100;
+int game_powerup_flash(V3 *p, float *age)
+{
+    float e = game_time - pw_flash_t;
+    if (e < 0 || e > 0.35f || (state != GS_RUNNING && state != GS_JETPACK)) return 0;
+    *p = v3add(cc.pos, v3(0, 9.0f, 1.2f));
+    *age = e / 0.35f;
+    return 1;
+}
 static void powerup_picked(int k)
 {
+    pw_flash_t = game_time;
     static const char *const kn[] = {"iman", "zapatillas", "jetpack", "x2"};
     dlog("POWERUP %s cogido", k >= 0 && k < 4 ? kn[k] : "?");
     (void)kn;
