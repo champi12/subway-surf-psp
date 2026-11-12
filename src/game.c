@@ -448,7 +448,7 @@ static void updates_reached_check(void)
     if (r != updates_reached) {
         updates_reached = r;
         dlog("ACTUALIZACIONES alcanzadas: 0x%02x (sus tablas fijas ya salen)", r);
-        game_save();   /* en el menu: no se nota */
+        game_save_bg();   /* en el menu: no se nota */
     }
 }
 /* EggHuntManager de la 1.8: durante la temporada de Roma salen huevos de Pascua (en cualquier mapa); con 100 se gana
@@ -715,6 +715,32 @@ static void board_apply_mode(int i, int full)
     (void)added;
 }
 static void board_apply(int i) { board_apply_mode(i, 1); }
+/* al salir de la pantalla de tablas: la tabla elegida se pone con la animacion de correr y el resto de sus animaciones
+ * se leen de dos en dos en los fotogramas siguientes del menu. Antes se leian todas de golpe (9 de la Memory Stick y
+ * los sonidos): tiron de ~150 ms al volver al menu */
+static int board_full_pending = -1;
+static void board_full_step(int maxadd)
+{
+    if (board_full_pending < 0) return;
+    if (board_full_pending != board_applied) { board_full_pending = -1; return; }
+    const BoardDef *src = board_anim_src(board_full_pending);
+    const char *names[BOARD_MAX_CLIPS];
+    int n = 0;
+    for (int a = 0; src && a < BOARD_NACT; a++)
+        for (int k = 0; k < src->nact[a] && n < BOARD_MAX_CLIPS; k++) {
+            int dup = 0;
+            for (int j = 0; j < n && !dup; j++) dup = !strcmp(names[j], src->act[a][k]);
+            if (!dup) names[n++] = src->act[a][k];
+        }
+    int c0 = gd.nclips, added = data_board_clips_load_max(names, n, maxadd);
+    for (int c = c0; c < gd.nclips; c++) anim_add_state(&anim_char, c);
+    if (added < maxadd) {
+        board_add_sounds();
+        board_applied_full = 1;
+        dlog("TABLA %s: animaciones completas (repartidas en el menu)", gd_boards[board_full_pending].name);
+        board_full_pending = -1;
+    }
+}
 
 /* ------------------------------------------------------------ animaciones del personaje */
 static int rnd_i(int n) { return rnd_range(0, n); }
@@ -2438,7 +2464,7 @@ static void halloween_popup_check(void)
     if (hw_popup_year == y) return;
     hw_popup_year = y;
     ginfo.popup = POPUP_HALLOWEEN;
-    game_save();
+    game_save_bg();
 }
 
 /* ChangelogThemePopup (1.5.2): ChangeLogStarter lo pone en cola al llegar a la portada si la temporada es la de
@@ -2456,7 +2482,7 @@ static void xmas_popup_check(void)
     if (xm_popup_year == y) return;
     xm_popup_year = y;
     ginfo.popup = POPUP_XMAS;
-    game_save();
+    game_save_bg();
 }
 
 /* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
@@ -2478,7 +2504,7 @@ static void rio_popup_check(void)
     if (rio_popup_year == y) return;
     rio_popup_year = y;
     ginfo.popup = POPUP_RIO;
-    game_save();
+    game_save_bg();
 }
 /* aviso de la temporada de Roma (1.8: Roberto, las tablas nuevas y la busqueda de huevos): la primera vez que se abre
  * el menu en cada temporada. Los huevos salen en cualquier mapa, asi que no hace falta estar en el de Roma */
@@ -2494,7 +2520,7 @@ static void rome_popup_check(void)
     if (rome_popup_year == y) return;
     rome_popup_year = y;
     ginfo.popup = POPUP_ROME;
-    game_save();
+    game_save_bg();
 }
 /* aviso de la temporada de Sidney (1.9: Kim y las tablas nuevas): la primera vez que se abre el menu en la temporada */
 static int kim_ready(void);
@@ -2505,7 +2531,7 @@ static void sydney_popup_check(void)
     if (sydney_popup_year == y) return;
     sydney_popup_year = y;
     ginfo.popup = POPUP_SYDNEY;
-    game_save();
+    game_save_bg();
 }
 /* aviso de la temporada de Tokio (1.10: Harumi, Kitty y la caza semanal) */
 static int harumi_ready(void);
@@ -2516,7 +2542,7 @@ static void tokyo_popup_check(void)
     if (tokyo_popup_year == y) return;
     tokyo_popup_year = y;
     ginfo.popup = POPUP_TOKYO;
-    game_save();
+    game_save_bg();
 }
 /* ShowKeysPopup de la 1.9: la primera vez en el mapa de Sidney se explican las llaves; desde entonces Save Me va */
 static void keys_popup_check(void)
@@ -2528,12 +2554,12 @@ static void keys_popup_check(void)
         keys_gift = 1;
         keys += 5;
         dlog("LLAVES de regalo: 5 (ahora %d)", keys);
-        if (keys_popup_shown) { hud_slide(TR("¡5 llaves de regalo!", "5 free Keys!"), TR("Sirven para Save Me", "Use them to Save Me")); game_save(); }
+        if (keys_popup_shown) { hud_slide(TR("¡5 llaves de regalo!", "5 free Keys!"), TR("Sirven para Save Me", "Use them to Save Me")); game_save_bg(); }
     }
     if (keys_popup_shown) return;
     keys_popup_shown = 1;
     ginfo.popup = POPUP_KEYS;
-    game_save();
+    game_save_bg();
 }
 static void ny_popup_check(void)
 {
@@ -2547,7 +2573,7 @@ static void ny_popup_check(void)
     if (ny_popup_year == y) return;
     ny_popup_year = y;
     ginfo.popup = POPUP_NY;
-    game_save();
+    game_save_bg();
 }
 
 /* SettingsPopup de la 1.5.2: el boton de temporada solo sale mientras la Navidad esta disponible */
@@ -2627,6 +2653,7 @@ static void game_quit_run(void)
 
 static void game_start_run(void)
 {
+    board_full_step(1 << 30);   /* si aun faltaban animaciones de la tabla, todas ya */
     tut_board_ok = 0; tut_arrow_on = 0; ginfo.message = NULL;
     dw_next_t = 0;
     daily_word_check();   /* palabra nueva si ha cambiado el dia */
@@ -3834,7 +3861,8 @@ static void board_preview_end(void)
     board_previewing = 0;
     board_applied_full = 0;   /* que se vuelva a poner entera aunque sea la misma */
     board_applied = -2;
-    board_apply(board_sel);
+    board_apply_mode(board_sel, 0);   /* de momento solo la de correr; el resto, poco a poco (board_full_step) */
+    board_full_pending = board_sel;
     if (nprev_mesh) {
         /* las mallas no llevan cuenta de usos: la de la tabla elegida (que puede estar en la lista) no se suelta.
          * Antes se soltaba y en la carrera la tabla no se veia (solo la animacion) */
@@ -3879,7 +3907,7 @@ static void boards_input(unsigned in, int confirm)
         if (board_has(r)) {
             board_sel = r;
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
-            game_save();
+            game_save_bg();
         } else if (d->unlock == BOARD_EGGS) {
             /* PurchaseHandler de la 1.8: Chicky no se compra, se gana con los huevos (TryToUnlockEggBoard) */
             char b[40];
@@ -3949,7 +3977,7 @@ static void chars_input(unsigned in, int confirm)
         if (ch_unlocked(i)) {
             ginfo.character = i;
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
-            game_save();
+            game_save_bg();
         } else if (chars[i].unlock == UL_COINS && ginfo.total_coins >= chars[i].price) {
             /* UICharacterBuyButton: se paga y queda elegido */
             ginfo.total_coins -= chars[i].price;
@@ -4232,7 +4260,7 @@ static void mystery_open_type(int super)
     dlog("CAJA %s %d: %s", super ? "super" : "normal", super ? ginfo.sboxes_opened : ginfo.boxes_opened, ginfo.reward);
 #endif
     snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
-    game_save();
+    game_save_bg();   /* en segundo plano: abrir una caja daba un tiron de ~50 ms */
 }
 
 /* primero las super */
@@ -4468,6 +4496,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
+    if (state != GS_RUNNING && state != GS_JETPACK && state != GS_INTRO) board_full_step(2);
     if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); tokyo_popup_check(); keys_popup_check();
                             updates_reached_check(); }
     if (ginfo.paused) {

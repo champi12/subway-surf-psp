@@ -862,7 +862,10 @@ static void board_clip_index(FILE *f)
 }
 
 /* lee de boardanim.bin los clips con esos nombres que no esten ya cargados; devuelve cuantos */
-int data_board_clips_load(const char *const *names, int n)
+int data_board_clips_load_max(const char *const *names, int n, int maxadd);
+int data_board_clips_load(const char *const *names, int n) { return data_board_clips_load_max(names, n, 1 << 30); }
+/* como data_board_clips_load pero como mucho maxadd clips nuevos (para repartir la lectura en varios fotogramas) */
+int data_board_clips_load_max(const char *const *names, int n, int maxadd)
 {
     if (clips_base < 0) clips_base = gd.nclips;
     FILE *f = fopen("data/boardanim.bin", "rb");
@@ -873,7 +876,7 @@ int data_board_clips_load(const char *const *names, int n)
         int nc = bclip_n;
         uint32_t *offs = bclip_off;
         if (nc > 0) {
-            for (int k = 0; k < nc && board_nbuf < BOARD_MAX_CLIPS; k++) {
+            for (int k = 0; k < nc && board_nbuf < BOARD_MAX_CLIPS && added < maxadd; k++) {
                 const char *nm = bclip_name[k];
                 int want = 0;
                 for (int i = 0; i < n && !want; i++) want = names[i] && !strcmp(names[i], nm);

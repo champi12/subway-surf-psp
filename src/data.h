@@ -160,6 +160,7 @@ extern BoardDef *gd_boards;
 extern int gd_nboards;
 int data_boards_load(void);                                   /* 0 si no hay boards.bin */
 int data_board_clips_load(const char *const *names, int n);   /* de boardanim.bin, las que falten */
+int data_board_clips_load_max(const char *const *names, int n, int maxadd);   /* ...como mucho maxadd */
 void data_board_clips_free(void);
 int data_mat_clone(const char *base, int tex);
 int data_theme_has_tex(int t);
