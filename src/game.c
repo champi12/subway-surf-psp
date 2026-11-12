@@ -2965,7 +2965,7 @@ static void tutorial_event(const uint32_t *t)
         track_running_tutorial = 0;
         track_tutorial = 0;
         tutorial_completed = 1;
-        game_save();
+        game_save_bg();   /* en mitad de la carrera: en segundo plano (si no, tiron de ~50 ms) */
         dlog("TUTORIAL completado");
     }
 }
@@ -3852,7 +3852,7 @@ void missions_super_box(void)
 {
     ginfo.sboxes_pending++;
     hud_slide(TR("Grupo de misiones completado", "Mission Set complete"), TR("Súper caja misteriosa", "Super Mystery Box"));
-    game_save();
+    game_save_bg();   /* en mitad de la carrera: en segundo plano (si no, tiron de ~50 ms) */
 }
 
 static void shop_buy(int i)
@@ -3887,7 +3887,7 @@ static void use_booster(void)
     booster_t = ginfo.time;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.2f, 0);
     dlog("SCORE BOOSTER activado: multiplicador x%d", score_multiplier());
-    game_save();
+    game_save_bg();   /* en mitad de la carrera: en segundo plano (si no, tiron de ~50 ms) */
 }
 static void use_headstart(int big)
 {
@@ -3898,7 +3898,7 @@ static void use_headstart(int big)
     /* Game.StartHeadStart500/2000: distancia = duracion (metros) * 8, velocidad 1000 */
     start_jetpack(1, (big ? 1000.0f : 250.0f) * DISTANCE_PER_METER);
     missions_did(M_HEADSTART, 1);
-    game_save();
+    game_save_bg();   /* en mitad de la carrera: en segundo plano (si no, tiron de ~50 ms) */
 }
 
 void game_input(unsigned in)
@@ -4014,7 +4014,21 @@ void game_input(unsigned in)
             if (ginfo.reward[0] && game_time - ginfo.reward_t < REWARD_REVEAL) ginfo.reward_t = game_time - REWARD_REVEAL;
             else if (ginfo.reward[0]) ginfo.reward[0] = 0;
             else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) mystery_open();
-            else { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); game_start_run(); }
+            else {
+                snd_play(sfx_tap, 1, 1, 0);
+#if DEVLOG
+                unsigned int gt0 = sceKernelGetSystemTimeLow();
+#endif
+                game_top_menu();
+#if DEVLOG
+                unsigned int gt1 = sceKernelGetSystemTimeLow();
+#endif
+                game_start_run();
+#if DEVLOG
+                dlog("OTRA CARRERA %.1f ms: menu %.1f | carrera nueva %.1f", (sceKernelGetSystemTimeLow() - gt0) / 1000.0f,
+                     (gt1 - gt0) / 1000.0f, (sceKernelGetSystemTimeLow() - gt1) / 1000.0f);
+#endif
+            }
         } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
             /* MysteryBoxPopup de la 1.5.2: "View Prizes" (cuadrado) mientras se espera a abrir la caja */
             if ((in & IN_SQUARE) && !ginfo.reward[0]) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
