@@ -43,7 +43,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
@@ -78,6 +78,7 @@ int board_is_season(int row);
 int ny_season(void);
 int rio_season(void);
 int rome_season(void);
+int sydney_season(void);
 /* busqueda de huevos de la 1.8 */
 int game_eggs(void);
 int game_eggs_max(void);

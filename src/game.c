@@ -397,13 +397,14 @@ static void hb_run_completed(void);
 /* la de temporada (Liberty de la 1.6) solo sale en su temporada, en cualquier mapa, o si ya es tuya */
 int rio_season(void);
 int rome_season(void);
+int sydney_season(void);
 static int board_avail(int i)
 {
     if (i < 0 || i >= gd_nboards) return 0;
     int u = gd_boards[i].unlock;
     if (board_has(i)) return 1;
     return u == BOARD_SEASON ? ny_season() : u == BOARD_SEASON_RIO ? rio_season() :
-           u == BOARD_SEASON_ROME || u == BOARD_EGGS ? rome_season() : 1;
+           u == BOARD_SEASON_ROME || u == BOARD_EGGS ? rome_season() : u == BOARD_SEASON_SYDNEY ? sydney_season() : 1;
 }
 /* EggHuntManager de la 1.8: durante la temporada de Roma salen huevos de Pascua (en cualquier mapa); con 100 se gana
  * Chicky (la tabla de unlock eggHunt, cuyo "precio" es el numero de huevos) y una caja de la busqueda. Los huevos son
@@ -2180,6 +2181,21 @@ int rome_season(void)
 #endif
 }
 
+/* Sidney de la 1.9 (Kim, la tabla Outback y su mapa): la temporada de la actualizacion 1.9, del 4 de abril al 1 de mayo
+ * (Kim y Outback se vendian del 20 de marzo al 2 de mayo a las 00:00: Characters.cs / Hoverboards.cs) */
+int sydney_season(void)
+{
+#if defined(AT_SYDNEY)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return (t.month == 4 && t.day >= 4) || (t.month == 5 && t.day <= 1);
+#endif
+}
+
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): la temporada de la actualizacion 1.6, del 3 al 29
  * de enero (Tony y Liberty se vendian del 2 de diciembre al 1 de febrero a las 00:00: Characters.cs / Hoverboards.cs);
  * despues viene Rio. El 2 de enero, tras la Navidad, el mapa normal */
@@ -2201,7 +2217,7 @@ int ny_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() ?
+    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() || sydney_season() ?
            10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
@@ -2215,6 +2231,7 @@ int season_seconds_left(void)
         int feb = (t.year % 4 == 0 && (t.year % 100 != 0 || t.year % 400 == 0)) ? 29 : 28;
         days = t.month == 2 ? feb - t.day + 31 + 3 : t.month == 3 ? 31 - t.day + 3 : 3 - t.day;
     }
+    else if (sydney_season()) days = t.month == 4 ? 30 - t.day + 1 : 1 - t.day;   /* hasta el 1 de mayo */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2275,8 +2292,8 @@ static void xmas_popup_check(void)
 /* ChangelogPopup de la 1.6 ("Welcome to NYC!", con Tony y las tablas nuevas): la 1.6 lo ensenaba la primera vez que se
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
-static int ny_popup_year, rio_popup_year, rome_popup_year;
-int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16, 17 o 18 */
+static int ny_popup_year, rio_popup_year, rome_popup_year, sydney_popup_year;
+int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16, 17, 18 o 19 */
 static int tony_ready(void);
 /* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
 static int carmen_ready(void);
@@ -2307,6 +2324,17 @@ static void rome_popup_check(void)
     if (rome_popup_year == y) return;
     rome_popup_year = y;
     ginfo.popup = POPUP_ROME;
+    game_save();
+}
+/* aviso de la temporada de Sidney (1.9: Kim y las tablas nuevas): la primera vez que se abre el menu en la temporada */
+static int kim_ready(void);
+static void sydney_popup_check(void)
+{
+    if (!sydney_season() || ginfo.popup || !kim_ready()) return;
+    int y = season_year();
+    if (sydney_popup_year == y) return;
+    sydney_popup_year = y;
+    ginfo.popup = POPUP_SYDNEY;
     game_save();
 }
 static void ny_popup_check(void)
@@ -3223,12 +3251,14 @@ static const CharDef chars[] = {
     {"slick", "Carmen", UL_COINS, TK_JAKE, 95000, "", "", NULL, 4, "carmen", "avatar_carmen"},
     /* 1.8: Roberto, "Rome Special" (event 5, temporada de Roma); comprado se queda */
     {"slick", "Roberto", UL_COINS, TK_JAKE, 95000, "", "", NULL, 5, "roberto", "avatar_roberto"},
+    /* 1.9: Kim, "Sydney Special" (event 6, temporada de Sidney); comprada se queda */
+    {"slick", "Kim", UL_COINS, TK_JAKE, 95000, "", "", NULL, 6, "kim", "avatar_kim"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 20, 10};
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
 
@@ -3246,6 +3276,8 @@ static int tony_ready(void) { return CH_TONY < NCHARS && ext_ready(CH_TONY); }
 static int carmen_ready(void) { return CH_CARMEN < NCHARS && ext_ready(CH_CARMEN); }
 #define CH_ROBERTO 19
 static int roberto_ready(void) { return CH_ROBERTO < NCHARS && ext_ready(CH_ROBERTO); }
+#define CH_KIM 20
+static int kim_ready(void) { return CH_KIM < NCHARS && ext_ready(CH_KIM); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3260,6 +3292,7 @@ static int char_available(int i)
     case 3: return ny_season();
     case 4: return rio_season();
     case 5: return rome_season();
+    case 6: return sydney_season();
     }
     return 0;
 }
@@ -3427,7 +3460,7 @@ static void zombie_init(int slick_node)
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : sydney_season() ? " (Sidney: Kim a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -3458,7 +3491,8 @@ int board_is_season(int row)
 {
     if (row < 0 || row >= gd_nboards) return 0;
     int u = gd_boards[row].unlock;
-    return u == BOARD_SEASON ? 1 : u == BOARD_SEASON_RIO ? 2 : u == BOARD_SEASON_ROME ? 3 : u == BOARD_EGGS ? 4 : 0;
+    return u == BOARD_SEASON ? 1 : u == BOARD_SEASON_RIO ? 2 : u == BOARD_SEASON_ROME ? 3 : u == BOARD_EGGS ? 4 :
+           u == BOARD_SEASON_SYDNEY ? 5 : 0;
 }
 int board_is_new(int row)
 {
@@ -4093,7 +4127,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); }
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
@@ -4531,7 +4565,7 @@ static int save_fill(unsigned char *buf)
     /* de la 1.8: huevos de Pascua (y su ano, y la caja de la busqueda) y el ano del aviso de Roma */
     int e2[8] = {ginfo.boosters | 1 << 30, board_seen, rio_popup_year,
                  (eggs & 0xff) | (egg_year & 0xff) << 8 | egg_box << 16, rome_popup_year,
-                 ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16};
+                 ((mb_booster_at + 1) & 0xffff) | mb_first_booster << 16, sydney_popup_year};
     memcpy(buf, d, sizeof(d));
     memcpy(buf + sizeof(d), e, sizeof(e));
     memcpy(buf + sizeof(d) + sizeof(e), e2, sizeof(e2));
@@ -4617,6 +4651,7 @@ void game_load(void)
     /* Score Booster: las partidas de antes empiezan con 3, como en la 1.7 (PlayerInfo: si no lo tiene, 3) */
     ginfo.boosters = ne2 >= 1 && (e2[0] >> 30 & 1) ? e2[0] & 0xffff : 3;
     if (ne2 >= 3) rio_popup_year = e2[2];
+    if (ne2 >= 7) sydney_popup_year = e2[6];
     if (ne2 >= 6) { mb_booster_at = (e2[5] & 0xffff) - 1; mb_first_booster = (e2[5] >> 16) & 1; }
     if (ne2 >= 5) { eggs = e2[3] & 0xff; egg_year = (e2[3] >> 8) & 0xff; egg_box = (e2[3] >> 16) & 1; rome_popup_year = e2[4]; }
     if (ne >= 8) { hb_used = e[7] & 0xfff; hb_runs = (e[7] >> 12) & 15; hb_should = (e[7] >> 16) & 1; hb_shown = (e[7] >> 17) & 1; board_seen = (e[7] >> 18) & 0xfff; hb_fixed = (e[7] >> 30) & 1; }

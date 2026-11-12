@@ -851,6 +851,7 @@ static void draw_boards_popup(void);
 static void draw_ny_popup(void);
 static void draw_rio_popup(void);
 static void draw_rome_popup(void);
+static void draw_sydney_popup(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
  * suave de la interfaz) que caen balanceandose; cada uno con su velocidad y tamano fijos (sin memoria ni CPU que notar) */
@@ -924,6 +925,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_NY) draw_ny_popup();
         if (ginfo.popup == POPUP_RIO) draw_rio_popup();
         if (ginfo.popup == POPUP_ROME) draw_rome_popup();
+        if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
         return;
     }
     /* abajo a la derecha: SHOP (R), como en la 1.4 */
@@ -944,6 +946,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_NY) draw_ny_popup();
     if (ginfo.popup == POPUP_RIO) draw_rio_popup();
     if (ginfo.popup == POPUP_ROME) draw_rome_popup();
+    if (ginfo.popup == POPUP_SYDNEY) draw_sydney_popup();
 }
 
 /* ChangelogThemePopup de la 1.5.2: el aviso del evento de Navidad (con Elf Tricky) al abrir el menu la primera vez
@@ -1095,6 +1098,34 @@ static void draw_rome_popup(void)
         {"Recorre las calles de Roma", "Run through the streets of Rome", "Nuevo mapa hasta el 3 de abril", "New map until April 3"},
         {"Conoce a Roberto", "Meet Roberto", "Solo por tiempo LIMITADO", "LIMITED time only"},
         {"Busca huevos de Pascua", "Hunt for Easter eggs", buf, buf},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
+/* aviso de la temporada de Sidney (1.9): Kim y las tablas nuevas. Misma disposicion, con el naranja de Sidney */
+static void draw_sydney_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_SYD = 0xff1e8cf0u;
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_SYD);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_SYD);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Sídney!", "to Sydney!"));
+    static const char *const lines[3][4] = {
+        {"Recorre el metro de Sídney", "Run through Sydney's subway", "Nuevo mapa hasta el 1 de mayo", "New map until May 1"},
+        {"Conoce a Kim", "Meet Kim", "Solo por tiempo LIMITADO", "LIMITED time only"},
+        {"Tablas nuevas", "New boards", "Outback y Great White", "Outback and Great White"},
     };
     float lx = x + 178, ly = y + 22;
     for (int i = 0; i < 3; i++) {
@@ -1270,7 +1301,8 @@ static void draw_boards(void)
                                                                      : TR("Va agachado", "Stays Low"));
     else if (board_is_season(i)) {
         int bs = board_is_season(i);
-        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 4 ? TR("Especial Búsqueda de huevos", "Egg Hunt Special")
+        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 5 ? TR("Especial de Sídney", "Sydney Special")
+                                           : bs == 4 ? TR("Especial Búsqueda de huevos", "Egg Hunt Special")
                                            : bs == 3 ? TR("Especial de Roma", "Rome Special")
                                            : bs == 2 ? TR("Especial de Río", "Rio Special")
                                                      : TR("Especial de Nueva York", "New York Special"));
@@ -1358,7 +1390,8 @@ static void draw_chars(void)
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 5 ? TR("Especial de Roma", "Rome Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 6 ? TR("Especial de Sídney", "Sydney Special")
+                                                   : limited == 5 ? TR("Especial de Roma", "Rome Special")
                                                    : limited == 4 ? TR("Especial de Río", "Rio Special")
                                                    : limited == 3 ? TR("Especial de Nueva York", "New York Special")
                                                    : limited == 2 ? TR("Especial de Navidad", "Holiday Special")

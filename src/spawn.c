@@ -9,16 +9,16 @@ int upgrade_tier[PW_COUNT];
 typedef struct { float prob, dist_min, spawn_z; int field; } PickupType;
 
 /* orden de SpawnPoint: dailyLetter, doubleScoreMultiplier, jetpackPickup, jumpBooster, magnetBooster, mysteryBox
- * spawnProbability / minimumMeters de Upgrades.cs de la 1.4 a la 1.8 (el port usaba los de la 1.0: 15, 20, 10, 25,
- * 25 y 5). Las letras van aparte: SpawnPointManager.CheckLetterSpawnRate */
+ * spawnProbability / minimumMeters de Upgrades.cs de la 1.9 (de la 1.4 a la 1.8: 2x 32, iman 32, zapatillas 22 y
+ * caja 20; el port usaba los de la 1.0). Las letras van aparte: SpawnPointManager.CheckLetterSpawnRate */
 #define LETTER_PROB 1.5e9f
 static PickupType pk[6] = {
     {LETTER_PROB, 0.0f, 0, 0},                 /* letras: spawnDistanceMin queda en 0 (bug del original) */
-    {32.0f, 0.0f * DISTANCE_PER_METER, 0, 1},  /* 2x */
+    {29.0f, 0.0f * DISTANCE_PER_METER, 0, 1},  /* 2x */
     {14.0f, 1000.0f * DISTANCE_PER_METER, 0, 2},/* jetpack: minimumMeters 1000 */
-    {22.0f, 0.0f, 0, 3},                       /* super zapatillas */
-    {32.0f, 0.0f, 0, 4},                       /* iman */
-    {20.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
+    {26.0f, 0.0f, 0, 3},                       /* super zapatillas */
+    {29.0f, 0.0f, 0, 4},                       /* iman */
+    {12.0f, 99999.0f * DISTANCE_PER_METER, 0, 5} /* caja misteriosa */
 };
 static float spawn_z, spawn_spacing;
 /* SpawnPointEgg.lastSpawn (static, a 0 en ResetSpawn al empezar cada carrera) */

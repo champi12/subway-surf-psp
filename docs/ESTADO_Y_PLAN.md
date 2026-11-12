@@ -181,6 +181,13 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Power-ups: el port usaba las probabilidades de la 1.0; desde la 1.4 son 2x 32, imán 32, zapatillas 22, jetpack 14
    y caja 20, y las letras de la palabra del día salen en cada punto mientras quede alguna (CheckLetterSpawnRate).
    PRUEBA: Bouncer, Lowrider y Daredevil desbloqueadas (PRUEBA_TABLAS=1 en build_dist.sh); quitar al terminar.
+4g. 1.9 (Sídney): su mapa en data/w19 (`--apk19`) del 4 de abril al 1 de mayo (`WORLD19=1` lo deja siempre), sin
+   mipmaps, con su inspector y su perro (en la 1.9 las mallas se llaman como en la 1.0) y su pantalla de carga. Por
+   fecha y en todos los mapas: Kim (95000) y Outback (50000, "Especial de Sídney"); Great White (20000) siempre.
+   Probabilidades de los power-ups de la 1.9 (2x 29, imán 29, zapatillas 26, jetpack 14, caja 12). La 1.9 no tiene
+   búsqueda de huevos (la nuestra solo va en Roma). Medido en el emulador (120 s, misma semilla): 1.5.2 312 llamadas
+   de media y 17084 triángulos; Nueva York 311 / 19157; Río 340 / 19008; Roma 219 / 18349; Sídney 226 / 18059. Save
+   Me (llaves): pendiente, de momento solo para el mapa de Sídney.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

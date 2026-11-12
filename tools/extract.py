@@ -1851,7 +1851,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
         # el modelo grande, la pose de reposo de cada uno (1 fotograma, ~1 KB) en vez de la animacion de pintar
         prev = char_previews(sc14)
         for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7'),
-                         (getattr(ex, 'sc18', None), '1.8')):
+                         (getattr(ex, 'sc18', None), '1.8'), (getattr(ex, 'sc19', None), '1.9')):
             if not prev or scx is None:
                 continue
             # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
@@ -1914,7 +1914,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 ex.textures.append(('generada', 'ui_booster', ic.resize((32, 32), Image.LANCZOS), True))
                 print('  icono del Score Booster de la 1.7: %dx%d' % ic.size)
         # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
-        sc18_ = getattr(ex, 'sc18', None)
+        sc18_ = getattr(ex, 'sc18', None) or getattr(ex, 'sc19', None)
         if sc18_ is not None:
             ic = sprite_from_raw_atlas(sc18_, 'icon_egg', small=True)
             if ic is not None:
@@ -2183,6 +2183,9 @@ BOARDS_17 = BOARDS_16 + [(11, 'Daredevil', 85000, 2, 3), (12, 'Toucan', 50000, 4
 # la 1.8: Chicky (14, "Egg Hunt Special": unlock 6, se gana con 100 huevos de Pascua; "price" es el numero de huevos),
 # Scoot (15, "rome" en el codigo) y Kick-Off (16, "Rome Special": unlock 5, solo en la temporada de Roma)
 BOARDS_18 = BOARDS_17 + [(14, 'Chicky', 100, 6, 0), (15, 'Scoot', 35000, 2, 0), (16, 'Kick-Off', 50000, 5, 0)]
+# la 1.9: Outback (17, "theOutback": "Sydney Special", unlock 7, solo en la temporada de Sidney) y Great White (18,
+# "greatWhiteWakeboard", 20000 siempre)
+BOARDS_19 = BOARDS_18 + [(17, 'Outback', 50000, 7, 0), (18, 'Great White', 20000, 2, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2717,6 +2720,7 @@ def swap_guard16(ex, sc16):
     (normal_polySurface9 / normal_dog) tienen los mismos huesos en el mismo orden que las de la 1.0, asi que se cambian
     la malla y la textura enemies manteniendo el esqueleto y las animaciones de siempre (como las de Navidad)."""
     want = {'polySurface9': 'normal_polySurface9', 'dog': 'normal_dog'}
+    plain = {}   # la 1.9 (Sidney) los llama como la 1.0: polySurface9 y dog
     new_mesh, new_tex = {}, None
     for o in sc16.env.objects:
         if o.type.name not in ('Mesh', 'Texture2D'):
@@ -2730,9 +2734,13 @@ def swap_guard16(ex, sc16):
             for k, v in want.items():
                 if n == v and k not in new_mesh:
                     new_mesh[k] = o
+                elif n == k and k not in plain:
+                    plain[k] = o
         elif new_tex is None and n == 'enemies':
             new_tex = o
-    ex.mesh_names = [m.read().m_Name for m in ex.meshes]
+    for k, o in plain.items():
+        new_mesh.setdefault(k, o)
+    ex.mesh_names = [m.read(check_read=False).m_Name for m in ex.meshes]
     done = []
     for i, m in enumerate(ex.meshes):
         nm = ex.mesh_names[i]
@@ -2747,18 +2755,21 @@ def swap_guard16(ex, sc16):
     print('  inspector y perro de la 1.6: %s' % (', '.join(done) or 'AVISO: no encontrados'))
 
 
-def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None):
+def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None,
+               sc19=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
     scl = [sc] + ([level_sc] if level_sc is not sc else []) + \
         ([sc18] if sc18 is not None and sc18 is not level_sc else [])
+    eggsrc = sc18 or sc19
     msc = scl[0] if len(scl) == 1 else MultiScene(scl)
     ex = Exporter(msc)
     ex.sc16 = sc16   # contenido de la 1.6 (Tony, tablas) en la interfaz del mundo clasico
     ex.sc17 = sc17   # y de la 1.7 (Carmen)
     ex.sc18 = sc18   # y de la 1.8 (Roberto)
+    ex.sc19 = sc19   # y de la 1.9 (Kim)
     trees = []
     for r in sc.roots('level0'):
         go = sc.go_tree(r)
@@ -2792,11 +2803,12 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     if sc17 is not None or sc18 is not None:
         add_guard_clips(ex, sc17 or sc18)
     # y las del jetpack de la 1.8 (giro y cambio de carril), tambien en todos los mapas
-    if sc18 is not None:
-        add_jetpack_clips(ex, sc18)
+    if sc18 is not None or sc19 is not None:
+        add_jetpack_clips(ex, sc18 or sc19)
     # busqueda de huevos de la 1.8 (por fecha, en todos los mapas): el de Roma ya trae sus SpawnPointEgg
-    if sc18 is not None and level_sc is not sc18:
-        inject_eggs(ex, trees, sc18)
+    # (la 1.8 y la 1.9 traen sus propios puntos de huevos; a los demas mapas se les anaden con el huevo de la 1.8)
+    if eggsrc is not None and level_sc is not sc18 and level_sc is not sc19:
+        inject_eggs(ex, trees, eggsrc)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -2839,9 +2851,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         # con la 1.6 todas las tablas salen de ella (la misma hoja de texturas para las 11)
         # con la 1.7 (en pruebas) las tablas salen de ella: trae las de la 1.6 y Daredevil
         # con la 1.8 salen de ella: trae las 14 anteriores, Chicky, Scoot y Kick-Off
-        bsrc = sc18 or sc17 or sc16 or sc15
-        boards = export_boards(bsrc, ex, names10, BOARDS_18 if sc18 is not None else BOARDS_17 if sc17 is not None
-                               else BOARDS_16 if sc16 is not None else BOARDS_15)
+        # con la 1.9, de ella: trae las 17 anteriores, Outback y Great White
+        bsrc = sc19 or sc18 or sc17 or sc16 or sc15
+        boards = export_boards(bsrc, ex, names10, BOARDS_19 if sc19 is not None else BOARDS_18 if sc18 is not None
+                               else BOARDS_17 if sc17 is not None else BOARDS_16 if sc16 is not None else BOARDS_15)
         # Tony (Characters.cs de la 1.6: 95000 monedas, "New York Special") y Carmen (la 1.7: 95000, "Rio Special"):
         # mismo esqueleto que Jake, a chars14.bin como los de la 1.4
         extra_chars = []
@@ -2850,8 +2863,11 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         if sc17 is not None or sc18 is not None:
             extra_chars.append((sc17 or sc18, 'carmen', 'avatar_carmen', '1.7'))
         # Roberto (Characters.cs de la 1.8: 95000 monedas, "Rome Special")
-        if sc18 is not None:
-            extra_chars.append((sc18, 'roberto', 'avatar_roberto', '1.8'))
+        if sc18 is not None or sc19 is not None:
+            extra_chars.append((sc18 or sc19, 'roberto', 'avatar_roberto', '1.8'))
+        # Kim (la 1.9: 95000, "Sydney Special")
+        if sc19 is not None:
+            extra_chars.append((sc19, 'kim', 'avatar_kim', '1.9'))
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':
@@ -2994,7 +3010,7 @@ def main():
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         return None
     apk14, apk15, apk16 = opt('--apk14', '--halloween'), opt('--apk15', '--world'), opt('--apk16')
-    apk17, apk18 = opt('--apk17'), opt('--apk18')
+    apk17, apk18, apk19 = opt('--apk17'), opt('--apk18'), opt('--apk19')
     os.makedirs(outdir, exist_ok=True)
     print('Descomprimiendo el APK...')
     data_dir = unpack_apk(apk)
@@ -3021,13 +3037,17 @@ def main():
     if apk18:
         print('Descomprimiendo el APK de la 1.8...')
         sc18 = Scene(unpack_apk(apk18))
+    sc19 = None
+    if apk19:
+        print('Descomprimiendo el APK de la 1.9...')
+        sc19 = Scene(unpack_apk(apk19))
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
-        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18)
+        export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
     # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
@@ -3035,7 +3055,7 @@ def main():
     w16 = os.path.join(outdir, 'w16')
     if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
         print('== Mapa de la 1.6 (data/w16/, en pruebas)')
-        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18)
+        export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
     # mapa de la 1.7 (data/w17/, EN PRUEBAS: Rio de Janeiro, se juega con WORLD17=1). Mismo trazado que el de la 1.6;
@@ -3045,7 +3065,7 @@ def main():
         print('== Mapa de la 1.7 (data/w17/, en pruebas)')
         # la interfaz (libreta, ME, SHOP, manchas...) de la 1.5.2: la de la 1.7 es de Unity 4 y no se lee entera
         export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17,
-                   sc18=sc18)
+                   sc18=sc18, sc19=sc19)
     elif os.path.isdir(w17):
         shutil.rmtree(w17, True)
     # mapa de la 1.8 (data/w18/: Roma, del 28 de febrero al 3 de abril; WORLD18=1 lo deja siempre). Mismo trazado;
@@ -3054,9 +3074,18 @@ def main():
     if sc18 is not None:
         print('== Mapa de la 1.8 (data/w18/)')
         export_set(sc, sc18, sc14, w18, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc18,
-                   sc17=sc17 or sc18, sc18=sc18)
+                   sc17=sc17 or sc18, sc18=sc18, sc19=sc19)
     elif os.path.isdir(w18):
         shutil.rmtree(w18, True)
+    # mapa de la 1.9 (data/w19/: Sidney, del 4 de abril al 1 de mayo; WORLD19=1 lo deja siempre). Mismo trazado; su
+    # inspector y su perro se cambian igual; trae sus puntos de huevos. Save Me (llaves) aun no
+    w19 = os.path.join(outdir, 'w19')
+    if sc19 is not None:
+        print('== Mapa de la 1.9 (data/w19/)')
+        export_set(sc, sc19, sc14, w19, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc19,
+                   sc17=sc17 or sc19, sc18=sc18, sc19=sc19)
+    elif os.path.isdir(w19):
+        shutil.rmtree(w19, True)
     print('Listo.')
 
 
