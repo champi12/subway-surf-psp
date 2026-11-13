@@ -218,7 +218,20 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Me también en Miami. Caza semanal de Miami (su objeto, 33 puntos propios): 30 may-5 jun 40 → 6 Score Boosters,
    6-12 jun 25 → 5 Headstart 1000, 13-19 jun 60 → 10 llaves, 20-27 jun 30 → súper caja; fondo de Miami en sus cajas.
    Jackpot de las cajas (100.000 / 300.000) con su cartel. Celebración (fondo de colores con rayas) al desbloquear un
-   personaje. Los trajes de la 1.11 (Jake y Tricky) no se hacen. chars14.bin admite hasta 48 mallas (eran 32).
+   personaje. chars14.bin admite hasta 48 mallas (eran 32).
+4j. **Trajes de la 1.11 (CharacterThemes/CharacterCustomization):** Jake (Oscuro gratis, Estrella 30 llaves) y Tricky
+   (Camuflaje 25, Corazón 40). El selector `UICharacterThemeShifter` es una fila horizontal bajo el nombre con sus
+   iconos (ui_sel_fill/char/skin del atlas 1.11) y los colores de cada traje (GlobalColors), con un cursor azul oscuro
+   (el `_selectedMarker`, navy) sobre el que se mira; se mueve con la cruceta (arriba/abajo), el carrusel con izq/der. El
+   panel central muestra el estado del traje marcado: ELEGIDO / ELEGIR (X) / su precio en llaves con el icono (X compra).
+   Al pasar por un traje se previsualiza en el modelo; la X lo pone. Textura teñida al extraer con la paleta real de los
+   degradados (`TwoGradientToTexture`: dos `Gradient` de 8 claves, no la textura `Avatar_Colors_*` del material) y el
+   shader `CharacterShaderExAlpha` (base × paleta[alfa de máscara], bilineal). Tricky usa su cuerpo de la 1.11 (sin gorro
+   ni gafas) y encima el accesorio que toque (el Camuflaje cambia a casco y gafas oscuras; el Corazón añade gorra,
+   pendientes y el top con corazón); Jake solo cambia textura y añade su accesorio. Los trajes gratis vienen de regalo
+   (`outfits_gift_free`). El traje puesto se dibuja en la portada (pintando el tren), en la carrera y en el fin de
+   partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan. Guardado en e3[7].
+   outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

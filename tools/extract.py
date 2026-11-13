@@ -1949,9 +1949,10 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 c.alpha_composite(st_, ((32 - 29) // 2, (32 - 29) // 2))
                 ex.textures.append(('generada', 'ui_booster_shop', c, True))
                 print('  icono del Score Booster para la tienda, con el fondo de rayos')
-        # la llave de la 1.9 (Save Me, de momento solo en el mapa de Sidney): su icono de la hoja normal
-        sc19_ = getattr(ex, 'level_sc', None)
-        if sc19_ is not None and sc19_ in (getattr(ex, 'sc19', None), getattr(ex, 'sc110', None), getattr(ex, 'sc111', None)):
+        # la llave de la 1.9 (Save Me y precio de los trajes): su icono de la hoja normal. Se usa en varias pantallas
+        # (contador de llaves, trajes), asi que se saca de cualquier APK de la 1.9+ que haya, no solo del mundo principal
+        sc19_ = getattr(ex, 'sc111', None) or getattr(ex, 'sc110', None) or getattr(ex, 'sc19', None)
+        if sc19_ is not None:
             ic = sprite_from_raw_atlas(sc19_, 'icon_key', small=True)
             if ic is not None:
                 w_, h_ = ic.size
@@ -1991,6 +1992,17 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 ex.textures.append(('generada', 'ui_celeb_bg', cb.convert('RGB').resize((64, 8), Image.NEAREST)))
                 ex.textures.append(('generada', 'ui_celeb_stripe', cs.convert('RGBA').resize((256, 16), Image.LANCZOS), True))
                 print('  fondo de Miami de las cajas de la caza y la celebracion de los desbloqueos')
+            # iconos del selector de trajes (UICharacterThemeShifter): el circulo de fondo y los dos iconos (personaje
+            # para el aspecto normal, camiseta para los trajes). Blancos: el juego los pinta con el color de cada traje
+            for sn, dn in (('button_skinselector_fill', 'ui_sel_fill'), ('icon_skinselector_character', 'ui_sel_char'),
+                           ('icon_skinselector_skin', 'ui_sel_skin')):
+                sp = sprite_from_raw_atlas(sc111_, sn, small=False)
+                if sp is not None:
+                    w_, h_ = sp.size
+                    sq = Image.new('RGBA', (max(w_, h_),) * 2, (0, 0, 0, 0))
+                    sq.paste(sp, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
+                    ex.textures.append(('generada', dn, sq.resize((32, 32), Image.LANCZOS), True))
+            print('  iconos del selector de trajes (circulo, personaje, camiseta)')
         # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
         sc18_ = getattr(ex, 'sc18', None) or getattr(ex, 'sc19', None)
         if sc18_ is not None:
@@ -2282,6 +2294,195 @@ BOARDS_111 = BOARDS_110 + [(21, 'Hotrod', 280000, 2, 4), (22, 'Flamingo', 50000,
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
+
+
+def gradient_palette(raw):
+    """TwoGradientToTexture (1.11): el juego NO usa la textura Avatar_Colors_* del material; al poner el traje
+    construye la paleta con dos degradados (Unity 4: 8 claves RGBA32 + tiempos uint16 cada uno), pixelWidth de ancho:
+    la primera mitad con el primero y la segunda con el segundo (CharacterCustomization / BuildGradient)."""
+    import numpy as np
+    def grad(off):
+        keys = [raw[off + 4 * i:off + 4 * i + 3] for i in range(8)]
+        ct = struct.unpack_from('<8H', raw, off + 32)
+        nc = raw[off + 64]
+        return [(ct[i] / 65535.0, np.array(list(keys[i]), np.float32)) for i in range(max(1, nc))], off + 68
+    def ev(cs, t):   # Gradient.Evaluate (modo Blend): lineal entre claves, fijo fuera de ellas
+        if t <= cs[0][0]:
+            return cs[0][1]
+        for (t0, c0), (t1, c1) in zip(cs, cs[1:]):
+            if t <= t1:
+                return c0 + (c1 - c0) * ((t - t0) / (t1 - t0) if t1 > t0 else 0.0)
+        return cs[-1][1]
+    off = 24   # m_GameObject, m_Enabled, m_Script, m_Name (vacio)
+    g1, off = grad(off)
+    g2, off = grad(off)
+    w = struct.unpack_from('<i', raw, off + 8)[0]   # tras gradientTexture (PPtr) va pixelWidth
+    h = (w - 1) * 0.5
+    return np.array([ev(g1, x / h) if x / w < 0.5 else ev(g2, (x - h) / h) for x in range(w)], np.float32)
+
+
+def tint_by_mask(base, pal, mask, wrap=True):
+    """La textura de un traje (1.11), como el shader CharacterShaderExAlpha: color = base * paleta(u = alfa de la
+    mascara, v = 0), con filtro bilineal (centros de texel) y repeticion como la textura que crea el juego. Se hace una
+    vez al extraer: sale exactamente lo que el juego ensena, en una textura normal. pal: (w, 3) en 0..255."""
+    import numpy as np
+    b = np.array(base.convert('RGBA'), np.float32)
+    m = np.array(mask.convert('RGBA').resize(base.size, Image.BILINEAR), np.float32)[:, :, 3]
+    n = len(pal)
+    x = m / 255.0 * n - 0.5
+    x0 = np.floor(x).astype(np.int32)
+    f = (x - x0)[:, :, None]
+    if wrap:
+        i0, i1 = x0 % n, (x0 + 1) % n
+    else:
+        i0, i1 = np.clip(x0, 0, n - 1), np.clip(x0 + 1, 0, n - 1)
+    col = (pal[i0] * (1 - f) + pal[i1] * f) / 255.0
+    b[:, :, :3] = b[:, :, :3] * col
+    return Image.fromarray(np.clip(np.rint(b), 0, 255).astype(np.uint8), 'RGBA')
+
+
+# precios (CharacterThemes de la 1.11): por personaje, el precio en llaves de cada traje (0 = gratis)
+OUTFIT_PRICE = {'slick': [0, 30], 'tricky': [25, 40]}
+# el personaje tal como lo nombra el port (chars[]): Jake=0 (slick), Tricky=1
+OUTFIT_CHAR = {'slick': 0, 'tricky': 1}
+
+
+def export_outfits(scx, boards, outdir):
+    """Trajes de la 1.11 (CharacterCustomization). Por personaje:
+      - si su aspecto normal lleva un accesorio aparte (el gorro y las gafas de Tricky), se usa el CUERPO de la 1.11
+        (sin esos accesorios) como base y se dibuja el accesorio que toque (normal, o el del traje); asi el traje
+        militar cambia el gorro por el casco y quita las gafas, como el original.
+      - si no (Jake), el traje solo tine la textura y anade su accesorio encima del cuerpo de siempre.
+    Escribe outfits.bin. Las texturas y mallas van con los personajes (hw_tex/chars14)."""
+    cc = None
+    for o in scx.env.objects:
+        if o.type.name != 'MonoBehaviour':
+            continue
+        try:
+            cl, fl = scx.read_mono(o)
+        except Exception:
+            continue
+        if cl == 'CharacterCustomization' and fl:
+            cc = (o, fl); break
+    if cc is None:
+        print('  AVISO: la 1.11 no trae CharacterCustomization'); return
+    obj, fl = cc
+    def r_(p):
+        return scx.resolve_ptr(obj, p) if p and len(p) == 3 and p[2] else None
+    def texmap(mat):
+        out = {}
+        if mat is None:
+            return out
+        for k, t in mat.read_typetree()['m_SavedProperties']['m_TexEnvs']:
+            k = k['name'] if isinstance(k, dict) else k
+            tt = scx.resolve(mat.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
+            if tt is not None:
+                out[k] = tt.read()
+        return out
+    def body_smr(name):
+        for oo in scx.env.objects:
+            if oo.type.name != 'SkinnedMeshRenderer':
+                continue
+            dd = oo.read_typetree()
+            mo = scx.resolve(oo.assets_file, dd['m_Mesh']['m_FileID'], dd['m_Mesh']['m_PathID'])
+            if mo is not None and mo.read(check_read=False).m_Name == name:
+                return mo
+        return None
+    boards.names = getattr(boards, 'names', {})
+    have = set()
+    def add_tex(name, img):
+        if name not in have:
+            have.add(name); boards.gen.append(('gen', name, img, True))
+    def acc_of(cs):   # malla del accesorio y su textura
+        sm = r_(cs['skinnedMesh'])
+        if sm is None or sm.type.name != 'Mesh':
+            return '', ''
+        am = texmap(r_(cs['customSkinnedMaterial']))
+        ab = am.get('_MainTex')
+        atex = ''
+        if ab is not None:
+            if '_CustomColorsTex' in am and '_Mask' in am:
+                atex = 'TINT'   # se rellena con la textura tenida del cuerpo
+            elif ab.m_Name.startswith('avatar_'):
+                atex = 'TINT'
+            else:
+                atex = 'accx_%s' % ab.m_Name
+                add_tex(atex, tex_rgba(ab))
+        return sm, atex
+    chdr = []   # (ci, replace, base_mesh, base_tex, def_acc, def_tex)
+    rows = []   # (ci, ti, price, has_acc, btex, amesh, atex)
+    for ch in fl['characters']:
+        cname = ch['name']
+        if cname not in OUTFIT_CHAR:
+            continue
+        ci = OUTFIT_CHAR[cname]
+        prices = OUTFIT_PRICE.get(cname, [])
+        # aspecto normal (customSet 0): si lleva accesorio, usamos el cuerpo de la 1.11 como base
+        d0 = acc_of(ch['customSets'][0])
+        replace = d0[0] != ''
+        base_mesh = base_tex = def_acc = def_tex = ''
+        if replace:
+            bm = body_smr(cname)
+            tm0 = texmap(r_(ch['customSets'][0]['material']))
+            bt = tm0.get('_MainTex')
+            if bm is not None and bt is not None:
+                base_mesh = '%s_base111' % cname
+                boards.meshes.append(bm); boards.names[id(bm)] = base_mesh
+                base_tex = 'avatar_%s111' % cname
+                add_tex(base_tex, tex_rgba(bt))
+                sm, at = d0
+                def_acc = '%s_acc0' % cname
+                boards.meshes.append(sm); boards.names[id(sm)] = def_acc
+                def_tex = base_tex if at == 'TINT' else at
+            else:
+                replace = False
+        chdr.append((ci, 1 if replace else 0, base_mesh, base_tex, def_acc, def_tex))
+        for ti in range(1, len(ch['customSets'])):
+            cs = ch['customSets'][ti]
+            tm = texmap(r_(cs['material']))
+            base = tm.get('_MainTex')
+            if base is None:
+                continue
+            btex = 'avatar_%s_t%d' % (cname, ti)
+            if '_CustomColorsTex' in tm and '_Mask' in tm:
+                import numpy as np
+                gp = r_(cs.get('gradient'))
+                if gp is not None:   # la paleta de verdad: la que construye el juego con los degradados
+                    pal, wrap = gradient_palette(gp.get_raw_data()), True
+                else:                # sin degradado: la textura del material tal cual
+                    ct = tm['_CustomColorsTex']
+                    pal = np.array(ct.image.convert('RGB'), np.float32)[-1]   # fila v=0 (Unity: abajo)
+                    try:
+                        wrap = ct.m_TextureSettings.m_WrapMode == 0
+                    except Exception:
+                        wrap = True
+                add_tex(btex, tint_by_mask(base.image, pal, tm['_Mask'].image, wrap))
+            else:
+                add_tex(btex, tex_rgba(base))
+            amesh = atex = ''
+            sm, at = acc_of(cs)
+            if sm != '':
+                amesh = '%s_acc%d' % (cname, ti)
+                boards.meshes.append(sm); boards.names[id(sm)] = amesh
+                atex = btex if at == 'TINT' else at
+            price = prices[ti - 1] if ti - 1 < len(prices) else 0
+            rows.append((ci, ti - 1, price, 1 if amesh else 0, btex, amesh, atex))
+            print('  traje %s %d: %d llaves%s' % (cname, ti - 1, price, ', con accesorio' if amesh else ''))
+    out = bytearray(b'SSO2')
+    out += struct.pack('<I', len(chdr))
+    for ci, rep, bm, bt, da, dt in chdr:
+        out += struct.pack('<BBBB', ci, rep, 0, 0)
+        for nm in (bm, bt, da, dt):
+            out += nm.encode()[:31].ljust(32, b'\0')
+    out += struct.pack('<I', len(rows))
+    for ci, ti, price, ha, bt, am, at in rows:
+        out += struct.pack('<BBBBI', ci, ti, ha, 0, price)
+        for nm in (bt, am, at):
+            out += nm.encode()[:31].ljust(32, b'\0')
+    with open(os.path.join(outdir, 'outfits.bin'), 'wb') as f:
+        f.write(bytes(out))
+    print('  outfits.bin: %d personajes, %d trajes%s' % (len(chdr), len(rows),
+          ''.join(' (%s con cuerpo de la 1.11)' % c for c, r, *_ in chdr if r)))
 
 
 def export_boards(sc15, ex, clip_names10, table=None):
@@ -3026,6 +3227,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         # Nick (la 1.11: 95000, "Miami Special")
         if sc111 is not None:
             extra_chars.append((sc111, 'nick', 'avatar_nick', '1.11'))
+        if sc111 is not None and boards is not None and classic:
+            export_outfits(sc111, boards, outdir)
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':

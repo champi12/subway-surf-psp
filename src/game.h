@@ -92,7 +92,16 @@ int game_hunt_button(void);                     /* 0 nada, 1 huevos (Roma), 2 mu
 int game_hunt_box_next(void);
 int game_hunt_box_city(void);                   /* 1 Tokio, 2 Miami */
 int game_hunt_city(void);                       /* caza de ahora: 0 ninguna, 1 Tokio, 2 Miami */
-int miami_season(void);                   /* la siguiente super caja es de la caza semanal */
+int miami_season(void);
+void outfit_draw_accessory(void);               /* 1.11: el accesorio del traje, con los huesos del personaje */
+void char_theme_shift(int dir);                 /* ver el traje siguiente (+1) o anterior (-1) */
+int char_theme_buy(void);                       /* comprar con llaves el traje que se mira; 1 si se hizo cargo de la X */
+int char_theme_count(int ci);                   /* cuantos trajes tiene el personaje */
+int outfits_avail(void);                        /* 1 si ya se jugo en la temporada de Miami */
+int game_theme_hi(void);
+int game_theme_sel(int i);
+int game_theme_owned(int i, int t);
+int game_theme_price(int i, int t);                   /* la siguiente super caja es de la caza semanal */
 int game_run_seconds(void);                     /* segundos de la carrera en curso (0 fuera) */
 int game_oneofeach_left(void);                  /* power-ups distintos que faltan en la carrera (de 4) */                     /* boton de la caza semanal en la portada (temporada de Tokio) */
 /* busqueda de huevos de la 1.8 */

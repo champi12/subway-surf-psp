@@ -576,6 +576,17 @@ int main(int argc, char **argv)
         /* prueba: cierra los avisos de Tokio y de las llaves y abre la caza semanal con la flecha izquierda */
         if ((frame_no == 30 || frame_no == 50) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_LEFT;
+#elif defined(AT_OUTFITRUN)
+        if (frame_no == 20) { extern void game_debug_outfit(void); game_debug_outfit(); }
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 80) pr |= PSP_CTRL_CROSS;   /* JUGAR */
+        { static int k; if (ginfo.state == GS_RUNNING && ++k % 55 == 0) pr |= PSP_CTRL_UP; }
+#elif defined(AT_OUTFIT)
+        if (frame_no == 20) { extern void game_debug_outfit(void); game_debug_outfit(); }
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */
+        if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;   /* a personajes */
+        if (frame_no == 90 || frame_no == 100 || frame_no == 110) pr |= PSP_CTRL_SELECT;   /* quita el overlay para ver el selector */
+        if (frame_no == 390 || frame_no == 630) pr |= PSP_CTRL_DOWN;   /* mirar el traje siguiente (cruceta) */
 #elif defined(AT_HUNTBOX)
         /* prueba: caja de la caza semanal al acabar la carrera y la pausa con la mision de los segundos */
         if (frame_no == 30 || frame_no == 50 || frame_no == 80) pr |= PSP_CTRL_CROSS;   /* avisos y jugar */

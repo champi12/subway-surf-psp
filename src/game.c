@@ -3465,6 +3465,10 @@ static int find(const char *path)
 
 static int n_avatars = -1;            /* Character Model/avatar_prefab/avatars: un modelo por personaje */
 static void char_show_model(int i);
+static void outfit_apply_tex(int i);
+static int outfit_replaces(int i);
+int game_char_replaces(int i);
+static void outfits_load(void);
 static void zombie_init(int slick_node);
 static void char_check_selected(void);
 
@@ -3547,6 +3551,7 @@ void game_init(void)
         board_apply(board_sel);
         dlog("Tablas: %d, %d a la venta (elegida %s)", gd_nboards, board_count(), gd_boards[board_sel].name);
     }
+    outfits_load();
     char_check_selected();
     char_show_model(ginfo.character);   /* game_load ya ha leido el personaje elegido */
     anim_init(&anim_guard, n_guard);
@@ -3725,6 +3730,9 @@ static void char_show_model(int i)
     if (n_avatars >= 0)
         for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
             nrt[c].rend = !strcmp(gd.strings[gd.nodes[c].name], chars[i].model);
+    if (n_avatars >= 0 && game_char_replaces(i))   /* Tricky: su nodo no se dibuja; va su cuerpo de la 1.11 */
+        for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
+            if (!strcmp(gd.strings[gd.nodes[c].name], chars[i].model)) nrt[c].rend = 0;
     if (slick_skin) {
         int e = is14(i) && ext_ready(i) && data_mesh_acquire(ext_mesh[i]) == 0;
         slick_skin[0] = (uint32_t)(e ? ext_mesh[i] : slick_mesh);
@@ -3740,7 +3748,218 @@ static void char_show_model(int i)
             data_mesh_release(ext_mesh[c]);
         }
     }
+    outfit_apply_tex(i);   /* 1.11: si el personaje lleva un traje, su textura */
 }
+
+/* ------------------------------------------------------------ trajes de la 1.11 (CharacterCustomization)
+ * cada traje cambia la textura del personaje (tenida al extraer) y su accesorio. Si el aspecto normal del personaje
+ * ya lleva un accesorio aparte (el gorro y las gafas de Tricky), se dibuja su CUERPO de la 1.11 (sin esos accesorios)
+ * y encima el accesorio que toca: asi el traje militar cambia el gorro por el casco y quita las gafas, como el
+ * original. Si no (Jake), solo cambia la textura y anade su accesorio. Aparecen al jugar en la temporada de Miami
+ * (como las tablas de cada actualizacion) y se quedan; se compran con llaves */
+typedef struct { int replace; char base_mesh[32], base_tex[32], def_acc[32], def_tex[32];
+                 int base_idx, base_mat, dacc_idx, dacc_mat; } OutfitChar;
+static OutfitChar ochar[NCHARS];
+typedef struct { uint8_t ci, ti, has_acc; int price; char btex[32], amesh[32], atex[32];
+                 int mat, amesh_idx, amat, bodymat; } Outfit;
+static Outfit outfits[16];
+static int noutfits;
+static int char_theme_owned[NCHARS];   /* bit t: traje t comprado */
+static int char_theme_sel[NCHARS];     /* 0 normal, t+1 el traje t puesto */
+static int theme_hi;                   /* en la pantalla de personajes: el traje que se esta mirando */
+static const char *const OUTFIT_JOINTS[18] = {
+    "jRoot", "jLeg_L", "jKnee_L", "jFoot_L", "jToes_L", "jLeg_R", "jKnee_R", "jFoot_R", "jToes_R",
+    "jLowerSpine", "jShoulder_R", "jElbow_R", "jHand_R", "jShoulder_L", "jElbow_L", "jHand_L", "jHead", "jAfro_3"};
+static int outfit_joint[18];
+
+static int node_find_desc(int root, const char *name)
+{
+    if (root < 0) return -1;
+    if (!strcmp(gd.strings[gd.nodes[root].name], name)) return root;
+    for (int c = gd.nodes[root].first_child; c >= 0; c = gd.nodes[c].next_sibling) {
+        int r = node_find_desc(c, name);
+        if (r >= 0) return r;
+    }
+    return -1;
+}
+static void rd32s(FILE *f, char *out) { if (fread(out, 1, 32, f) != 32) out[0] = 0; out[31] = 0; }
+static void outfits_load(void)
+{
+    for (int i = 0; i < 18; i++) outfit_joint[i] = node_find_desc(n_jroot, OUTFIT_JOINTS[i]);
+    for (int i = 0; i < NCHARS; i++) ochar[i].base_idx = ochar[i].base_mat = ochar[i].dacc_idx = ochar[i].dacc_mat = -2;
+    FILE *f = fopen("data/outfits.bin", "rb");
+    if (!f) return;
+    char magic[4];
+    uint32_t nc = 0, nr = 0;
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "SSO2", 4) || fread(&nc, 4, 1, f) != 1) { fclose(f); return; }
+    for (uint32_t i = 0; i < nc; i++) {
+        uint8_t ci, rep, p1, p2;
+        char bm[32], bt[32], da[32], dt[32];
+        if (fread(&ci, 1, 1, f) != 1 || fread(&rep, 1, 1, f) != 1 || fread(&p1, 1, 1, f) != 1 || fread(&p2, 1, 1, f) != 1) break;
+        rd32s(f, bm); rd32s(f, bt); rd32s(f, da); rd32s(f, dt);
+        if (ci < NCHARS) {
+            OutfitChar *o = &ochar[ci];
+            o->replace = rep;
+            memcpy(o->base_mesh, bm, 32); memcpy(o->base_tex, bt, 32); memcpy(o->def_acc, da, 32); memcpy(o->def_tex, dt, 32);
+        }
+    }
+    if (fread(&nr, 4, 1, f) == 1)
+        for (uint32_t i = 0; i < nr && noutfits < 16; i++) {
+            uint8_t ci, ti, ha, pad;
+            uint32_t price;
+            if (fread(&ci, 1, 1, f) != 1 || fread(&ti, 1, 1, f) != 1 || fread(&ha, 1, 1, f) != 1 ||
+                fread(&pad, 1, 1, f) != 1 || fread(&price, 4, 1, f) != 1) break;
+            Outfit *o = &outfits[noutfits++];
+            o->ci = ci; o->ti = ti; o->has_acc = ha; o->price = (int)price;
+            rd32s(f, o->btex); rd32s(f, o->amesh); rd32s(f, o->atex);
+            o->mat = o->amesh_idx = o->amat = o->bodymat = -2;
+        }
+    fclose(f);
+    dlog("Trajes de la 1.11: %d personajes, %d trajes", (int)nc, noutfits);
+}
+static int outfit_find(int ci, int sel)   /* sel: 0 normal, t+1 traje t */
+{
+    if (sel <= 0) return -1;
+    for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci && outfits[i].ti == sel - 1) return i;
+    return -1;
+}
+int char_theme_count(int ci) { int n = 0; for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci) n++; return n; }
+int outfits_avail(void) { return (updates_reached >> 6) & 1; }   /* se ha jugado en la temporada de Miami */
+/* los trajes gratis (precio 0) son un regalo: al tener los trajes disponibles vienen ya desbloqueados (GiftBradCharacters) */
+static void outfits_gift_free(void)
+{
+    if (!outfits_avail()) return;
+    for (int k = 0; k < noutfits; k++)
+        if (outfits[k].price == 0 && outfits[k].ci >= 0 && outfits[k].ci < NCHARS)
+            char_theme_owned[outfits[k].ci] |= 1 << outfits[k].ti;
+}
+static int outfit_view(int i)
+{
+    if (state == GS_CHARS && i == char_shown) return theme_hi;
+    return char_theme_sel[i];
+}
+static int outfit_owned(int i, int sel) { return sel > 0 && (char_theme_owned[i] >> (sel - 1) & 1); }
+static int outfit_shows(int i, int sel)   /* si se ve ese traje: comprado, o mirandolo en el menu */
+{
+    return sel == 0 || outfit_owned(i, sel) || (state == GS_CHARS && i == char_shown);
+}
+static uint32_t *char_skin_comp(int i)
+{
+    if (i == 0) return slick_skin;   /* Jake usa el nodo slick */
+    if (n_avatars < 0) return NULL;
+    for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling)
+        if (!strcmp(gd.strings[gd.nodes[c].name], chars[i].model)) return (uint32_t *)node_comp(c, C_SKIN, NULL);
+    return NULL;
+}
+/* un material clonado del de la piel (slick) con una textura dada; se guarda en *cache */
+static int outfit_mat(int *cache, const char *tex)
+{
+    if (*cache == -2) {
+        int t = tex[0] ? data_tex_find(tex) : -1;
+        *cache = (t >= 0 && slick_mat >= 0) ? data_mat_clone(gd.mats[slick_mat].name, t) : (slick_mat >= 0 ? slick_mat : -1);
+    }
+    return *cache;
+}
+/* dibuja una malla con los huesos del personaje (como el cuerpo) */
+static void outfit_draw_mesh(int mesh, int mat)
+{
+    if (mesh < 0 || data_mesh_acquire(mesh) != 0) return;
+    Mesh *me = &gd.meshes[mesh];
+    M34 bones[18];
+    for (int k = 0; k < 18; k++) {
+        int j = outfit_joint[k] >= 0 ? outfit_joint[k] : n_avatar;
+        if (k < me->nbind) m34_mul(&bones[k], &nrt[j].world, &me->bind[k]);
+        else bones[k] = nrt[j].world;
+    }
+    r_draw_skinned(mesh, bones, 18, &mat, 1);
+}
+/* para los personajes que se dibujan con su cuerpo de la 1.11 (Tricky): oculta el nodo normal */
+static int outfit_replaces(int i) { return i >= 0 && i < NCHARS && ochar[i].replace && noutfits >= 0 && ochar[i].base_mesh[0]; }
+/* pone la textura del traje al personaje que anade accesorio sobre su cuerpo de siempre (Jake) */
+static void outfit_apply_tex(int i)
+{
+    if (outfit_replaces(i)) return;
+    int sel = outfit_view(i);
+    int oi = outfit_find(i, sel);
+    if (oi < 0 || !outfit_shows(i, sel)) return;
+    Outfit *o = &outfits[oi];
+    uint32_t *sk = char_skin_comp(i);
+    if (!sk) return;
+    if (o->mat == -2) {
+        int t = data_tex_find(o->btex);
+        o->mat = (t >= 0 && (int)sk[3] < gd.nmats) ? data_mat_clone(gd.mats[sk[3]].name, t) : -1;
+    }
+    if (o->mat >= 0) sk[3] = (uint32_t)o->mat;
+}
+/* dibuja el cuerpo de la 1.11 (si procede) y el accesorio del traje puesto, con los huesos del personaje */
+void outfit_draw_accessory(void)
+{
+    int i = char_shown;
+    if (i < 0) return;
+    int sel = outfit_view(i);
+    if (!outfit_shows(i, sel)) sel = 0;
+    OutfitChar *oc = &ochar[i];
+    int oi = outfit_find(i, sel);
+    if (oc->replace && oc->base_mesh[0]) {
+        /* Tricky: su cuerpo de la 1.11, con la textura del traje puesto (un material por traje) o la normal */
+        if (oc->base_idx == -2) oc->base_idx = data_mesh_find(oc->base_mesh);
+        int bmat = (oi >= 0 && outfits[oi].btex[0]) ? outfit_mat(&outfits[oi].bodymat, outfits[oi].btex)
+                                                     : outfit_mat(&oc->base_mat, oc->base_tex);
+        outfit_draw_mesh(oc->base_idx, bmat);
+    }
+    /* el accesorio: el del traje si lo lleva, o el normal del personaje (gorro/gafas de Tricky) */
+    if (oi >= 0 && outfits[oi].has_acc) {
+        Outfit *o = &outfits[oi];
+        if (o->amesh_idx == -2) { o->amesh_idx = data_mesh_find(o->amesh); o->amat = -2; }
+        outfit_draw_mesh(o->amesh_idx, outfit_mat(&o->amat, o->atex[0] ? o->atex : o->btex));
+    } else if (oc->replace && oc->def_acc[0]) {
+        if (oc->dacc_idx == -2) oc->dacc_idx = data_mesh_find(oc->def_acc);
+        outfit_draw_mesh(oc->dacc_idx, outfit_mat(&oc->dacc_mat, oc->def_tex));
+    }
+}
+/* UICharacterThemeShifter: ver el traje siguiente (flecha abajo) en la pantalla de personajes */
+void char_theme_shift(int dir)
+{
+    int i = char_shown;
+    if (i < 0 || !outfits_avail() || char_theme_count(i) == 0) return;
+    int n = 1 + char_theme_count(i);
+    theme_hi = ((theme_hi + dir) % n + n) % n;   /* solo previsualiza; la X aplica (como el original) */
+    char_show_model(i);
+}
+/* X sobre un traje sin comprar: lo compra con llaves (SendBuyThemeRequest) */
+int char_theme_buy(void)
+{
+    int i = char_shown;
+    int sel = theme_hi, oi = outfit_find(i, sel);
+    if (oi < 0 || outfit_owned(i, sel)) return 0;
+    if (!ch_unlocked(i)) {   /* "UNLOCK TRICKY FIRST": hay que tener el personaje */
+        snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+        hud_slide(TR("Desbloquea el personaje primero", "Unlock the character first"), chars[i].name);
+        return 1;
+    }
+    int price = outfits[oi].price;
+    if (keys < price) {
+        snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+        char b[40];
+        snprintf(b, sizeof(b), TR("Tienes %d de %d", "You have %d of %d"), keys, price);
+        hud_slide(TR("Faltan llaves", "Not enough Keys"), b);
+        return 1;
+    }
+    keys -= price;
+    char_theme_owned[i] |= 1 << (sel - 1);
+    char_theme_sel[i] = sel;
+    snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+    hud_slide(TR("¡Traje desbloqueado!", "Outfit unlocked!"), chars[i].name);
+    hud_celebrate();
+    char_show_model(i);
+    game_save();
+    return 1;
+}
+int game_theme_hi(void) { return theme_hi; }
+int game_theme_sel(int i) { return (i >= 0 && i < NCHARS) ? char_theme_sel[i] : 0; }
+int game_theme_owned(int i, int t) { return (i >= 0 && i < NCHARS) ? (char_theme_owned[i] >> t & 1) : 0; }
+int game_theme_price(int i, int t) { int oi = outfit_find(i, t + 1); return oi >= 0 ? outfits[oi].price : 0; }
+int game_char_replaces(int i) { return outfit_replaces(i); }
 
 /* nombre del personaje en CharacterModelPreviewFactory de la 1.4 (su pose y su miniatura del carrusel) */
 static const char *char_key(int i) { return !is14(i) ? chars[i].model : i == CH_ZOMBIE ? "zombiejake" : chars[i].mesh14; }
@@ -4029,7 +4248,9 @@ static void boards_input(unsigned in, int confirm)
 }
 static void open_chars(void)
 {
+    outfits_gift_free();   /* por si se acaban de desbloquear los trajes: los gratis ya puestos como regalo */
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
+    theme_hi = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
     char_show_model(ginfo.character);
     char_pose(ginfo.character);
     change_state(GS_CHARS); ginfo.state = GS_CHARS;
@@ -4038,19 +4259,30 @@ static void open_chars(void)
 static void chars_input(unsigned in, int confirm)
 {
     int nc = char_count();
-    /* carrusel de la 1.4: izquierda y derecha (y arriba y abajo). X tambien es "arriba" y O "abajo" (saltar y
-     * rodar): aqui no deben mover la seleccion */
-    if (in & IN_LEFT) in |= IN_UP;
-    if (in & IN_RIGHT) in |= IN_DOWN;
-    if ((in & IN_UP) && !(in & IN_CROSS)) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
-    if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
+    int i0 = char_id(ginfo.char_sel);
+    /* carrusel de la 1.4: izquierda y derecha. Arriba y abajo tambien mueven el carrusel, salvo cuando hay selector de
+     * trajes (1.11): entonces arriba/abajo cambia de traje y el carrusel va solo con izquierda/derecha. X ("arriba") y
+     * O ("abajo") son saltar y rodar: aqui no deben mover nada */
+    int has_out = outfits_avail() && char_theme_count(i0);
+    int prevc = (in & IN_LEFT) || (!has_out && (in & IN_UP) && !(in & IN_CROSS));
+    int nextc = (in & IN_RIGHT) || (!has_out && (in & IN_DOWN) && !(in & IN_CIRCLE));
+    if (prevc) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
+    if (nextc) { ginfo.char_sel = (ginfo.char_sel + 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
     int i = char_id(ginfo.char_sel);
     /* el modelo cambia cuando su textura ya esta en memoria (se lee en segundo plano): mientras tanto se sigue viendo
      * el anterior. Antes cada personaje nuevo paraba el juego 83-100 ms leyendo de la Memory Stick */
-    if (i != char_shown && r_tex_request(char_tex(i))) { char_show_model(i); char_pose(i); }
+    if (i != char_shown && r_tex_request(char_tex(i))) { char_show_model(i); char_pose(i); theme_hi = char_theme_sel[i]; }
+    /* selector de trajes de la 1.11 (UICharacterThemeShifter): abajo el siguiente, arriba el anterior */
+    if (has_out && i == i0) {
+        if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(1); }
+        if ((in & IN_UP) && !(in & IN_CROSS)) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(-1); }
+    }
+    if (confirm && char_theme_buy()) return;   /* X sobre un traje sin comprar: lo compra, no elige al personaje */
     if (confirm) {
         if (ch_unlocked(i)) {
             ginfo.character = i;
+            /* ademas pone el traje que se esta mirando (el normal o uno comprado), como el original */
+            if (outfits_avail() && char_theme_count(i) && i == i0) { char_theme_sel[i] = theme_hi; char_show_model(i); }
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
             game_save_bg();
         } else if (chars[i].unlock == UL_COINS && ginfo.total_coins >= chars[i].price) {
@@ -4840,6 +5072,7 @@ void game_draw(void)
             V3 tgt = v3sub(chest, v3scale(rt, CHARS_CAM_X));
             r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
+            outfit_draw_accessory();
             r_flush_transparent();
         } else if (state == GS_GAMEOVER && char_posing) {
             /* GameoverUI de la 1.5.2: el personaje de pie a la izquierda de la libreta (el marcador va a la derecha).
@@ -4855,6 +5088,7 @@ void game_draw(void)
             V3 tgt = v3add(chest, v3scale(rt, CHARS_CAM_X));
             r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
+            outfit_draw_accessory();
             r_flush_transparent();
         }
         return;
@@ -4890,6 +5124,7 @@ void game_draw(void)
     coins_draw();
     SECT(4);
     scene_draw_subtree(n_character);
+    outfit_draw_accessory();
     if (gu.showing || state == GS_DIE || state == GS_DIEFALL) scene_draw_subtree(n_enemies);
 #ifdef AT_STAT1
     {   /* prueba: que mallas dibuja el inspector con el perro (una vez) */
@@ -5046,7 +5281,9 @@ static int save_fill(unsigned char *buf)
                  (hunt_items[1][1] & 127) | (hunt_items[1][2] & 127) << 7 | (hunt_items[1][3] & 127) << 14 | (hunt_items[1][4] & 127) << 21,
                  (hunt_year[1] & 0xff) | hunt_box << 8 | hunt_box_city << 12, updates_reached | 1 << 30, 1 /* misiones de la 1.10 */,
                  (hunt_items[2][1] & 127) | (hunt_items[2][2] & 127) << 7 | (hunt_items[2][3] & 127) << 14 | (hunt_items[2][4] & 127) << 21,
-                 (hunt_year[2] & 0xff) | miami_popup_year << 8};
+                 (hunt_year[2] & 0xff) | miami_popup_year << 8,
+                 (char_theme_owned[0] & 15) | (char_theme_owned[1] & 15) << 4 | (char_theme_sel[0] & 7) << 8 |
+                 (char_theme_sel[1] & 7) << 11 | (int)(1u << 31)};
     memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2), e3, sizeof(e3));
     return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3));
 }
@@ -5152,11 +5389,16 @@ void game_load(void)
             for (int w = 1; w <= 4; w++) hunt_items[2][w] = (e3[5] >> (7 * (w - 1))) & 127;
             hunt_year[2] = e3[6] & 0xff; miami_popup_year = (e3[6] >> 8) & 0xffff;
         }
+        if (ne3 >= 8 && (e3[7] >> 31 & 1)) {
+            char_theme_owned[0] = e3[7] & 15; char_theme_owned[1] = (e3[7] >> 4) & 15;
+            char_theme_sel[0] = (e3[7] >> 8) & 7; char_theme_sel[1] = (e3[7] >> 11) & 7;
+        }
         updates_reached = e3[3] & 0xff;
     } else {
         /* partidas de antes: las actualizaciones cuyas tablas ya se vieron o se compraron cuentan como alcanzadas */
         for (int r = 7; r < 32; r++) if ((board_seen | board_owned) >> r & 1) updates_reached |= 1 << board_update(r);
     }
+    outfits_gift_free();   /* los trajes gratis vienen desbloqueados si ya estan disponibles */
     /* misiones de la 1.10 (40 repetibles): quien venia de antes sigue en su grupo */
     if (!(ne3 >= 5 && e3[4] >= 1)) missions_upgrade_110();
     audio_set_mute(ginfo.opt_sound_off);
@@ -5209,6 +5451,27 @@ void game_debug_unlock_all(void)
 /* para la prueba automatica: abrir n cajas misteriosas de golpe */
 /* prueba: una caja comprada en la tienda que debe dar la llave de la primera caja (MysteryBox.Roll de la 1.9) */
 /* prueba: la caja del premio de la primera semana de la caza y el grupo de misiones con "que te pillen en N s" */
+/* prueba: todos los trajes desbloqueados y la temporada de Miami jugada */
+#ifndef AT_OUTFIT_CH
+#define AT_OUTFIT_CH 1
+#endif
+void game_debug_outfit(void)
+{
+    updates_reached |= 1 << 6;
+    char_theme_owned[0] = 2; char_theme_owned[1] = 2;   /* el 2o comprado; el 1o no, para ver su precio */
+#ifdef AT_OUTFITRUN
+    char_theme_sel[0] = 2; char_theme_sel[1] = 2;   /* en la prueba de carrera: lleva puesto el 2o traje */
+#else
+    char_theme_sel[0] = 0; char_theme_sel[1] = 0;
+#endif
+    keys = 999;
+    int c = AT_OUTFIT_CH;
+    ginfo.character = c;
+    if (!is14(c) && chars[c].unlock != UL_FREE) char_tokens[chars[c].token] = chars[c].price;   /* desbloquea el personaje */
+    theme_hi = 0;
+    char_show_model(c);
+    dlog("PRUEBA trajes desbloqueados (char %d)", c);
+}
 void game_debug_huntbox(void)
 {
     hunt_box = 1; hunt_box_city = hunt_city() ? hunt_city() : 1;
