@@ -99,6 +99,7 @@ int char_theme_buy(void);                       /* comprar con llaves el traje q
 int char_theme_count(int ci);                   /* cuantos trajes tiene el personaje */
 int outfits_avail(void);                        /* 1 si ya se jugo en la temporada de Miami */
 int game_theme_hi(void);
+int game_theme_mode(void);                      /* 1 si se esta dentro del selector de trajes */
 int game_theme_sel(int i);
 int game_theme_owned(int i, int t);
 int game_theme_price(int i, int t);                   /* la siguiente super caja es de la caza semanal */

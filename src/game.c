@@ -698,6 +698,10 @@ static void board_add_sounds(void)
 
 static void board_apply_mode(int i, int full)
 {
+    /* full = 2: sin leer ninguna animacion ahora (al volver al menu, que pinta el tren: board_full_step las lee en
+     * segundo plano). Antes se releian aqui las de correr: el primer fotograma del menu tardaba 168-209 ms */
+    int load_now = full != 2;
+    if (full == 2) full = 0;
     if (gd_nboards <= 0 || i < 0 || i >= gd_nboards || (i == board_applied && (board_applied_full || !full))) return;
     board_applied = i;
     board_applied_full = full;
@@ -720,7 +724,7 @@ static void board_apply_mode(int i, int full)
             for (int j = 0; j < n && !dup; j++) dup = !strcmp(names[j], src->act[a][k]);
             if (!dup) names[n++] = src->act[a][k];
         }
-    int c0 = gd.nclips, added = data_board_clips_load(names, n);
+    int c0 = gd.nclips, added = load_now ? data_board_clips_load(names, n) : 0;
     for (int c = c0; c < gd.nclips; c++) anim_add_state(&anim_char, c);
     /* malla y material */
     board_find_mesh_comp();
@@ -771,9 +775,16 @@ static void board_full_step(int maxadd)
             for (int j = 0; j < n && !dup; j++) dup = !strcmp(names[j], src->act[a][k]);
             if (!dup) names[n++] = src->act[a][k];
         }
-    int c0 = gd.nclips, added = data_board_clips_load_max(names, n, maxadd);
+    int c0 = gd.nclips, done;
+    if (maxadd >= (1 << 30)) {   /* empieza la carrera: lo que falte, ya */
+        int added = data_board_clips_load_max(names, n, maxadd);
+        done = added < maxadd;
+    } else {                     /* en el menu: leido en segundo plano, sin tirones */
+        int added;
+        done = data_board_clips_async(names, n, &added);
+    }
     for (int c = c0; c < gd.nclips; c++) anim_add_state(&anim_char, c);
-    if (added < maxadd) {
+    if (done) {
         board_add_sounds();
         board_applied_full = 1;
         dlog("TABLA %s: animaciones completas (repartidas en el menu)", gd_boards[board_full_pending].name);
@@ -3767,6 +3778,7 @@ static int noutfits;
 static int char_theme_owned[NCHARS];   /* bit t: traje t comprado */
 static int char_theme_sel[NCHARS];     /* 0 normal, t+1 el traje t puesto */
 static int theme_hi;                   /* en la pantalla de personajes: el traje que se esta mirando */
+static int theme_mode;                 /* 1: dentro del selector de trajes (X para entrar, O para salir) */
 static const char *const OUTFIT_JOINTS[18] = {
     "jRoot", "jLeg_L", "jKnee_L", "jFoot_L", "jToes_L", "jLeg_R", "jKnee_R", "jFoot_R", "jToes_R",
     "jLowerSpine", "jShoulder_R", "jElbow_R", "jHand_R", "jShoulder_L", "jElbow_L", "jHand_L", "jHead", "jAfro_3"};
@@ -3952,10 +3964,11 @@ int char_theme_buy(void)
     hud_slide(TR("¡Traje desbloqueado!", "Outfit unlocked!"), chars[i].name);
     hud_celebrate();
     char_show_model(i);
-    game_save();
+    game_save_bg();   /* en el menu: en segundo plano (si no, tiron de 50-100 ms) */
     return 1;
 }
 int game_theme_hi(void) { return theme_hi; }
+int game_theme_mode(void) { return theme_mode; }
 int game_theme_sel(int i) { return (i >= 0 && i < NCHARS) ? char_theme_sel[i] : 0; }
 int game_theme_owned(int i, int t) { return (i >= 0 && i < NCHARS) ? (char_theme_owned[i] >> t & 1) : 0; }
 int game_theme_price(int i, int t) { int oi = outfit_find(i, t + 1); return oi >= 0 ? outfits[oi].price : 0; }
@@ -4155,7 +4168,7 @@ static void board_preview_end(void)
     board_previewing = 0;
     board_applied_full = 0;   /* que se vuelva a poner entera aunque sea la misma */
     board_applied = -2;
-    board_apply_mode(board_sel, 0);   /* de momento solo la de correr; el resto, poco a poco (board_full_step) */
+    board_apply_mode(board_sel, 2);   /* malla ya; todas sus animaciones, en segundo plano (board_full_step) */
     board_full_pending = board_sel;
     if (nprev_mesh) {
         /* las mallas no llevan cuenta de usos: la de la tabla elegida (que puede estar en la lista) no se suelta.
@@ -4220,7 +4233,7 @@ static void boards_input(unsigned in, int confirm)
             board_sel = r;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
             hud_slide(TR("¡Tabla de regalo!", "Free gift board!"), d->name);
-            game_save();
+            game_save_bg();
         } else if (ginfo.total_coins >= d->price) {
             /* HoverboardBuyButton: se paga y queda elegida */
             ginfo.total_coins -= d->price;
@@ -4229,7 +4242,7 @@ static void boards_input(unsigned in, int confirm)
             board_sel = r;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
             hud_slide(TR("Has desbloqueado", "You unlocked"), d->name);
-            game_save();
+            game_save_bg();
         } else {
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
             hud_slide(TR("No tienes monedas suficientes", "Not enough coins"), d->name);
@@ -4251,6 +4264,7 @@ static void open_chars(void)
     outfits_gift_free();   /* por si se acaban de desbloquear los trajes: los gratis ya puestos como regalo */
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
     theme_hi = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
+    theme_mode = 0;                               /* se empieza en el carrusel, no dentro del selector */
     char_show_model(ginfo.character);
     char_pose(ginfo.character);
     change_state(GS_CHARS); ginfo.state = GS_CHARS;
@@ -4260,10 +4274,40 @@ static void chars_input(unsigned in, int confirm)
 {
     int nc = char_count();
     int i0 = char_id(ginfo.char_sel);
-    /* carrusel de la 1.4: izquierda y derecha. Arriba y abajo tambien mueven el carrusel, salvo cuando hay selector de
-     * trajes (1.11): entonces arriba/abajo cambia de traje y el carrusel va solo con izquierda/derecha. X ("arriba") y
-     * O ("abajo") son saltar y rodar: aqui no deben mover nada */
     int has_out = outfits_avail() && char_theme_count(i0);
+    /* --- dentro del selector de trajes (1.11, UICharacterThemeShifter) ---
+     * se entra con X sobre un personaje desbloqueado que tiene trajes. Izquierda/derecha: traje anterior/siguiente (se
+     * ve en el modelo). X: si es suyo (o el normal) se lo pone; si no, lo compra con llaves y se lo pone. En los dos
+     * casos queda elegido el personaje y se vuelve al carrusel. O: sale sin cambiar nada */
+    if (theme_mode) {
+        if (!has_out || i0 != char_shown) { theme_mode = 0; return; }
+        if (in & IN_LEFT)  { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(-1); }
+        if (in & IN_RIGHT) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(1); }
+        if (confirm) {
+            int sel = theme_hi;
+            if (sel > 0 && !outfit_owned(i0, sel)) {
+                char_theme_buy();                        /* sin llaves: avisa y se queda dentro */
+                if (!outfit_owned(i0, sel)) return;
+            } else {
+                char_theme_sel[i0] = sel;
+                snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
+            }
+            ginfo.character = i0;
+            char_show_model(i0);
+            game_save_bg();
+            theme_mode = 0;
+            return;
+        }
+        if (in & (IN_CIRCLE | IN_START)) {
+            snd_play(sfx_tap, 1, 1, 0);
+            theme_hi = char_theme_sel[i0];               /* vuelve el traje que llevaba */
+            char_show_model(i0);
+            theme_mode = 0;
+        }
+        return;   /* dentro del selector no se mueve el carrusel ni se sale de la pantalla */
+    }
+    /* --- carrusel de la 1.4: izquierda y derecha (y arriba/abajo si el personaje no tiene trajes). X ("arriba") y
+     * O ("abajo") son saltar y rodar: aqui no deben mover nada --- */
     int prevc = (in & IN_LEFT) || (!has_out && (in & IN_UP) && !(in & IN_CROSS));
     int nextc = (in & IN_RIGHT) || (!has_out && (in & IN_DOWN) && !(in & IN_CIRCLE));
     if (prevc) { ginfo.char_sel = (ginfo.char_sel + nc - 1) % nc; snd_play(sfx_tap, 0.5f, 1, 0); }
@@ -4272,17 +4316,16 @@ static void chars_input(unsigned in, int confirm)
     /* el modelo cambia cuando su textura ya esta en memoria (se lee en segundo plano): mientras tanto se sigue viendo
      * el anterior. Antes cada personaje nuevo paraba el juego 83-100 ms leyendo de la Memory Stick */
     if (i != char_shown && r_tex_request(char_tex(i))) { char_show_model(i); char_pose(i); theme_hi = char_theme_sel[i]; }
-    /* selector de trajes de la 1.11 (UICharacterThemeShifter): abajo el siguiente, arriba el anterior */
-    if (has_out && i == i0) {
-        if ((in & IN_DOWN) && !(in & IN_CIRCLE)) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(1); }
-        if ((in & IN_UP) && !(in & IN_CROSS)) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(-1); }
+    /* X sobre un personaje ya suyo con trajes: entra al selector de trajes (empieza en el que lleva puesto) */
+    if (confirm && ch_unlocked(i) && i == i0 && i == char_shown && outfits_avail() && char_theme_count(i)) {
+        snd_play(sfx_tap, 1, 1, 0);
+        theme_hi = char_theme_sel[i];
+        theme_mode = 1;
+        return;
     }
-    if (confirm && char_theme_buy()) return;   /* X sobre un traje sin comprar: lo compra, no elige al personaje */
     if (confirm) {
         if (ch_unlocked(i)) {
             ginfo.character = i;
-            /* ademas pone el traje que se esta mirando (el normal o uno comprado), como el original */
-            if (outfits_avail() && char_theme_count(i) && i == i0) { char_theme_sel[i] = theme_hi; char_show_model(i); }
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
             game_save_bg();
         } else if (chars[i].unlock == UL_COINS && ginfo.total_coins >= chars[i].price) {
@@ -4295,7 +4338,7 @@ static void chars_input(unsigned in, int confirm)
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
             hud_slide(TR("Has desbloqueado", "You unlocked"), chars[i].name);
             hud_celebrate();   /* 1.11: fondo de colores con rayas detras del personaje */
-            game_save();
+            game_save_bg();
         } else {
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
             if (chars[i].unlock == UL_COINS) hud_slide(TR("No tienes monedas suficientes", "Not enough coins"), chars[i].name);
@@ -4492,7 +4535,7 @@ static void mystery_open_type(int super)
         ginfo.reward_trophy = 0;
         ginfo.reward_t = game_time;
         snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
-        game_save();
+        game_save_bg();
         return;
     }
     if (super && egg_box) {
@@ -4506,7 +4549,7 @@ static void mystery_open_type(int super)
         ginfo.reward_trophy = 0;
         ginfo.reward_t = game_time;
         snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
-        game_save();
+        game_save_bg();
         return;
     }
     if (super) { if (ginfo.sboxes_pending <= 0) return; ginfo.sboxes_pending--; ginfo.sboxes_opened++; }
@@ -4612,7 +4655,7 @@ static void shop_buy(int i)
     else if (it->kind == SK_SKIP) missions_skip(it->idx);
     else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); mystery_open_type(0); }
     snd_play(sfx_find("Hr_gui_coin"), 0.8f, 1.0f, 0);
-    game_save();
+    game_save_bg();   /* comprar en la tienda: en segundo plano (tirones de 100 ms en el devlog) */
 }
 
 /* ------------------------------------------------------------ entradas */
@@ -4683,7 +4726,7 @@ void game_input(unsigned in)
                 ginfo.opt_season_off = !ginfo.opt_season_off;   /* SeasonButton.Click: quita o pone la Navidad */
                 game_theme_check(0);
             }
-            game_save();
+            game_save_bg();
         } else if (in & (IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
         return;
     }
@@ -4698,7 +4741,7 @@ void game_input(unsigned in)
                     ginfo.hoverboards += 3;
                     hb_shown = 1; hb_should = 0;
                     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
-                    game_save();
+                    game_save_bg();
                 }
                 ginfo.popup = POPUP_NONE;
             }

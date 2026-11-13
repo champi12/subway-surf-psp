@@ -221,10 +221,12 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    personaje. chars14.bin admite hasta 48 mallas (eran 32).
 4j. **Trajes de la 1.11 (CharacterThemes/CharacterCustomization):** Jake (Oscuro gratis, Estrella 30 llaves) y Tricky
    (Camuflaje 25, Corazón 40). El selector `UICharacterThemeShifter` es una fila horizontal bajo el nombre con sus
-   iconos (ui_sel_fill/char/skin del atlas 1.11) y los colores de cada traje (GlobalColors), con un cursor azul oscuro
-   (el `_selectedMarker`, navy) sobre el que se mira; se mueve con la cruceta (arriba/abajo), el carrusel con izq/der. El
-   panel central muestra el estado del traje marcado: ELEGIDO / ELEGIR (X) / su precio en llaves con el icono (X compra).
-   Al pasar por un traje se previsualiza en el modelo; la X lo pone. Textura teñida al extraer con la paleta real de los
+   iconos (ui_sel_fill/char/skin del atlas 1.11) y los colores de cada traje (GlobalColors). Manejo en la PSP: en el
+   carrusel (izq/der cambia de personaje), X sobre un personaje suyo con trajes entra al selector; dentro, izq/der
+   cambia de traje (se ve en el modelo) con un cursor azul oscuro (el `_selectedMarker`, navy) que solo sale ahi; X se
+   pone el traje (o lo compra con llaves) y deja elegido al personaje; O sale sin cambiar nada. El panel central muestra
+   el estado: ELEGIDO / ELEGIR (X) / su precio en llaves con el icono (X compra). En la 1.11 el selector solo esta en
+   la pantalla de personajes (CharacterScreen), no en la de tablas. Textura teñida al extraer con la paleta real de los
    degradados (`TwoGradientToTexture`: dos `Gradient` de 8 claves, no la textura `Avatar_Colors_*` del material) y el
    shader `CharacterShaderExAlpha` (base × paleta[alfa de máscara], bilineal). Tricky usa su cuerpo de la 1.11 (sin gorro
    ni gafas) y encima el accesorio que toque (el Camuflaje cambia a casco y gafas oscuras; el Corazón añade gorra,
@@ -232,6 +234,12 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    (`outfits_gift_free`). El traje puesto se dibuja en la portada (pintando el tren), en la carrera y en el fin de
    partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan. Guardado en e3[7].
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
+4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
+   en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano
+   (`data_board_clips_async`, ruta completa: sceIoOpen no resuelve relativas) y al salir de Tablas no se relee nada en
+   el momento (el menu pinta el tren, no corre con la tabla): 30 FPS fijos, CPU max. 17 ms. Comprar en la tienda,
+   tablas, personajes, trajes, abrir cajas y los ajustes guardan en segundo plano (`game_save_bg`; eran tirones de
+   50-100 ms en la tienda).
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

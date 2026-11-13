@@ -162,6 +162,8 @@ int data_boards_load(void);                                   /* 0 si no hay boa
 int data_board_clips_load(const char *const *names, int n);   /* de boardanim.bin, las que falten */
 int data_board_clips_load_max(const char *const *names, int n, int maxadd);   /* ...como mucho maxadd */
 void data_board_clips_free(void);
+/* un paso por fotograma, leyendo en segundo plano: 1 cuando ya estan todos; *added = clips nuevos en este paso */
+int data_board_clips_async(const char *const *names, int n, int *added);
 int data_mat_clone(const char *base, int tex);
 int data_theme_has_tex(int t);
 void data_theme_set(int on);

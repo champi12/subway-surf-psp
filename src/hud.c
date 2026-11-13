@@ -1761,7 +1761,8 @@ static void draw_chars(void)
     /* boton de comprar / elegir (UICharacterBuyButton / UICharacterSelectButton). Al pasar por el selector de trajes,
      * este mismo panel muestra el estado del traje marcado (su precio en llaves, o ELEGIDO), como en el original */
     float bx = U(100), by = 112;
-    int ho = (outfits_avail() && char_theme_count(i)) ? game_theme_hi() : 0;   /* traje marcado (0 = aspecto normal) */
+    int has_th = outfits_avail() && char_theme_count(i), in_th = has_th && game_theme_mode();
+    int ho = in_th ? game_theme_hi() : 0;   /* dentro del selector: el traje marcado (0 = aspecto normal) */
     ui_sliced(a_ui, "background_character_buy", bx - U(77), by - U(26), U(154), U(52), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_2_outline", bx - U(81), by - U(30), U(166), U(64), UIS, C_OUTLINE);
     /* esta mirando un traje disponible (el normal, o uno comprado) -> SELECCIONADO si es justo el que lleva puesto,
@@ -1776,9 +1777,13 @@ static void draw_chars(void)
         labc(0, px, by - U(4), 20, game_keys() >= price ? C_WHITE : 0xff8080ffu, 0, 1, buf);
         labc(0, bx, by + U(14), 13, C_WHITE, 1, 1, char_unlocked(i) ? TR("Comprar (X)", "Buy (X)")
                                                                      : TR("Desbloquea al personaje", "Unlock character first"));
-    } else if (un && (ho > 0 || (outfits_avail() && char_theme_count(i)))) {
-        /* traje disponible (normal o comprado) sobre un personaje ya desbloqueado */
+    } else if (un && in_th) {
+        /* dentro del selector: traje disponible (normal o comprado) */
         labc(0, bx, by, 20, C_WHITE, 1, 1, look_active ? TR("ELEGIDO", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
+    } else if (un && has_th) {
+        /* en el carrusel, personaje suyo con trajes: X entra al selector de trajes */
+        labc(0, bx, by - U(6), 20, C_WHITE, 1, 1, char_is_selected(i) ? TR("ELEGIDO", "SELECTED") : TR("ELEGIR", "SELECT"));
+        labc(0, bx, by + U(14), 13, C_WHITE, 1, 1, TR("X: trajes", "X: outfits"));
     } else if (un) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, char_is_selected(i) ? TR("ELEGIDO", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
     } else if (char_unlock_type(i) == UL_COINS) {
@@ -1831,9 +1836,10 @@ static void draw_chars(void)
             float sz = sel ? U(34) : U(28);
             unsigned cf = t == 0 ? base_fill : (i < 2 && t <= 2 ? col[i][t - 1][0] : 0xff808080u);
             unsigned ci = t == 0 ? base_ic   : (i < 2 && t <= 2 ? col[i][t - 1][1] : 0xffffffffu);
-            if (sel) {
+            if (sel && in_th) {
                 /* cursor del traje marcado: contorno azul oscuro (el _selectedMarker del original, color navy
-                 * CHARACTERS_CUSTOMIZATION_BASE_SKIN_ICON) para saber sobre que traje estamos */
+                 * CHARACTERS_CUSTOMIZATION_BASE_SKIN_ICON). Solo dentro del selector, para saber si las flechas mueven
+                 * trajes o personajes */
                 unsigned cur = 0xff50360eu;
                 if (tf >= 0) r_sprite(tf, cx - sz * 0.5f - U(4), cy - sz * 0.5f - U(4), sz + U(8), sz + U(8), 0, 0, 1, 1, cur);
                 else ui_sliced(a_ui, "button_generic_2_outline", cx - sz * 0.5f - U(4), cy - sz * 0.5f - U(4), sz + U(8), sz + U(9), UIS, cur);
@@ -1846,10 +1852,6 @@ static void draw_chars(void)
             else if (t == 0) spr_c("icon_character_owned", cx, cy, U(16), U(16), C_WHITE);
             if (t > 0 && !game_theme_owned(i, t - 1)) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
         }
-        /* flechas de la cruceta (arriba/abajo cambian de traje) encima y debajo del icono marcado */
-        float hx = cx0 + hi * step;
-        labc(1, hx, cy - U(24), 15, C_WHITE, 1, 1, "^");
-        labc(1, hx, cy + U(24), 15, C_WHITE, 1, 1, "v");
     }
     /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos (los trofeos van aqui, no en la portada) */
     foot_btn(-150, "button_fill_menuBack", "icon_back_menu", 31, 26, TR("Menú", "Menu"), "O");

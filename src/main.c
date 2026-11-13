@@ -586,7 +586,16 @@ int main(int argc, char **argv)
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */
         if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;   /* a personajes */
         if (frame_no == 90 || frame_no == 100 || frame_no == 110) pr |= PSP_CTRL_SELECT;   /* quita el overlay para ver el selector */
-        if (frame_no == 390 || frame_no == 630) pr |= PSP_CTRL_DOWN;   /* mirar el traje siguiente (cruceta) */
+        if (frame_no == 300) pr |= PSP_CTRL_CROSS;                      /* X: entra al selector de trajes */
+        if (frame_no == 390 || frame_no == 630) pr |= PSP_CTRL_RIGHT;  /* traje siguiente */
+#elif defined(AT_BOARDMENU)
+        /* prueba de los tirones al volver de Tablas al menu: personajes -> tablas, se miran varias y se vuelve */
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */
+        if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;                    /* a personajes */
+        if (frame_no == 120) pr |= PSP_CTRL_RTRIGGER;                   /* a tablas */
+        if (frame_no == 170 || frame_no == 210 || frame_no == 250) pr |= PSP_CTRL_RIGHT;   /* vistas previas */
+        if (frame_no == 300) pr |= PSP_CTRL_CROSS;                      /* elegir la tabla marcada */
+        if (frame_no == 340) pr |= PSP_CTRL_CIRCLE;                     /* volver al menu */
 #elif defined(AT_HUNTBOX)
         /* prueba: caja de la caza semanal al acabar la carrera y la pausa con la mision de los segundos */
         if (frame_no == 30 || frame_no == 50 || frame_no == 80) pr |= PSP_CTRL_CROSS;   /* avisos y jugar */

@@ -784,8 +784,10 @@ static int clips_base = -1;        /* gd.nclips antes de las animaciones de la t
 static uint8_t *board_clip_buf[BOARD_MAX_CLIPS];
 static int board_nbuf;
 
+static int bc_gen;   /* definido abajo con el hilo; aqui solo se sube */
 void data_board_clips_free(void)
 {
+    bc_gen++;   /* lo que este leyendo el hilo se tira al terminar */
     if (clips_base < 0) return;
     for (int i = 0; i < board_nbuf; i++) free(board_clip_buf[i]);
     for (int c = clips_base; c < gd.nclips; c++) { free(gd.clips[c].tracks); free(gd.clips[c].events); }
@@ -904,6 +906,140 @@ int data_board_clips_load_max(const char *const *names, int n, int maxadd)
     fclose(f);
     return added;
 }
+
+/* ---- animaciones de la tabla en segundo plano ----
+ * Al volver de la pantalla de tablas al menu, el resto de animaciones de la tabla elegida se leian de dos en dos en el
+ * hilo principal: cada fotograma abria boardanim.bin y leia 2 clips de la Memory Stick (~90 ms de CPU: 5-18 tirones
+ * seguidos de 83-100 ms en el menu, en el devlog). Ahora un hilo de menos prioridad solo LEE los bytes de cada clip
+ * (por trozos de 32 KB, cediendo, para no dejar sin datos a la musica); el hilo principal solo lo prepara (parse_clip
+ * y las rutas de los huesos), que es casi nada. El hilo no toca gd.clips: solo su bufer */
+static SceUID bc_thid = -1, bc_sema = -1;
+static volatile int bc_state;          /* 0 libre, 1 leyendo, 2 leido, 3 error */
+static volatile int bc_k = -1;         /* clip (indice de boardanim.bin) que se esta leyendo */
+static uint8_t *volatile bc_buf;
+static int bc_req_gen;                 /* data_board_clips_free sube bc_gen: lo que se leia antes se tira */
+static char bc_path[200];              /* ruta completa: sceIoOpen no resuelve las relativas como fopen */
+static int bc_fails;                   /* lecturas fallidas seguidas: a la tercera se lee de golpe, como antes */
+
+static int bclip_reader(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    SceUID fd = -1;
+    extern volatile int io_resume_gen;
+    int gen = io_resume_gen;
+    for (;;) {
+        if (sceKernelWaitSema(bc_sema, 1, NULL) < 0) break;
+        int k = bc_k;
+        if (k < 0 || k >= bclip_n) { bc_state = 3; continue; }
+        uint32_t off = bclip_off[k], len = bclip_off[k + 1] - bclip_off[k];
+        int ok = 0;
+        for (int tries = 0; tries < 2 && !ok; tries++) {
+            /* tras el modo reposo (o un fallo) se vuelve a abrir */
+            if (fd < 0 || gen != io_resume_gen || tries) {
+                if (fd >= 0) sceIoClose(fd);
+                fd = sceIoOpen(bc_path, PSP_O_RDONLY, 0);
+                gen = io_resume_gen;
+            }
+            ok = fd >= 0 && sceIoLseek32(fd, off, PSP_SEEK_SET) == (int)off;
+            for (uint32_t done = 0; ok && done < len;) {
+                uint32_t n = len - done > 32768 ? 32768 : len - done;
+                ok = sceIoRead(fd, bc_buf + done, n) == (int)n;
+                done += n;
+                sceKernelDelayThread(1000);
+            }
+        }
+        bc_state = ok ? 2 : 3;
+    }
+    return 0;
+}
+
+/* mete en gd.clips el clip ya leido (si sigue haciendo falta) */
+static int bclip_finish(void)
+{
+    int added = 0, k = bc_k;
+    uint8_t *buf = bc_buf;
+    if (bc_state == 2 && bc_req_gen == bc_gen && board_nbuf < BOARD_MAX_CLIPS) {
+        int dup = 0;   /* puede que la carrera ya lo haya leido de golpe (data_board_clips_load) */
+        for (int c = 0; c < gd.nclips && !dup; c++) dup = !strcmp(gd.clips[c].name, bclip_name[k]);
+        Clip *nc2 = dup ? NULL : realloc(gd.clips, sizeof(Clip) * (gd.nclips + 1));
+        if (nc2) {
+            gd.clips = nc2;
+            memset(&gd.clips[gd.nclips], 0, sizeof(Clip));
+            Clip *cl = &gd.clips[gd.nclips++];
+            parse_clip(buf, cl);
+            for (int t = 0; t < cl->ntracks && bstr_map; t++)
+                cl->tracks[t].path = cl->tracks[t].path < bstr_n ? bstr_map[cl->tracks[t].path] : 0;
+            board_clip_buf[board_nbuf++] = buf;
+            buf = NULL;
+            added = 1;
+        }
+    }
+    free(buf);   /* tirado: ya no hace falta (otra tabla, o ya estaba) */
+    bc_buf = NULL;
+    bc_k = -1;
+    bc_state = 0;
+    return added;
+}
+
+/* un paso por fotograma: termina el clip leido y pide el siguiente que falte. Devuelve 1 cuando ya estan todos.
+ * *added: cuantos clips nuevos han entrado en gd.clips en este paso (para anim_add_state) */
+int data_board_clips_async(const char *const *names, int n, int *added)
+{
+    *added = 0;
+    if (clips_base < 0) clips_base = gd.nclips;
+    if (bclip_n < 0) {   /* el indice: normalmente ya esta (lo leyo la vista previa) */
+        FILE *f = fopen("data/boardanim.bin", "rb");
+        if (!f) return 1;
+        board_clip_index(f);
+        fclose(f);
+    }
+    if (bclip_n <= 0) return 1;
+    if (bc_sema < 0) {
+        char cwd[160];
+        if (!getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
+        snprintf(bc_path, sizeof(bc_path), "%s/data/boardanim.bin", cwd);
+        bc_sema = sceKernelCreateSema("bclip_loader", 0, 0, 1, NULL);
+        bc_thid = sceKernelCreateThread("bclip_loader", bclip_reader, 0x30, 0x2000, PSP_THREAD_ATTR_USER, NULL);
+        if (bc_sema < 0 || bc_thid < 0) {   /* sin hilo: como antes, de golpe */
+            int c0 = gd.nclips;
+            data_board_clips_load(names, n);
+            *added = gd.nclips - c0;
+            return 1;
+        }
+        sceKernelStartThread(bc_thid, 0, NULL);
+    }
+    if (bc_state == 1) return 0;                    /* el hilo sigue leyendo */
+    if (bc_state == 3 && ++bc_fails >= 3) {        /* el hilo no puede leer: lo que falte, de golpe */
+        bclip_finish();
+        dlog_error("No se pueden leer las animaciones de la tabla en segundo plano (%s)", bc_path);
+        int c0 = gd.nclips;
+        data_board_clips_load(names, n);
+        *added = gd.nclips - c0;
+        return 1;
+    }
+    if (bc_state == 2) bc_fails = 0;
+    if (bc_state >= 2) *added = bclip_finish();
+    /* el siguiente que falte */
+    for (int k = 0; k < bclip_n && board_nbuf < BOARD_MAX_CLIPS; k++) {
+        const char *nm = bclip_name[k];
+        int want = 0;
+        for (int i = 0; i < n && !want; i++) want = names[i] && !strcmp(names[i], nm);
+        for (int c = 0; c < gd.nclips && want; c++) if (!strcmp(gd.clips[c].name, nm)) want = 0;
+        if (!want) continue;
+        uint32_t len = bclip_off[k + 1] - bclip_off[k];
+        bc_buf = memalign(16, len);
+        if (!bc_buf) return 1;
+        bc_k = k;
+        bc_req_gen = bc_gen;
+        bc_state = 1;
+        sceKernelSignalSema(bc_sema, 1);
+        return 0;
+    }
+    return 1;
+}
+
+/* 1 si el hilo de las animaciones de la tabla esta leyendo (no se puede soltar su bufer) */
+int data_board_clips_busy(void) { return bc_state == 1; }
 
 static int load_sfx(void)
 {
