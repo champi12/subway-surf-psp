@@ -24,7 +24,7 @@ static int offline_impossible(int type)
     if (t == MT_BeatFriends || t == MT_PokeFriend) return 1;
     /* las llaves (1.10) solo salen donde va Save Me (Sidney y Tokio): en los demas mapas esas misiones no se pueden
      * hacer y se dan por hechas, como las de amigos */
-    if ((t == MT_SpendKeys || t == MT_PickupKeys) && game_world != 19 && game_world != 110) return 1;
+    { extern int game_saveme_map(void); if ((t == MT_SpendKeys || t == MT_PickupKeys) && !game_saveme_map()) return 1; }
     return 0;
 }
 

@@ -2379,7 +2379,7 @@ static void draw_prizes_popup(void)
             for (int k = 0; k < 5; k++)
                 spr_fit(a_st, "coin2d", ax + 62 + k * 15, ry + 10 + (k & 1) * 16, 12, 12, C_WHITE);
             labfit(1, ax + aw * 0.5f + 50, ry + hh * 0.5f, 22, aw - 160, 0xff2a9ad8u, 1, 1,
-                   TR("100 000 monedas", "100 000 coins!"));
+                   "¡JACKPOT!");   /* 1.11: el premio gordo (100 000 o 300 000), igual en todos los mapas */
         } else {
             int cnt = 0, k = 0;
             for (int i = 0; i < (int)(sizeof(it) / sizeof(it[0])); i++) cnt += it[i].cat == c;

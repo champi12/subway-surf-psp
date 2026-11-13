@@ -315,6 +315,7 @@ void music_play(const char *name, int loop)
 void music_stop(void) { mus_stop_req = 1; }
 void music_restart(void) { mus_restart_req = 1; }
 void music_set_volume(float v) { mus_vol = v; }
+float music_get_volume(void) { return mus_vol; }
 void music_pause(int p) { mus_paused = p; }
 
 int audio_init(void)

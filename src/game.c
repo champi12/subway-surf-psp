@@ -234,7 +234,15 @@ static int state = GS_MENU;
 static float state_time, start_time;
 static float currentSpeed, currentLevelSpeed = SPEED_MIN;
 static int isDead;
-static float revive_fade_t0 = -1;   /* AudioStateLoop.MusicFader al revivir (game_time al empezar; -1 nada) */
+/* AudioStateLoop.MusicFader de la 1.11: al revivir y al abrir una caja la musica baja (0,5 s), calla un rato y vuelve
+ * a subir. fade_t0: game_time al empezar (-1 nada); fade_run: empezo en la carrera (al acabarla se corta) */
+static float fade_t0 = -1, fade_pause, fade_up, fade_vol;
+static int fade_run;
+static void music_dip(float pause, float up, int in_run)
+{
+    if (fade_t0 < 0) fade_vol = music_get_volume();   /* si ya bajaba, se vuelve al volumen de antes */
+    fade_t0 = game_time; fade_pause = pause; fade_up = up; fade_run = in_run;
+}
 static V3 die_pos;   /* posicion del personaje al morir (Save Me lo devuelve ahi) */
 #ifdef AT_NOTUT
 static int tutorial_completed = 1;   /* prueba automatica: sin tutorial */
@@ -457,7 +465,7 @@ static void updates_reached_check(void)
     if (rome_season()) r |= 1 << 3;
     if (sydney_season()) r |= 1 << 4;
     if (tokyo_season()) r |= 1 << 5;
-    if (miami_season()) r |= 1 << 6;
+    if (miami_season()) r |= 1 << 6 | 1 << 7;   /* bit 7: los trajes (solo con la fecha, no por las tablas vistas) */
     if (r != updates_reached) {
         updates_reached = r;
         dlog("ACTUALIZACIONES alcanzadas: 0x%02x (sus tablas fijas ya salen)", r);
@@ -509,12 +517,22 @@ static int hunt_items[3][5], hunt_year[3];
 static int hunt_box, hunt_box_city;              /* semana y ciudad cuyo premio esta por abrir */
 static int hunt_run;                             /* IsAnyPeriodActive al empezar la carrera */
 static float hunt_elapsed;                       /* Game.ElapsedGameTime: segundos de carrera (no se reinicia) */
+/* la caza de una ciudad solo si sus datos estan (se extrajo con su APK): su icono va con su objeto en los mapas. Sin el
+ * APK de la 1.11 salia la caza de Miami en su fecha sin nada que coger (y lo mismo la de Tokio sin la 1.10) */
+static int hunt_data(int hc)
+{
+    static int have[3] = {-2, -2, -2};
+    if (hc < 1 || hc > 2) return 0;
+    if (have[hc] == -2) have[hc] = data_tex_find(hc == 1 ? "ui_doll" : "ui_hunt111") >= 0;
+    return have[hc];
+}
 static int hunt_city(void)
 {
 #if defined(AT_MIAMI)
     return 2;
 #else
-    return tokyo_season() ? 1 : miami_season() ? 2 : 0;
+    int hc = tokyo_season() ? 1 : miami_season() ? 2 : 0;
+    return hunt_data(hc) ? hc : 0;
 #endif
 }
 static int hunt_active(void)
@@ -583,7 +601,10 @@ static int keys_gift;   /* PlayerInfo de la 1.9/1.10: se empieza con 5 llaves; a
 static int saveme_cost = 1;           /* SaveMeManager._numberOfUsedKeysInCurrentRun */
 static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (-1: cerrada) */
 static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
-int game_saveme_on(void) { extern int game_world; return (game_world == 19 || game_world == 110 || game_world == 111) && keys_popup_shown; }
+/* mapas con Save Me y llaves: todos menos el clasico sin el evento de Halloween (de momento) */
+extern int theme_halloween;
+int game_saveme_map(void) { extern int game_world; return game_world != 0 || theme_halloween; }
+int game_saveme_on(void) { return game_saveme_map() && keys_popup_shown; }
 int game_keys(void) { return keys; }
 int game_saveme_cost(void) { return saveme_cost; }
 static int save_pending;
@@ -2083,7 +2104,7 @@ static void notify_pickup(int node)
     case PK_EGG:
         /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp (la 1.10: WeeklyHuntManager.ItemPickedUp, la muneca) y
          * las particulas de los power-ups */
-        if (game_hunt_kind() == 2) hunt_picked(); else egg_picked();
+        if (game_hunt_kind() >= 2) hunt_picked(); else egg_picked();   /* 2 munecas (Tokio), 3 objeto de Miami */
         play_ci(&snd_powerup);
         break;
     case PK_LETTER: {
@@ -2628,7 +2649,8 @@ static void miami_popup_check(void)
 static void keys_popup_check(void)
 {
     extern int game_world;
-    if ((game_world != 19 && game_world != 110 && game_world != 111) || ginfo.popup) return;
+    (void)game_world;
+    if (!game_saveme_map() || ginfo.popup) return;
     if (!keys_gift) {
         /* las 5 llaves de regalo (amountOfKeys empieza en 5): solo la primera vez, en el mapa con llaves que sea */
         keys_gift = 1;
@@ -2739,7 +2761,7 @@ static void game_start_run(void)
     daily_word_check();   /* palabra nueva si ha cambiado el dia */
     /* Game.Intro */
     score = 0; coins_run = 0; meters = 0; meters_last = 0;
-    revive_fade_t0 = -1;
+    fade_t0 = -1;
     music_set_volume(0.3f);
     music_restart();
     guard_mute();
@@ -3245,7 +3267,7 @@ static void saveme_revive(void)
     if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");   /* AudioStateLoop.reviveSound de la 1.9 */
     if (sfx_revive >= 0) snd_play(sfx_revive, 1.0f, 1.0f, 0);
     else play_ci(&snd_powerup);
-    revive_fade_t0 = game_time;   /* PlayReviveSound: la musica baja (0,5 s), calla 1 s y vuelve a subir (2 s) */
+    music_dip(0.5f, 3.0f, 1);   /* PlayReviveSound: revivePauseTime 0,5 y reviveFadeUpTime 3 (1.11) */
     track_remove_obstacles(ch.z + 250.0f * normalized_speed());
     /* Character.HandleRevive: StopAllCoroutines. Tras chocar con un tren en marcha el atropello (hbt) seguia
      * moviendo al personaje cada fotograma: se quedaba clavado bajo el suelo, invisible, y la camara quieta. Se para
@@ -3836,7 +3858,10 @@ static int outfit_find(int ci, int sel)   /* sel: 0 normal, t+1 traje t */
     return -1;
 }
 int char_theme_count(int ci) { int n = 0; for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci) n++; return n; }
-int outfits_avail(void) { return (updates_reached >> 6) & 1; }   /* se ha jugado en la temporada de Miami */
+/* como las tablas de cada actualizacion: aparecen la primera vez que se juega en la temporada de Miami (su fecha) y
+ * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
+ * compradas (y PRUEBA_TABLAS las desbloquea todas), y los trajes salian sin haber llegado a la fecha */
+int outfits_avail(void) { return (updates_reached >> 7) & 1; }
 /* los trajes gratis (precio 0) son un regalo: al tener los trajes disponibles vienen ya desbloqueados (GiftBradCharacters) */
 static void outfits_gift_free(void)
 {
@@ -4506,6 +4531,17 @@ static int rio_box_booster(void)
 }
 
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
+/* MysteryBoxPopup.OpenBox -> AudioStateLoop.PlayMysteryBoxOpenSound: el sonido de la caja al salir el premio y la
+ * musica baja (pauseTime 3, fadeUpTime 4), en todos los mapas */
+static int box_from_shop;   /* la caja se compro en la tienda: ahi se queda el sonido de siempre (lo pidio el usuario) */
+static void box_open_sound(void)
+{
+    static int s_box = -2;
+    if (box_from_shop) { snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0); return; }
+    if (s_box == -2) s_box = sfx_find("Hr_mysteryBoxOpen");
+    if (s_box >= 0) { snd_play(s_box, 1.0f, 1.0f, 0); music_dip(3.0f, 4.0f, 0); }
+    else snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+}
 static void mystery_open_type(int super)
 {
     ginfo.reward_hunt = 0;
@@ -4534,7 +4570,7 @@ static void mystery_open_type(int super)
         ginfo.reward_hunt = 1;
         ginfo.reward_trophy = 0;
         ginfo.reward_t = game_time;
-        snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+        box_open_sound();
         game_save_bg();
         return;
     }
@@ -4548,7 +4584,7 @@ static void mystery_open_type(int super)
         ginfo.reward_super = 1;
         ginfo.reward_trophy = 0;
         ginfo.reward_t = game_time;
-        snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+        box_open_sound();
         game_save_bg();
         return;
     }
@@ -4620,7 +4656,7 @@ static void mystery_open_type(int super)
 #ifdef AUTOTEST
     dlog("CAJA %s %d: %s", super ? "super" : "normal", super ? ginfo.sboxes_opened : ginfo.boxes_opened, ginfo.reward);
 #endif
-    snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+    box_open_sound();
     game_save_bg();   /* en segundo plano: abrir una caja daba un tiron de ~50 ms */
 }
 
@@ -4653,7 +4689,7 @@ static void shop_buy(int i)
         else ginfo.hs2000++;
     } else if (it->kind == SK_TIER) upgrade_tier[it->idx]++;
     else if (it->kind == SK_SKIP) missions_skip(it->idx);
-    else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); mystery_open_type(0); }
+    else { ginfo.boxes_pending++; missions_did(M_BUYMYSTERYBOX, 1); box_from_shop = 1; mystery_open_type(0); box_from_shop = 0; }
     snd_play(sfx_find("Hr_gui_coin"), 0.8f, 1.0f, 0);
     game_save_bg();   /* comprar en la tienda: en segundo plano (tirones de 100 ms en el devlog) */
 }
@@ -4924,14 +4960,14 @@ void game_update(float dt)
     }
     DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
-    if (revive_fade_t0 >= 0 && state != GS_RUNNING && state != GS_JETPACK) revive_fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
-    if (revive_fade_t0 >= 0) {
-        /* MusicFader(reviveFadeUpTime 2, revivePauseTime 1) con fadeDownTime 0,5 y menuMusicVolume 0,3 */
-        float e = game_time - revive_fade_t0, v;
-        if (e < 0.5f) v = 0.3f * (1.0f - e / 0.5f);
-        else if (e < 1.5f) v = 0;
-        else if (e < 3.5f) v = 0.3f * (e - 1.5f) / 2.0f;
-        else { v = 0.3f; revive_fade_t0 = -1; }
+    if (fade_t0 >= 0 && fade_run && state != GS_RUNNING && state != GS_JETPACK) fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
+    if (fade_t0 >= 0) {
+        /* MusicFader: baja en 0,5 s (fadeDownTime), calla fade_pause y sube en fade_up hasta el volumen de antes */
+        float e = game_time - fade_t0, v;
+        if (e < 0.5f) v = fade_vol * (1.0f - e / 0.5f);
+        else if (e < 0.5f + fade_pause) v = 0;
+        else if (e < 0.5f + fade_pause + fade_up) v = fade_vol * (e - 0.5f - fade_pause) / fade_up;
+        else { v = fade_vol; fade_t0 = -1; }
         music_set_volume(v);
     }
     update_powerup_times(dt);
@@ -5500,7 +5536,7 @@ void game_debug_unlock_all(void)
 #endif
 void game_debug_outfit(void)
 {
-    updates_reached |= 1 << 6;
+    updates_reached |= 1 << 6 | 1 << 7;
     char_theme_owned[0] = 2; char_theme_owned[1] = 2;   /* el 2o comprado; el 1o no, para ver su precio */
 #ifdef AT_OUTFITRUN
     char_theme_sel[0] = 2; char_theme_sel[1] = 2;   /* en la prueba de carrera: lleva puesto el 2o traje */

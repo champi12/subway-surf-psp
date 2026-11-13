@@ -3175,20 +3175,28 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
                     o = msc.resolve_ptr(c['obj'], v)
                     if o is not None and o.type.name == 'AudioClip':
                         ex.audio_id(o)
-    # Save Me de la 1.9 (mapa de Sidney): el sonido de revivir (AudioStateLoop.reviveSound de su escena)
-    scr = level_sc if level_sc is not sc and level_sc in (sc19, sc110, sc111) else None
+    # AudioStateLoop de la 1.9+: el sonido de revivir (Save Me) y el de abrir una caja misteriosa. Se sacan de cualquier
+    # APK de la 1.9 en adelante que haya, no solo si el mapa principal es de esa version (con actualizar.sh el principal
+    # es el de la 1.5.2 y el sonido de revivir no llegaba a sfx.bin: en la consola no sonaba)
+    scr = sc111 or sc110 or sc19
     if scr is not None:
+        done = set()
         for r in scr.roots('level0'):
             st = [scr.go_tree(r)]
             while st:
                 g = st.pop()
                 st += g['children']
                 for c in g['comps']:
-                    if c.get('class') == 'AudioStateLoop' and c.get('fields') and c['fields'].get('reviveSound'):
-                        o = scr.resolve_ptr(c['obj'], c['fields']['reviveSound'])
+                    if c.get('class') != 'AudioStateLoop' or not c.get('fields'):
+                        continue
+                    for fld, what in (('reviveSound', 'revivir (Save Me)'), ('mysteryBoxOpenSound', 'abrir la caja')):
+                        if fld in done or not c['fields'].get(fld):
+                            continue
+                        o = scr.resolve_ptr(c['obj'], c['fields'][fld])
                         if o is not None:
                             ex.audio_id(o)
-                            print('  sonido de revivir (Save Me): %s' % o.read(check_read=False).m_Name)
+                            done.add(fld)
+                            print('  sonido de %s: %s' % (what, o.read(check_read=False).m_Name))
     # el resto de clips de audio del juego (por si acaso)
     for o in sc.env.objects:
         if o.type.name == 'AudioClip':

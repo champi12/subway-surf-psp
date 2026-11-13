@@ -23,6 +23,7 @@ void music_play(const char *name, int loop);
 void music_stop(void);
 void music_restart(void);
 void music_set_volume(float v);   /* 0..1 */
+float music_get_volume(void);
 void music_pause(int pause);
 
 #endif
