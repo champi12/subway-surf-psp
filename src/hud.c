@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <pspkernel.h>
 #include "hud.h"
+#include "maps.h"
 #include "spawn.h"
 #include "render.h"
 #include "data.h"
@@ -2351,36 +2352,135 @@ void hud_loading(float p)
 }
 
 /* ------------------------------------------------------------ ajustes y lista de premios (1.5.2) */
-/* SettingsPopup de la 1.5.2: sonido (SoundButton) y, mientras dura la Navidad, la temporada (SeasonButton). Los demas
- * botones del original (mensajes, invitar amigos, Game Center, privacidad) necesitan internet: no estan */
+/* miniaturas del selector de mapas (maps_tex.bin: el grafiti del vagon de salida de cada mapa, 128x128). Se leen al
+ * dibujarlas y se sueltan al cerrar los ajustes: fuera de ahi no ocupan nada */
+static unsigned map_thumb_loaded;   /* bit i: la de maps_def[i] esta cargada */
+static int map_thumb_tex(int i)
+{
+    static int tex[16], init;
+    if (!init) { init = 1; for (int k = 0; k < 16; k++) tex[k] = -2; }
+    if (i < 0 || i >= maps_n || i >= 16) return -1;
+    if (tex[i] == -2) { char nm[32]; snprintf(nm, sizeof(nm), "map_%s", maps_def[i].id); tex[i] = data_tex_find(nm); }
+    return tex[i];
+}
+static void map_thumb(int i, float cx, float cy, float size, unsigned int col)
+{
+    int t = map_thumb_tex(i);
+    if (t >= 0) {
+        r_sprite(t, cx - size * 0.5f, cy - size * 0.5f, size, size, 0, 0, 1, 1, col);
+        map_thumb_loaded |= 1u << i;
+    } else {
+        /* datos sin maps_tex.bin (extraidos antes del selector): un recuadro con el nombre */
+        ui_sliced(a_ui, "whitebox", cx - size * 0.5f, cy - size * 0.5f, size, size, UIS, 0xffb4b4b4u);
+        labfit(0, cx, cy, size > 80 ? 16 : 12, size - 8, C_WHITE, 1, 1, maps_name(i));
+    }
+}
+static void map_thumbs_release(void)
+{
+    if (!map_thumb_loaded || ginfo.popup == POPUP_SETTINGS || ginfo.popup == POPUP_MAPS) return;
+    r_wait_idle();
+    for (int i = 0; i < maps_n && i < 16; i++)
+        if (map_thumb_loaded & (1u << i)) r_tex_unload(map_thumb_tex(i));
+    map_thumb_loaded = 0;
+}
+
+/* SettingsPopup de la 1.5.2: sonido (SoundButton) y el mapa (abre el selector de mapas). El boton de la temporada
+ * (quitar la Navidad) ya no esta: en el selector se elige "Navidad" o "Subway Surfers". Los demas botones del original
+ * (mensajes, invitar amigos, Game Center, privacidad) necesitan internet: no estan */
 static void draw_settings_popup(void)
 {
     if (a_st == -2) a_st = ui_atlas("Settings15");
-    if (a_nb == -2) a_nb = ui_atlas("Notebook15");
     r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
-    int season = game_season_button();
-    int n = season ? 2 : 1;
-    float w = 300, h = 96 + n * 62, x = (SCR_W - w) * 0.5f, y = (SCR_H - h) * 0.5f - 8;
+    const int n = 2;
+    float w = 300, h = 84 + n * 54, x = (SCR_W - w) * 0.5f, y = (SCR_H - h) * 0.5f;
     panel(x, y, w, h);
     labc(1, x + w * 0.5f, y + 24, 26, C_NAVY, 1, 0, TR("Ajustes", "Settings"));
+    char buf[48];
     for (int i = 0; i < n; i++) {
-        float ry = y + 52 + i * 62, bx = x + 22, sel = ginfo.settings_sel == i;
-        if (sel) ui_sliced(a_ui, "whitebox", x + 8, ry - 4, w - 16, 58, UIS, 0xffb8e4f6u);
-        ui_sliced(a_ui, "button_fill_menuShop", bx, ry + 1, 48, 48, UIS, C_WHITE);
-        ui_sliced(a_ui, "button_generic_2_outline", bx - 4, ry - 3, 56, 56, UIS, sel ? 0xff00c8ffu : C_OUTLINE);
-        int off = i == 0 ? ginfo.opt_sound_off : ginfo.opt_season_off;
-        if (i == 0) spr_fit(a_st, "icon_soundOn", bx + 24, ry + 25, 34, 27, C_WHITE);
-        else spr_fit(a_nb, "icon_xmas", bx + 24, ry + 25, 38, 38, C_WHITE);
-        if (off) spr_fit(a_st, "icon_off", bx + 24, ry + 25, 44, 44, C_WHITE);
-        const char *t = i == 0 ? (off ? TR("Sonido: NO", "Sound OFF") : TR("Sonido: SÍ", "Sound ON"))
-                               : (off ? TR("Navidad: NO", "Holidays OFF") : TR("Navidad: SÍ", "Holidays ON"));
-        const char *d = i == 0 ? TR("Todos los efectos y la música", "Affects all sounds and music")
-                               : TR("Vías, trenes y cielo de Navidad", "Holiday tracks, trains and sky");
-        labfit(0, bx + 62, ry + 14, 19, w - 100, C_NAVY, 0, 0, t);
-        labfit(0, bx + 62, ry + 35, 14, w - 100, 0xff8a8a8au, 0, 0, d);
+        float ry = y + 46 + i * 54, bx = x + 22, sel = ginfo.settings_sel == i;
+        if (sel) ui_sliced(a_ui, "whitebox", x + 8, ry - 4, w - 16, 50, UIS, 0xffb8e4f6u);
+        ui_sliced(a_ui, "button_fill_menuShop", bx, ry + 1, 40, 40, UIS, C_WHITE);
+        const char *t, *d;
+        if (i == 0) {
+            int off = ginfo.opt_sound_off;
+            spr_fit(a_st, "icon_soundOn", bx + 20, ry + 21, 28, 23, C_WHITE);
+            if (off) spr_fit(a_st, "icon_off", bx + 20, ry + 21, 38, 38, C_WHITE);
+            t = off ? TR("Sonido: NO", "Sound OFF") : TR("Sonido: SÍ", "Sound ON");
+            d = TR("Todos los efectos y la música", "Affects all sounds and music");
+        } else {
+            int m = maps_current();
+            map_thumb(m, bx + 20, ry + 21, 34, C_WHITE);
+            snprintf(buf, sizeof(buf), "%s %s", TR("Mapa:", "Map:"), maps_name(m));
+            t = buf;
+            d = TR("Elegir el mapa (vuelve a cargar)", "Choose the map (reloads the game)");
+        }
+        ui_sliced(a_ui, "button_generic_2_outline", bx - 4, ry - 3, 48, 48, UIS, sel ? 0xff00c8ffu : C_OUTLINE);
+        labfit(0, bx + 56, ry + 12, 19, w - 100, C_NAVY, 0, 0, t);
+        labfit(0, bx + 56, ry + 31, 14, w - 100, 0xff8a8a8au, 0, 0, d);
     }
-    labc(0, x + 14, y + h - 18, 13, 0xff8a8a8au, 0, 0, TR("X: cambiar   O: cerrar", "X: toggle   O: close"));
-    labc(0, x + w - 14, y + h - 18, 12, 0xffa0a0a0u, 2, 0, "v1.5.2 PSP");
+    labc(0, x + 16, y + h - 16, 14, 0xff8a8a8au, 0, 0, TR("X: cambiar", "X: change"));
+    labc(0, x + w * 0.5f + 10, y + h - 16, 14, 0xff8a8a8au, 0, 0, TR("O: cerrar", "O: close"));
+}
+
+/* selector de mapas: carrusel como el de personajes. El marcado en el centro en grande con su nombre y su version; dos
+ * a cada lado, mas pequenos y mas oscuros, con su nombre debajo. La marca de "elegido" en el que se esta jugando */
+static void draw_maps_popup(void)
+{
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float x = 14, y = 8, w = SCR_W - 28, h = SCR_H - 16;
+    panel(x, y, w, h);
+    labc(1, SCR_W * 0.5f, y + 20, 24, C_NAVY, 1, 0, TR("Mapas", "Maps"));
+    int sel = ginfo.map_sel, cur = maps_current(), na = 0;
+    int list[16];
+    for (int i = 0; i < maps_n && na < 16; i++) if (maps_available(i)) list[na++] = i;
+    int pos = 0;
+    for (int k = 0; k < na; k++) if (list[k] == sel) pos = k;
+    const float cy = 112;
+    static const float sz[3] = {120, 76, 54}, off[3] = {0, 112, 180};
+    static const unsigned tint[3] = {0xffffffffu, 0xffd8d8d8u, 0xffb0b0b0u};
+    char buf[32];
+    /* de fuera hacia dentro: el del centro encima */
+    for (int a = 2; a >= 0; a--)
+        for (int sgn = -1; sgn <= 1; sgn += 2) {
+            if (a == 0 && sgn > 0) continue;
+            int k = a * sgn;
+            if (na < 5 && (k < -(na - 1) / 2 || k > na / 2)) continue;   /* pocos mapas: sin repetir */
+            int j = list[((pos + k) % na + na) % na];
+            float size = sz[a], cx = SCR_W * 0.5f + off[a] * sgn;
+            map_thumb(j, cx, cy, size, tint[a]);
+            ui_sliced(a_ui, "button_generic_2_outline", cx - size * 0.5f - 4, cy - size * 0.5f - 4, size + 8, size + 9, UIS,
+                      a ? C_OUTLINE : 0xff00c8ffu);
+            if (j == cur) spr_c("icon_character_selected", cx + size * 0.5f - 6, cy + size * 0.5f - 6, a ? 13 : 19, a ? 13 : 19, C_WHITE);
+            if (a) labfit(0, cx, cy + size * 0.5f + 12, a == 1 ? 14 : 11, size + 30, 0xff8a8a8au, 1, 0, maps_name(j));
+        }
+    labfit(1, SCR_W * 0.5f, cy + sz[0] * 0.5f + 22, 22, 200, C_NAVY, 1, 0, maps_name(sel));
+    snprintf(buf, sizeof(buf), "%s %s", TR("Versión", "Version"), maps_def[sel].ver);
+    labc(0, SCR_W * 0.5f, cy + sz[0] * 0.5f + 43, 15, 0xff8a8a8au, 1, 0, buf);
+    if (na > 1) {
+        spr_c("button_arrow_left", SCR_W * 0.5f - 216, cy, 14, 20, C_WHITE);
+        spr_c("button_arrow_right", SCR_W * 0.5f + 216, cy, 14, 20, C_WHITE);
+    }
+    /* las teclas, separadas y en su franja para que se lean bien */
+    float fy = y + h - 15;
+    ui_sliced(a_ui, "whitebox", x + 10, fy - 11, w - 20, 22, UIS, 0xffe2e2e2u);
+    labc(0, x + 24, fy, 14, C_NAVY, 0, 0, TR("Izquierda/Derecha: elegir mapa", "Left/Right: choose map"));
+    labc(0, x + w * 0.60f, fy, 14, C_NAVY, 0, 0, TR("X: jugar", "X: play"));
+    labc(0, x + w - 24, fy, 14, C_NAVY, 2, 0, TR("O: cancelar", "O: cancel"));
+}
+
+/* el juego no se pudo reiniciar al cambiar de mapa (la consola no lo deja): aviso unos segundos antes de salir */
+void hud_notice(const char *l1, const char *l2)
+{
+    for (int f = 0; f < 150; f++) {
+        r_begin_frame(0xff6a3a10);
+        hud_fonts();
+        r_begin_2d();
+        float w = 360, hh = 90, x = (SCR_W - w) * 0.5f, y = (SCR_H - hh) * 0.5f;
+        panel(x, y, w, hh);
+        labfit(1, SCR_W * 0.5f, y + 30, 24, w - 20, C_NAVY, 1, 0, l1);
+        labfit(0, SCR_W * 0.5f, y + 62, 16, w - 20, 0xff8a8a8au, 1, 0, l2);
+        r_end_frame();
+    }
 }
 
 /* PrizeListPopup de la 1.5.2: lo que puede tocar en las cajas misteriosas, por rareza (los textos e iconos del
@@ -2572,6 +2672,8 @@ void hud_draw(void)
         break;
     }
     if (ginfo.popup == POPUP_SETTINGS) draw_settings_popup();
+    if (ginfo.popup == POPUP_MAPS) draw_maps_popup();
+    map_thumbs_release();
     if (ginfo.popup == POPUP_PRIZES) draw_prizes_popup();
     if (ginfo.popup == POPUP_DAILY) draw_daily_popup();
     if (ginfo.state != GS_MENU || !ginfo.popup) draw_slides();

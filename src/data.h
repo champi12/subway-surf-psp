@@ -86,7 +86,7 @@ typedef struct {
     uint32_t file_off, palbytes, databytes;
     void *pal, *data;     /* cargados bajo demanda */
     int loaded;
-    int src;              /* 0 tex.bin, 1 hw_tex.bin (tema de Halloween) */
+    int src;              /* 0 tex.bin, 1 hw_tex.bin (Halloween), 2 xm_tex.bin (Navidad), 3 maps_tex.bin (selector) */
 } Texture;
 
 enum { TEX_T8, TEX_5650, TEX_4444, TEX_8888 };

@@ -1,7 +1,7 @@
 # Subway Surfers para PSP - pspdev / PSPSDK
 TARGET = subway
 OBJS = src/main.o src/data.o src/render.o src/scene.o src/spawn.o src/physics.o src/anim.o src/audio.o \
-       src/game.o src/hud.o src/missions.o src/devlog.o src/lang.o
+       src/game.o src/hud.o src/missions.o src/devlog.o src/lang.o src/maps.o
 
 INCDIR = src
 CFLAGS = -O2 -G0 -g -Wall -ffast-math -fno-strict-aliasing -MMD -MP

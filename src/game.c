@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <psprtc.h>
 #include "game.h"
+#include "maps.h"
 #include "scene.h"
 #include "physics.h"
 #include "anim.h"
@@ -2708,16 +2709,21 @@ static void ny_popup_check(void)
     game_save_bg();
 }
 
-/* SettingsPopup de la 1.5.2: el boton de temporada solo sale mientras la Navidad esta disponible */
-int game_season_button(void) { return data_xm_ok && xmas_season() && !theme_halloween; }
+/* SettingsPopup de la 1.5.2: el boton de temporada (quitar la Navidad) ya no sale: el selector de mapas tiene
+ * "Navidad" y "Subway Surfers" (el mismo mapa sin ella) */
+int game_season_button(void) { return 0; }
 
 /* boot: al arrancar, antes de cargar ninguna textura (no hace falta volver a leer nada) */
 void game_theme_check(int boot)
 {
-    if (theme_available < 0) theme_available = data_theme_init(halloween_season());
-    int on = theme_available && halloween_season();
-    /* Navidad: solo si no es Halloween y este mundo trae su tema (xm_tex.bin, el de la 1.5.2) */
-    int xm = !on && data_xm_ok && xmas_season() && !ginfo.opt_season_off;   /* apagable en los ajustes (1.5.2) */
+    /* el tema por la fecha, o el del mapa elegido en el selector (Halloween y Navidad aunque no sea su fecha; los
+     * demas mapas sin tema aunque lo sea) */
+    int hw_on = map_theme_force < 0 ? halloween_season() : map_theme_force == MAP_THEME_HALLOWEEN;
+    if (theme_available < 0) theme_available = data_theme_init(hw_on);
+    int on = theme_available && hw_on;
+    /* Navidad: solo si no es Halloween y este mundo trae su tema (xm_tex.bin, el de la 1.5.2). El boton de los ajustes
+     * para quitarla ya no esta (opt_season_off se ignora): se elige el mapa sin ella en el selector */
+    int xm = !on && data_xm_ok && (map_theme_force < 0 ? xmas_season() : map_theme_force == MAP_THEME_XMAS);
     if (xm) data_xmas_meshes_init();
     if (on == theme_halloween && xm == theme_xmas && !boot) return;
     theme_halloween = on;
@@ -5106,9 +5112,24 @@ void game_input(unsigned in)
         if (in & (IN_CROSS | IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
         return;
     }
-    /* ajustes (SettingsPopup de la 1.5.2): sonido y, en Navidad, la temporada */
+    /* selector de mapas: izquierda/derecha cambia, X juega en el marcado (reinicia el juego si es otro), O vuelve */
+    if (ginfo.popup == POPUP_MAPS) {
+        int d = ((in & IN_RIGHT) ? 1 : 0) - ((in & IN_LEFT) ? 1 : 0);
+        if (d) {
+            int j = ginfo.map_sel;
+            for (int k = 0; k < maps_n; k++) { j = (j + d + maps_n) % maps_n; if (maps_available(j)) break; }
+            if (j != ginfo.map_sel) { ginfo.map_sel = j; snd_play(sfx_tap, 0.5f, 1, 0); }
+        }
+        if (in & IN_CROSS) {
+            snd_play(sfx_tap, 1, 1, 0);
+            if (ginfo.map_sel == maps_current()) ginfo.popup = POPUP_SETTINGS;   /* el mismo: nada que cargar */
+            else maps_request_restart(ginfo.map_sel);   /* main.c reinicia el juego al acabar este fotograma */
+        } else if (in & (IN_CIRCLE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_SETTINGS; }
+        return;
+    }
+    /* ajustes (SettingsPopup de la 1.5.2): sonido y el mapa (selector de mapas) */
     if (ginfo.popup == POPUP_SETTINGS) {
-        int n = game_season_button() ? 2 : 1;
+        int n = 2;
         /* X tambien da IN_UP y O IN_DOWN (los gestos de la carrera): solo las flechas mueven la seleccion */
         if (((in & IN_UP) && !(in & IN_CROSS)) || ((in & IN_DOWN) && !(in & IN_CIRCLE))) {
             ginfo.settings_sel = (ginfo.settings_sel + 1) % n;
@@ -5117,16 +5138,15 @@ void game_input(unsigned in)
         if (ginfo.settings_sel >= n) ginfo.settings_sel = 0;
         if (confirm) {
             snd_play(sfx_tap, 1, 1, 0);
-            dlog("AJUSTES %s", ginfo.settings_sel == 0 ? (ginfo.opt_sound_off ? "sonido si" : "sonido no")
-                                                         : (ginfo.opt_season_off ? "Navidad si" : "Navidad no"));
             if (ginfo.settings_sel == 0) {
+                dlog("AJUSTES %s", ginfo.opt_sound_off ? "sonido si" : "sonido no");
                 ginfo.opt_sound_off = !ginfo.opt_sound_off;   /* SoundButton.Click */
                 audio_set_mute(ginfo.opt_sound_off);
+                game_save_bg();
             } else {
-                ginfo.opt_season_off = !ginfo.opt_season_off;   /* SeasonButton.Click: quita o pone la Navidad */
-                game_theme_check(0);
+                ginfo.map_sel = maps_current();   /* el carrusel empieza en el mapa que se esta jugando */
+                ginfo.popup = POPUP_MAPS;
             }
-            game_save_bg();
         } else if (in & (IN_CIRCLE | IN_SQUARE | IN_START)) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_NONE; }
         return;
     }

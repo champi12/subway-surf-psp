@@ -17,6 +17,7 @@ void hud_slide(const char *line1, const char *line2);
 /* las pantallas de la 1.4 tapan el escenario con el fondo desenfocado: entonces no se dibuja el 3D */
 int hud_background(void);
 void hud_loading(float progress);   /* pantalla de carga (un fotograma) */
+void hud_notice(const char *line1, const char *line2);   /* aviso a pantalla completa unos segundos (antes de salir) */
 /* page: 1 resumen, 2 memoria y VRAM, 3 grafica de tiempos */
 void perf_draw(int page, float cpu_ms, float gpu_ms, float fps);
 

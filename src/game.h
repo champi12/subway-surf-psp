@@ -37,6 +37,7 @@ typedef struct {
     int missions_open;            /* ventana de misiones abierta en el menu */
     int popup;                    /* ventana encima del menu (POPUP_...) */
     int settings_sel;             /* opcion marcada en los ajustes */
+    int map_sel;                  /* mapa marcado en el selector de mapas (maps_def) */
     int opt_sound_off, opt_season_off;   /* ajustes de la 1.5.2: sonido y temporada (Navidad) apagados */
     int sboxes_pending, sboxes_opened;   /* super cajas misteriosas (1.4) */
     int reward_super;             /* el ultimo premio era de una super caja */
@@ -46,7 +47,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI, POPUP_MAPS };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);

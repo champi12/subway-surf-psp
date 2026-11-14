@@ -3644,8 +3644,77 @@ def main():
                    sc17=sc17 or sc111, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w111):
         shutil.rmtree(w111, True)
+    print('== Miniaturas del selector de mapas (data/maps_tex.bin)')
+    thumbs = [('clasico', sc, None)]
+    if os.path.isdir(whw) and sc14 is not None:
+        thumbs.append(('halloween', sc14, 'halloween'))
+    if os.path.isdir(w15) and sc15 is not None:
+        thumbs.append(('subway', sc15, None))
+        if os.path.exists(os.path.join(w15, 'xm_tex.bin')):
+            thumbs.append(('navidad', sc15, 'xmas'))
+    for mid, scx in (('nuevayork', sc16), ('rio', sc17), ('roma', sc18), ('sidney', sc19), ('tokio', sc110),
+                     ('miami', sc111)):
+        thumbs.append((mid, scx, None))
+    export_map_thumbs(outdir, thumbs)
     check_ui_textures(outdir)
     print('Listo.')
+
+
+def theme_texture(sc, theme, name):
+    """La textura `name` del tema `theme` de ThemeAssets (1.4: normal/halloween; 1.5.2: normal/xmas), o None."""
+    for f in sc.files.values():
+        for o in f.objects.values():
+            if o.type.name != 'MonoBehaviour':
+                continue
+            try:
+                scr = sc.script_of(o)
+            except Exception:
+                continue
+            if not scr or scr[2] != 'ThemeAssets':
+                continue
+            td = sc.read_mono(o)[1]
+            for a in (td or {}).get('assets', []):
+                if a.get('theme') != theme:
+                    continue
+                for tm in a['textureAndMaterials']:
+                    t = sc.resolve_ptr(o, tm['texture'])
+                    if t is not None and t.read().m_Name == name:
+                        return t.read().image
+            return None
+    return None
+
+
+MAP_THUMB = 128
+
+
+def export_map_thumbs(outdir, maps):
+    """Miniaturas del selector de mapas (data/maps_tex.bin): el grafiti del vagon de salida (train_start) de cada mapa,
+    que lleva el nombre de la ciudad en los de la vuelta al mundo. maps: [(id, escena, tema o None)]. 128x128 con
+    paleta (17 KB cada una); el juego solo las lee mientras esta abierto el selector."""
+    from types import SimpleNamespace
+    gen = []
+    for mid, scx, theme in maps:
+        if scx is None:
+            continue
+        im = None
+        try:
+            im = theme_texture(scx, theme or 'normal', 'train_start')
+            if im is None and theme is None:
+                im = find_texture(scx, 'train_start')
+        except Exception as e:
+            print('  AVISO: miniatura de %s: %s' % (mid, e))
+        if im is None:
+            print('  AVISO: el mapa %s no tiene train_start: sin miniatura' % mid)
+            continue
+        gen.append(('gen', 'map_' + mid, im.convert('RGB').resize((MAP_THUMB, MAP_THUMB), Image.LANCZOS), True))
+    path = os.path.join(outdir, 'maps_tex.bin')
+    if not gen:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    with open(path, 'wb') as f:
+        f.write(export_textures(SimpleNamespace(textures=gen)))
+    print('  selector de mapas: %d miniaturas (%s)' % (len(gen), ', '.join(g[1][4:] for g in gen)))
 
 
 def check_ui_textures(outdir):

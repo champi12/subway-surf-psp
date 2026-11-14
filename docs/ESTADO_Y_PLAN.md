@@ -136,8 +136,15 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 ## 7. Plan
 
 1. (Hecho) Versión pública con el mapa de la 1.5.2 por defecto y todo lo de la 1.5.2.
-1b. Más adelante: **selector de mapas** en los ajustes para elegir el mapa clásico y el de Halloween como mapas
-   independientes (hoy el clásico solo sale en Halloween).
+1b. HECHO (en pruebas): **selector de mapas** en los ajustes (START → Mapa). Carrusel como el de personajes con los
+   mapas que haya en data/ (Clásico 1.0, Halloween 1.4, Subway Surfers 1.5.2, Navidad 1.5.2, Nueva York, Río, Roma,
+   Sídney, Tokio y Miami), su nombre y su versión. Miniatura: el grafiti del vagón de salida (`train_start`, con el
+   nombre de la ciudad) de cada APK, en `data/maps_tex.bin` (128x128, 17 KB cada una, solo en memoria con los ajustes
+   abiertos). La elección va en `mapa.cfg` (carpeta del juego) y el juego se vuelve a lanzar entero
+   (`sceKernelLoadExec`): la consola libera toda la memoria del mapa anterior y sale la pantalla de carga del nuevo.
+   Si la consola no deja relanzar, avisa y sale al XMB (el mapa sale al volver a abrirlo). Halloween y Navidad llevan
+   su tema aunque no sea su fecha; los demás, sin tema. Sin `mapa.cfg`, el mapa por la fecha como antes. El botón de
+   Navidad de los ajustes ya no está (el selector tiene "Navidad" y "Subway Surfers").
 2. Puntos blancos del mapa clásico.
 3. Reinicio tras carreras largas.
 4. 1.6 terminada: Tony, las 4 tablas (pegatinas NUEVA/LÍMITE y número en ME y Tablas), su mapa por temporada

@@ -19,6 +19,7 @@
 #include "devlog.h"
 #include "lang.h"
 #include "fpu.h"
+#include "maps.h"
 
 PSP_MODULE_INFO("SubwaySurfers", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -164,6 +165,7 @@ int main(int argc, char **argv)
     unsigned int fcr31 = fpu_get_fcr31();
     fpu_no_exceptions();
     mem_init();
+    maps_set_eboot(argc > 0 ? argv[0] : NULL);
     SceUID th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
     int clk = scePowerSetClockFrequency(333, 333, 166);
@@ -281,6 +283,17 @@ int main(int argc, char **argv)
             sceIoClose(f);
             wdir = "data/whw";
         }
+        /* selector de mapas (ajustes): el mapa elegido manda sobre el de la fecha, con su tema (Halloween y Navidad
+         * aunque no sea su fecha; los demas sin tema aunque lo sea). Sin mapa.cfg, como siempre */
+        {
+            int m = maps_cfg_read();
+            if (m >= 0 && maps_available(m)) {
+                wdir = maps_def[m].dir;
+                map_forced = m;
+                map_theme_force = maps_def[m].theme;
+                dlog("MAPA del selector: %s (%s, version %s)", maps_def[m].es, wdir, maps_def[m].ver);
+            } else if (m >= 0) dlog("AVISO el mapa de mapa.cfg (%s) no esta en data/: el de la fecha", maps_def[m].id);
+        }
         { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* Halloween como los mapas nuevos */
         /* los mapas nuevos sin texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a
          * lo lejos y salian lineas. La 1.5.2 y la 1.6 eran los unicos que las llevaban: ~0,55 MB mas de RAM (main,
@@ -341,7 +354,7 @@ int main(int argc, char **argv)
 #endif
     unsigned int last = sceKernelGetSystemTimeLow();
     float fps = 30, cpu_ms = 0, gpu_ms = 0;
-    while (running) {
+    while (running && !maps_restart_pending()) {
         unsigned int t0 = sceKernelGetSystemTimeLow();
         float dt = (t0 - last) / 1000000.0f;
         last = t0;
@@ -837,10 +850,25 @@ int main(int argc, char **argv)
         if (frame_no % AT_SHOT == 0 || frame_no % 300 == 0) last = sceKernelGetSystemTimeLow();
 #endif
     }
-    dlog("Salida desde el menu HOME");
-    game_save();
+    if (maps_restart_pending()) {
+        /* selector de mapas: se vuelve a lanzar el juego entero. La consola descarga el programa y toda su memoria,
+         * asi que del mapa anterior no queda nada; al arrancar sale la pantalla de carga del mapa nuevo */
+        dlog("REINICIO por cambio de mapa");
+        game_save();
+        audio_shutdown();
+        r_wait_idle();
+        dlog_flush();
+        int r = maps_restart_now();
+        /* solo llega aqui si la consola no lo deja: el mapa ya esta guardado, se sale al menu de la PSP avisando */
+        dlog("AVISO no se pudo reiniciar el juego (0x%08x): se sale; el mapa nuevo sale al volver a abrirlo", r);
+        hud_notice(TR("Mapa guardado", "Map saved"),
+                   TR("Vuelve a abrir el juego para jugar en él", "Open the game again to play on it"));
+    } else {
+        dlog("Salida desde el menu HOME");
+        game_save();
+        audio_shutdown();
+    }
     dlog_close();
-    audio_shutdown();
     sceGuTerm();
     sceKernelExitGame();
     return 0;

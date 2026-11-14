@@ -273,8 +273,8 @@ static int load_meshes(void)
     return 0;
 }
 
-static FILE *texfile, *hwtexfile, *xmtexfile;
-static char texpath[256], hwtexpath[256], xmtexpath[256];
+static FILE *texfile, *hwtexfile, *xmtexfile, *mptexfile;
+static char texpath[256], hwtexpath[256], xmtexpath[256], mptexpath[256];
 extern volatile int io_resume_gen;
 static int tex_gen;
 /* vuelve a abrir los archivos de texturas (tras el modo reposo los cierra la consola) */
@@ -283,6 +283,7 @@ static void tex_files_reopen(void)
     if (texfile) { fclose(texfile); texfile = texpath[0] ? fopen(texpath, "rb") : NULL; }
     if (hwtexfile) { fclose(hwtexfile); hwtexfile = hwtexpath[0] ? fopen(hwtexpath, "rb") : NULL; }
     if (xmtexfile) { fclose(xmtexfile); xmtexfile = xmtexpath[0] ? fopen(xmtexpath, "rb") : NULL; }
+    if (mptexfile) { fclose(mptexfile); mptexfile = mptexpath[0] ? fopen(mptexpath, "rb") : NULL; }
     tex_gen = io_resume_gen;
     dlog("REPOSO: archivos de texturas abiertos de nuevo");
 }
@@ -343,7 +344,12 @@ void data_tex_path(int i, char *out, int n)
     /* ruta completa: sceIoOpen no resuelve las relativas como fopen (la carpeta actual la lleva la libreria de C) */
     static char cwd[160];
     if (!cwd[0] && !getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
-    if (gd.tex[i].src) snprintf(out, n, "%s/%s", cwd, hwtexpath);
+    /* antes, cualquier src distinto de 0 iba a hw_tex.bin: una textura de Navidad (src 2) leida en segundo plano
+     * salia de un sitio equivocado de ese archivo */
+    int src = gd.tex[i].src;
+    if (src == 3) snprintf(out, n, "%s/%s", cwd, mptexpath);
+    else if (src == 2) snprintf(out, n, "%s/%s", cwd, xmtexpath);
+    else if (src) snprintf(out, n, "%s/%s", cwd, hwtexpath);
     else snprintf(out, n, "%s/%s/tex.bin", cwd, basedir);
 }
 
@@ -352,7 +358,7 @@ int data_tex_read(int i, void *pal, void *data)
     Texture *t = &gd.tex[i];
     if (tex_gen != io_resume_gen) tex_files_reopen();
     for (int tries = 0; tries < 2; tries++) {
-        FILE *f = t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
+        FILE *f = t->src == 3 ? mptexfile : t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
         if (!f) return -1;
         if (fseek(f, t->file_off, SEEK_SET) == 0 && (!t->palbytes || fread(pal, 1, t->palbytes, f) == t->palbytes) &&
             fread(data, 1, t->databytes, f) == t->databytes)
@@ -426,6 +432,19 @@ static void xm_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha,
     }
 }
 
+/* miniaturas del selector de mapas (data/maps_tex.bin, comun a todos los mapas): se anaden al final como texturas
+ * propias (src 3) y se leen solo al dibujarlas */
+static void mp_dir_cb(int i, const char *name, int w, int h, int fmt, int alpha, uint32_t pal, uint32_t data, uint32_t off)
+{
+    (void)i;
+    gd.tex = realloc(gd.tex, sizeof(Texture) * (gd.ntex + 1));
+    Texture *x = &gd.tex[gd.ntex++];
+    memset(x, 0, sizeof(*x));
+    snprintf(x->name, sizeof(x->name), "%s", name);
+    x->w = w; x->h = h; x->fmt = fmt; x->alpha = alpha; x->palbytes = pal; x->databytes = data;
+    x->file_off = off; x->src = 3;
+}
+
 /* 1: texturas de hw_tex.bin (y xm_tex.bin). Despues de leer tex.bin y antes de r_init (puede anadir texturas) */
 int data_hw_ok, data_xm_ok;
 int data_theme_init_tex(void)
@@ -447,6 +466,10 @@ int data_theme_init_tex(void)
         data_xm_ok = nx > 0 && k > 0;
         dlog("Tema de Navidad disponible: %d texturas", k);
     }
+    snprintf(mptexpath, sizeof(mptexpath), "data/maps_tex.bin");
+    mptexfile = fopen(mptexpath, "rb");
+    if (mptexfile) dlog("Selector de mapas: %d miniaturas", read_tex_dir(mptexfile, mp_dir_cb));
+    else mptexpath[0] = 0;
     /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
     shared_path(path, sizeof(path), "hw_tex.bin");
     hwtexfile = fopen(path, "rb");
