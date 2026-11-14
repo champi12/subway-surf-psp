@@ -3680,7 +3680,9 @@ def theme_texture(sc, theme, name):
                 for tm in a['textureAndMaterials']:
                     t = sc.resolve_ptr(o, tm['texture'])
                     if t is not None and t.read().m_Name == name:
-                        return t.read().image
+                        # con tex_rgba: el train_start de Navidad de la 1.5.2 es "ARGB4444" (formato 2) y sin
+                        # corregir los canales la miniatura salia azul y morada en vez de roja con arboles verdes
+                        return tex_rgba(t.read())
             return None
     return None
 
@@ -3701,7 +3703,10 @@ def export_map_thumbs(outdir, maps):
         try:
             im = theme_texture(scx, theme or 'normal', 'train_start')
             if im is None and theme is None:
-                im = find_texture(scx, 'train_start')
+                for f in scx.files.values():
+                    for o in f.objects.values():
+                        if im is None and o.type.name == 'Texture2D' and o.read().m_Name == 'train_start':
+                            im = tex_rgba(o.read())
         except Exception as e:
             print('  AVISO: miniatura de %s: %s' % (mid, e))
         if im is None:
