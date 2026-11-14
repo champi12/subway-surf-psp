@@ -12,14 +12,19 @@ NOANALOG=${NOANALOG:-0}
 make clean > /dev/null
 make -C exhandler clean > /dev/null 2>&1 || true
 make -C exhandler/loader clean > /dev/null 2>&1 || true
+make -C relaunch clean > /dev/null 2>&1 || true
 make DEVLOG=$DEVLOG NOANALOG=$NOANALOG WORLD15=${WORLD15:-1} WORLD16=${WORLD16:-0} WORLD17=${WORLD17:-0} WORLD18=${WORLD18:-0} WORLD19=${WORLD19:-0} WORLD110=${WORLD110:-0} WORLD111=${WORLD111:-0} PRUEBA_TABLAS=${PRUEBA_TABLAS:-1}
 rm -rf dist
 mkdir -p dist/PSP/GAME/SUBWAY
 cp EBOOT.PBP dist/PSP/GAME/SUBWAY/
+# selector de mapas: relaunch.prx vuelve a lanzar el juego al cambiar de mapa (desde kernel; si el CFW no deja cargar
+# modulos de kernel desde un juego, con exloader.prx y kubridge). Van en todas las versiones
+make -C relaunch
+make -C exhandler/loader
+cp relaunch/relaunch.prx exhandler/loader/exloader.prx dist/PSP/GAME/SUBWAY/
 if [ "$DEVLOG" != 0 ]; then
     make -C exhandler      # capturador de excepciones (crash.txt)
-    make -C exhandler/loader   # plan B para cargarlo con kubridge
-    cp exhandler/exhandler.prx exhandler/loader/exloader.prx dist/PSP/GAME/SUBWAY/
+    cp exhandler/exhandler.prx dist/PSP/GAME/SUBWAY/
     cp subway.elf dist/subway.elf   # para traducir crash.txt a funcion y linea (tools/crash.sh); no va a la PSP
 fi
 if [ -d data ]; then

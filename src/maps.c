@@ -7,9 +7,11 @@
 #include <psploadexec.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include "maps.h"
 #include "lang.h"
 #include "devlog.h"
+#include "../exhandler/exhandler.h"
 
 /* por version, como en el carrusel */
 const MapDef maps_def[] = {
@@ -107,9 +109,56 @@ void maps_request_restart(int i)
 
 int maps_restart_pending(void) { return restart_to >= 0; }
 
+/* exloader.prx ya cargado al arrancar (version de pruebas, plan B del capturador de cuelgues): su funcion de carga */
+void (*maps_exloader_load)(void *self);
+
+/* carga y arranca un modulo de kernel con la ruta del EBOOT: directo, o con exloader.prx y kubridge si el CFW no
+ * deja cargar modulos de kernel desde un juego (como exhandler.prx en main.c) */
+static int start_relaunch(const char *dir, const char *eboot)
+{
+    static ExhArgs a;
+    memset(&a, 0, sizeof(a));
+    snprintf(a.crash_path, sizeof(a.crash_path), "%s", eboot);   /* relaunch.prx lee la ruta del principio */
+    char prx[200];
+    snprintf(prx, sizeof(prx), "%s/relaunch.prx", dir);
+    SceUID m = sceKernelLoadModule(prx, 0, NULL);
+    if (m >= 0) {
+        int st = 0, r = sceKernelStartModule(m, sizeof(a), &a, &st, NULL);
+        dlog("REINICIO relaunch.prx: carga 0x%08x, inicio 0x%08x, estado %d", m, r, st);
+        return r >= 0 && st == 0 ? 0 : -1;
+    }
+    static ExLoaderArgs la;
+    static int res[3];
+    res[0] = res[1] = res[2] = -1;
+    memset(&la, 0, sizeof(la));
+    snprintf(la.prx_path, sizeof(la.prx_path), "%s", prx);
+    la.exh = a;
+    la.result = res;
+    char ldr[200];
+    snprintf(ldr, sizeof(ldr), "%s/exloader.prx", dir);
+    SceUID lm = sceKernelLoadModule(ldr, 0, NULL);
+    ExLoaderArgs *lp = &la;
+    int lst = 0, lr = lm >= 0 ? sceKernelStartModule(lm, sizeof(lp), &lp, &lst, NULL) : lm;
+    if (lr >= 0 && la.load) la.load(&la);
+    else if (maps_exloader_load) maps_exloader_load(&la);   /* ya estaba cargado: el mismo */
+    dlog("REINICIO relaunch.prx con kubridge: directo 0x%08x, exloader 0x%08x/0x%08x, carga 0x%08x, inicio 0x%08x, estado %d",
+         m, lm, lr, res[0], res[1], res[2]);
+    return res[0] >= 0 && res[1] >= 0 && res[2] == 0 ? 0 : -1;
+}
+
 int maps_restart_now(void)
 {
     const char *p = eboot_path[0] ? eboot_path : "ms0:/PSP/GAME/SUBWAY/EBOOT.PBP";
+    /* 1: desde kernel (relaunch.prx): lo que si deja la consola. El relanzamiento va en un hilo del modulo; si
+     * funciona, la consola cierra el juego mientras se espera aqui */
+    char dir[160];
+    if (!getcwd(dir, sizeof(dir))) strcpy(dir, "ms0:/PSP/GAME/SUBWAY");
+    if (start_relaunch(dir, p) == 0) {
+        dlog_flush();
+        for (int i = 0; i < 40; i++) sceKernelDelayThread(100000);   /* hasta 4 s */
+        dlog("AVISO relaunch.prx arranco pero el juego no se reinicio");
+    }
+    /* 2: en modo usuario (la mayoria de consolas no lo dejan a un juego de la Memory Stick) */
     struct SceKernelLoadExecParam param;
     memset(&param, 0, sizeof(param));
     param.size = sizeof(param);

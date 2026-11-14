@@ -108,6 +108,7 @@ static void load_exhandler(void)
     ExLoaderArgs *lp = &la;      /* se le pasa el puntero: comparte la memoria de usuario con el juego */
     int lst = 0, lr = lm >= 0 ? sceKernelStartModule(lm, sizeof(lp), &lp, &lst, NULL) : lm;
     if (lr >= 0 && la.load) la.load(&la);   /* ya fuera del module_start de exloader */
+    { extern void (*maps_exloader_load)(void *); if (lr >= 0) maps_exloader_load = la.load; }   /* para relaunch.prx */
     dlog("Capturador de excepciones (kubridge): %s (exloader 0x%08x/0x%08x, carga 0x%08x, inicio 0x%08x, estado %d)",
          res[0] >= 0 && res[1] >= 0 && res[2] == 0 ? "activo, un cuelgue escribira crash.txt" : "NO activo",
          lm, lr, res[0], res[1], res[2]);

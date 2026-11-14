@@ -18,5 +18,8 @@ exhandler/*.o
 crash*.txt
 exhandler/loader/*.prx
 exhandler/loader/*.elf
+relaunch/*.prx
+relaunch/*.elf
+relaunch/*.o
 exhandler/loader/*.o
 trace.txt

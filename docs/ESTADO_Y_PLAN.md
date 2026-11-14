@@ -142,7 +142,10 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    nombre de la ciudad) de cada APK, en `data/maps_tex.bin` (128x128, 17 KB cada una, solo en memoria con los ajustes
    abiertos). La elección va en `mapa.cfg` (carpeta del juego) y el juego se vuelve a lanzar entero
    (`sceKernelLoadExec`): la consola libera toda la memoria del mapa anterior y sale la pantalla de carga del nuevo.
-   Si la consola no deja relanzar, avisa y sale al XMB (el mapa sale al volver a abrirlo). Halloween y Navidad llevan
+   En la consola el relanzamiento en modo usuario no funciona (sale al XMB): ahora lo hace `relaunch.prx`, un modulo
+   de kernel diminuto que llama a `sctrlKernelLoadExecVSHMs2` (Ef2 en la PSP Go) del CFW, como sus menus al abrir un
+   EBOOT; se carga directo o con exloader.prx y kubridge. No escribe nada en la memoria flash. Si aun asi no se puede,
+   prueba el modo usuario y, si tampoco, avisa y sale al XMB (el mapa sale al volver a abrirlo). Halloween y Navidad llevan
    su tema aunque no sea su fecha; los demás, sin tema. Sin `mapa.cfg`, el mapa por la fecha como antes. El botón de
    Navidad de los ajustes ya no está (el selector tiene "Navidad" y "Subway Surfers").
 2. Puntos blancos del mapa clásico.
