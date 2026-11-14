@@ -24,8 +24,11 @@
 typedef struct {
     const int16_t *pcm;
     uint32_t n;
-    uint32_t pos;          /* 16.16 */
-    uint32_t step;         /* 16.16 */
+    uint32_t pos;          /* muestra actual (entera) */
+    uint32_t frac;         /* fraccion de la muestra, 0..0xffff */
+    uint32_t step;         /* 16.16. Antes pos era 16.16 en 32 bits y el final era n << 16: con mas de 65535
+                            * muestras (~3 s) se desbordaba y la voz se apagaba nada mas empezar (no se oian la caja
+                            * misteriosa, 6 s, ni revivir, 3 s) */
     int vol;               /* 0..256 */
     int loop;
     volatile int active;
@@ -55,18 +58,20 @@ static int mixer_thread(SceSize args, void *argp)
                 Voice *v = &voices[vi];
                 if (!v->active) continue;
                 int vol = v->vol;
-                uint32_t end = v->n << 16;
+                uint32_t n = v->n, ip = v->pos, fq = v->frac, step = v->step;
                 for (int i = 0; i < MIX_SAMPLES; i++) {
-                    if (v->pos >= end) {
-                        if (v->loop && v->n > 0) v->pos -= end;
+                    if (ip >= n) {
+                        if (v->loop && n > 0) ip %= n;
                         else { v->active = 0; break; }
                     }
-                    uint32_t ip = v->pos >> 16, fr = (v->pos >> 8) & 0xff;
-                    int s0 = v->pcm[ip], s1 = ip + 1 < v->n ? v->pcm[ip + 1] : s0;
-                    int s = s0 + (((s1 - s0) * (int)fr) >> 8);
+                    int s0 = v->pcm[ip], s1 = ip + 1 < n ? v->pcm[ip + 1] : s0;
+                    int s = s0 + (((s1 - s0) * (int)(fq >> 8)) >> 8);
                     acc[i] += (s * vol) >> 8;
-                    v->pos += v->step;
+                    fq += step;
+                    ip += fq >> 16;
+                    fq &= 0xffff;
                 }
+                v->pos = ip; v->frac = fq;
             }
         }
         int16_t *out = mixbuf[cur];
@@ -96,8 +101,7 @@ int snd_play(int id, float vol, float pitch, int loop)
         for (int i = 0; i < MAX_VOICES; i++) {
             const Voice *o = &voices[i];
             if (o->loop || !o->step) continue;
-            uint32_t end = o->n << 16, pos = o->pos;
-            uint32_t left = pos < end ? (end - pos) / o->step : 0;   /* muestras de salida que le quedan */
+            uint32_t left = o->pos < o->n ? (uint32_t)(((uint64_t)(o->n - o->pos) << 16) / o->step) : 0;   /* muestras de salida que le quedan */
             if (left < least) { least = left; best = i; }
         }
         if (best < 0) return -1;
@@ -109,6 +113,7 @@ int snd_play(int id, float vol, float pitch, int loop)
     v->pcm = gd.sfx[id].pcm;
     v->n = gd.sfx[id].n;
     v->pos = 0;
+    v->frac = 0;
     if (pitch < 0.05f) pitch = 0.05f;
     v->step = (uint32_t)(pitch * 0.5f * 65536.0f);   /* 22050 -> 44100 */
     v->vol = (int)(clamp01(vol) * 256.0f);

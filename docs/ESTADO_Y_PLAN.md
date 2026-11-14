@@ -322,6 +322,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   sin Save Me ni llaves. El botón de la caza en la portada solo en las fechas de una caza (no depende del mapa) y el de
   los huevos se va al tenerlos todos.
 - El extractor avisa al terminar si a algún mapa le falta un icono que dibuja el juego (`check_ui_textures`).
+- ARREGLADO: no se oían el sonido de revivir con llaves (3 s) ni el de abrir cajas (6 s). El mezclador guardaba la
+  posición en 16.16 en 32 bits y el final como `n << 16`: con más de 65535 muestras (~3 s) se desbordaba y la voz se
+  apagaba a los 0,03-0,06 s. Ahora la posición va en muestra entera + fracción (`audio.c`), sin límite de duración.
   Extracción completa con los 9 APK: ningún aviso; llaves en Halloween, 1.5.2, 1.6, Río y Roma (36 puntos).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
