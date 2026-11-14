@@ -254,8 +254,8 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    44-70 ms al pasar por un traje o abrir su pagina), 30 FPS minimos recorriendo todos los personajes, y la memoria de
    texturas ya no crece.
    Correcciones tras probarlo en la consola (comprobado en la 1.11):
-   * Pagina del personaje/traje: AvatarAnimations.StartUnlockAnimations pone su animacion de REPOSO y gira el modelo a
-     50 grados/s (no corre: la de la carrera iba demasiado rapida).
+   * Pagina del personaje/traje: corre de cara a la camara, a media velocidad (CELEB_RUN_SPEED 0,5; a velocidad normal
+     se veia demasiado rapido). La velocidad se devuelve a 1 al cerrar la pagina (anim_play no la cambia).
    * Pagina de la tabla: el esqueleto quieto, asi la tabla solo gira (antes se movia con la animacion de correr).
    * Trajes gratis: NO se dan solos. PlayerInfo.isAnyCharacterWithFreeTheme -> pegatina FREE GIFT en el boton ME
      (GiftBradCharacters); en Personajes el traje sale como REGALO y con X se reclama (y entonces su pagina).

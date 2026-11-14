@@ -4188,6 +4188,14 @@ static int outfit_tex_ready(int ci, int sel)
     }
     return 1;
 }
+/* velocidad de la animacion de correr: en la pagina de celebracion va mas lenta. Se fija en el estado y anim_play no
+ * la cambia, asi que al cerrar la pagina se devuelve a 1 (si no, en la carrera correria a media velocidad) */
+#define CELEB_RUN_SPEED 0.5f
+static void celeb_run_speed(float v)
+{
+    int st = anim_find(&anim_char, an.run);
+    if (st >= 0) anim_char.st[st].speed = v;
+}
 /* el personaje i se puede ensenar ya en el carrusel: su textura y la de su traje leidas (se piden en segundo plano) */
 static int char_tex_ready(int i)
 {
@@ -4207,9 +4215,14 @@ static void celeb_page_open(void)
     char_show_model(celeb_pend_char);
     celeb_kind = 0;
     celeb_page_t0 = game_time;
-    /* AvatarAnimations.StartUnlockAnimations: su animacion de reposo (la de la pantalla de personajes) y el modelo
-     * girando despacio (50 grados por segundo, en char_celebrate_tick). Antes corria con la de la carrera: muy rapido */
-    char_pose(celeb_pend_char);
+    /* corriendo de cara, mas despacio que en la carrera (a velocidad normal se veia demasiado rapido) */
+    anim_stop_all(&anim_char);
+    skeleton_rest(n_avatar);
+    anim_play(&anim_char, an.run);
+    celeb_run_speed(CELEB_RUN_SPEED);
+    nrt[n_sprayCan].rend = 0;
+    nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);
+    char_posing = 1;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
     game_save_bg();
 }
@@ -4224,6 +4237,7 @@ static void celeb_page_close(void)
         return;
     }
     int ci = celeb_pend_char, th = celeb_pend_theme;
+    celeb_run_speed(1.0f);   /* la de la carrera, a su velocidad */
     celeb_page_t0 = -1;
     celeb_pend_char = -1; celeb_pend_theme = 0;
     if (ci >= 0) {
@@ -4239,7 +4253,7 @@ static void celeb_page_close(void)
 static void char_celebrate_tick(void)
 {
     int pst = celeb_kind == 1 ? GS_BOARDS : GS_CHARS;
-    if (celeb_page_t0 >= 0 && state != pst) { celeb_page_t0 = -1; celeb_kind = 0; return; }   /* se salio: al volver */
+    if (celeb_page_t0 >= 0 && state != pst) { celeb_run_speed(1.0f); celeb_page_t0 = -1; celeb_kind = 0; return; }   /* se salio: al volver */
     if (state == GS_CHARS) { celeb_check_themes(); celeb_page_open(); }
     if (state == GS_CHARS && celeb_page_t0 < 0 && char_shown >= 0 && theme_shown != theme_hi &&
         outfit_tex_ready(char_shown, theme_hi)) {
@@ -4247,8 +4261,6 @@ static void char_celebrate_tick(void)
         char_show_model(char_shown);
     }
     if (state == GS_BOARDS) celeb_board_open();
-    if (celeb_page_t0 >= 0 && celeb_kind == 0)
-        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN + game_unlock_time() * 50.0f, 0);   /* Target.Rotate(0, 50*dt, 0) */
     if (celeb_page_t0 >= 0 && celeb_kind == 1) {
         /* la tabla sola girando en 3D (un poco inclinada para que se vea por encima), una vuelta cada 4 s */
         nrt[n_avatar].lrot = qeuler(20, 200 + game_unlock_time() * 90.0f, 0);
