@@ -317,6 +317,12 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 - Halloween reducido como los mapas nuevos (`slim`: piezas unidas por textura, texturas reducidas, sin mipmaps, dibujo
   con `r_light`) y con su propio hw_tex/hw_mesh/chars14 de las mismas medidas. Emulador: 14,39 MB en carrera (antes
   15,46), 30 FPS, ~190 dibujos por fotograma (antes ~275), el tema de Halloween entero (5 texturas, 2 mallas).
+- HECHO (clásico 1.0, `classic_10`/`game_classic`): sin Score Booster (en la tienda el Headstart 500; en las cajas un
+  headstart pequeño en su lugar), al empezar L headstart pequeño y R Mega, sin "Ver premios" en la caja, sin cazas,
+  sin Save Me ni llaves. El botón de la caza en la portada solo en las fechas de una caza (no depende del mapa) y el de
+  los huevos se va al tenerlos todos.
+- El extractor avisa al terminar si a algún mapa le falta un icono que dibuja el juego (`check_ui_textures`).
+  Extracción completa con los 9 APK: ningún aviso; llaves en Halloween, 1.5.2, 1.6, Río y Roma (36 puntos).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
 

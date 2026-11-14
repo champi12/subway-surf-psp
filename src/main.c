@@ -596,6 +596,12 @@ int main(int argc, char **argv)
 #ifdef AT_PAUSE
         if (frame_no == 600 || frame_no == 660) pr |= PSP_CTRL_START;   /* pausa y seguir */
 #endif
+#elif defined(AT_CLASSICHS)
+        /* prueba del clasico de la 1.0: con headstarts (L pequeno) al empezar, la tienda y una caja sin "ver premios" */
+        if (frame_no == 20) { extern void game_debug_unlock_all(void); game_debug_unlock_all(); }
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 80) pr |= PSP_CTRL_CROSS;    /* jugar */
+        if (frame_no == 160) pr |= PSP_CTRL_LTRIGGER;   /* headstart pequeno */
 #elif defined(AT_TEXLIST2)
         /* prueba de memoria con el recorrido del devlog: tienda, personajes (varios, y trajes), tablas y a correr */
         if (frame_no == 20) { extern void game_debug_unlock_all(void), game_debug_outfit(void); game_debug_unlock_all(); game_debug_outfit(); }

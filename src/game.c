@@ -184,6 +184,7 @@ static void char_pose(int i);
 static void skeleton_rest(int root);   /* el esqueleto a su postura de reposo */
 static void fin_tex_release(void);     /* fuera las texturas de la pantalla de fin */
 static void run_tex_trim(void);        /* al empezar la carrera: fuera las que solo usan los menus */
+static void classic_shop(void);        /* la tienda del clasico de la 1.0 */
 static int char_tex(int i);
 static int char_base_used(int i, int th);
 static int outfit_view(int i);
@@ -573,7 +574,15 @@ int game_hunt_items(int w)
 }
 int game_hunt_goal(int w) { int hc = hunt_city(); return w >= 1 && w <= 4 && hc ? hunt_goal[hc][w] : 0; }
 /* el boton de la portada: 1 huevos (Roma, FrontScreen.eggButton), 2 munecas (Tokio), 3 objeto de Miami */
-int game_hunt_button(void) { int hc = hunt_city(); return hunt_week_now() && hc ? 1 + hc : rome_season() ? 1 : 0; }
+/* el boton de la caza en la portada: solo en las fechas de una caza (no depende del mapa: con un selector de mapas
+ * saldria igual en cualquiera), nunca en el clasico de la 1.0, y el de los huevos se va al tenerlos todos */
+int game_hunt_button(void)
+{
+    if (classic_10()) return 0;
+    int hc = hunt_city();
+    if (hunt_week_now() && hc) return 1 + hc;
+    return egg_hunt_active() ? 1 : 0;
+}
 int game_hunt_box_next(void) { return hunt_box != 0; }
 int game_hunt_box_city(void) { return hunt_box_city; }
 /* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (Tokio), 3 objeto de Miami */
@@ -2708,6 +2717,7 @@ void game_theme_check(int boot)
     if (on == theme_halloween && xm == theme_xmas && !boot) return;
     theme_halloween = on;
     theme_xmas = xm;
+    if (boot) classic_shop();   /* con el mapa y el tema ya sabidos */
     r_wait_idle();       /* el GE no debe estar dibujando con las mallas o texturas que se cambian */
     data_theme_set(on ? 1 : xm ? 2 : 0);
     r_fog_color = on ? FOG_HALLOWEEN : xm ? FOG_XMAS : FOG_NORMAL;
@@ -2858,7 +2868,8 @@ static void intro_tick(void)
     /* SlideinPowerupHelper de la 1.7: al empezar, 5 s con Score Booster (L) y Mega Headstart (R) si se tienen. El
      * headstart pequeno ya no sale (la 1.7 lo quito de la tienda y de la carrera) */
     booster_on = 0;
-    ginfo.headstart_until = (ginfo.boosters > 0 || ginfo.hs2000 > 0) ? game_time + 5.0f : 0;
+    ginfo.headstart_until = (classic_10() ? (ginfo.hs500 > 0 || ginfo.hs2000 > 0) : (ginfo.boosters > 0 || ginfo.hs2000 > 0))
+                            ? game_time + 5.0f : 0;   /* el clasico: headstart pequeno (L) y Mega (R), como la 1.0 */
     run_jumps = run_rolls = run_pickups = 0;
     memset(run_pk, 0, sizeof(run_pk));
     lane_t = game_time;
@@ -4718,7 +4729,7 @@ static int trophy_roll(void)
 
 /* ------------------------------------------------------------ tienda (Upgrades.cs) */
 enum { SK_AMOUNT, SK_TIER, SK_BOX, SK_SKIP };
-const ShopItem shop_items[] = {
+ShopItem shop_items[] = {
     /* nombres en ingles: los de Upgrades.cs del original */
     {"Hoverboard", "Hoverboard", "icon_upgrades_hoverboard", SK_AMOUNT, 0},
     {"Score Booster", "Score Booster", "ui_booster", SK_AMOUNT, 3},   /* 1.7: en lugar del headstart pequeno (icono aparte) */
@@ -4733,7 +4744,7 @@ const ShopItem shop_items[] = {
     {"Saltar misión 3", "Skip Mission 3", "icon_upgrades_skipMission3", SK_SKIP, 2},
 };
 const int shop_count = sizeof(shop_items) / sizeof(shop_items[0]);
-static const char *const shop_descs[][2] = {
+static const char *shop_descs[][2] = {
     {"Te protege de un choque durante 30 s (cuadrado).", "Protect yourself from crashing for 30 seconds (Square)."},
     {"+5 al multiplicador en una carrera (L al empezar).", "+5 to your multiplier for one run (L at start)."},
     {"Avanza 1000 metros al empezar.", "Skip ahead 1000 meters in a run."},
@@ -4747,6 +4758,15 @@ static const char *const shop_descs[][2] = {
     {"Salta tu misión 3 actual.", "Skip your current mission 3"},
 };
 const char *shop_desc(int i) { return TR(shop_descs[i][0], shop_descs[i][1]); }
+int game_classic(void) { return classic_10(); }
+/* el clasico de la 1.0: el headstart pequeno en la tienda en lugar del Score Booster (como al principio del port) */
+static void classic_shop(void)
+{
+    if (!classic_10()) return;
+    shop_items[1] = (ShopItem){"Headstart 500", "Headstart 500", "icon_upgrades_headstart500", SK_AMOUNT, 1};
+    shop_descs[1][0] = "Avanza 500 metros al empezar (L).";
+    shop_descs[1][1] = "Skip ahead 500 meters in a run (L at start).";
+}
 /* Upgrades.cs de la 1.8: un nivel mas (7 en total) por 60000 monedas */
 static const int tier_prices[7] = {0, 500, 1500, 3000, 10000, 30000, 60000};
 
@@ -4913,13 +4933,15 @@ static void mystery_open_type(int super)
     if (!super && ginfo.boxes_opened == 1) first.min = 1000;
     else if (!super && ginfo.boxes_opened == 2) { first.type = LT_TOKEN; first.min = 1; tc = 1; }   /* Tricky */
     else if (!super && ginfo.boxes_opened == 3) { first.type = LT_HOVER; first.min = 3; }
-    else if (!super && rio_box_booster()) { first.type = LT_BOOSTER; first.min = 1; }
+    else if (!super && !classic_10() && rio_box_booster()) { first.type = LT_BOOSTER; first.min = 1; }
     /* MysteryBox.Roll de la 1.9: con Save Me, la primera caja (tras las tres primeras) y la primera super dan una llave */
     else if (!super && game_saveme_on() && !keys_first_mb) { first.type = LT_KEYS; first.min = 1; keys_first_mb = 1; }
     else if (super && game_saveme_on() && !keys_first_smb) { first.type = LT_KEYS; first.min = 1; keys_first_smb = 1; }
     else l = loot_roll(super);
     int amount = l->max > l->min ? rnd_range(l->min, l->max) : l->min;
-    switch (l->type) {
+    int lt = l->type;
+    if (classic_10() && lt == LT_BOOSTER) lt = LT_HS500;   /* el clasico no tiene Score Booster: el headstart pequeno */
+    switch (lt) {
     case LT_COINS: coins = amount; break;
     case LT_HOVER: hb = amount; break;
     case LT_HS500: h5 = amount; break;
@@ -5169,7 +5191,7 @@ void game_input(unsigned in)
             }
         } else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || ginfo.reward[0]) {
             /* MysteryBoxPopup de la 1.5.2: "View Prizes" (cuadrado) mientras se espera a abrir la caja */
-            if ((in & IN_SQUARE) && !ginfo.reward[0]) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
+            if ((in & IN_SQUARE) && !ginfo.reward[0] && !classic_10()) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
             break;
         } else if (in & IN_CIRCLE) { snd_play(sfx_tap, 1, 1, 0); game_top_menu(); }
         else if (in & IN_SQUARE) { snd_play(sfx_tap, 1, 1, 0); ginfo.popup = POPUP_PRIZES; }
@@ -5185,7 +5207,7 @@ void game_input(unsigned in)
          * la pulsacion, el personaje saltaria, rodaria o cambiaria de via nada mas empezar a correr */
         break;
     default:
-        if (in & IN_L) use_booster();
+        if (in & IN_L) { if (classic_10()) use_headstart(0); else use_booster(); }
         if (in & IN_R) use_headstart(1);
         in_left |= (in & IN_LEFT) != 0;
         in_right |= (in & IN_RIGHT) != 0;

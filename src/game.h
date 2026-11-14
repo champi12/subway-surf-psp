@@ -59,7 +59,8 @@ int board_new_count(void);       /* cuantas nuevas sin ver (numero en los botone
 int game_season_button(void);    /* 1: los ajustes llevan el boton de temporada (Navidad disponible en este mundo) */
 
 typedef struct { const char *name, *name_en, *icon; int kind, idx; } ShopItem;
-extern const ShopItem shop_items[];
+extern ShopItem shop_items[];
+int game_classic(void);   /* el mapa de la 1.0: sin Score Booster, cazas, Save Me ni la lista de premios de la caja */
 extern const int shop_count;
 int shop_price(int i);
 int shop_amount(int i);

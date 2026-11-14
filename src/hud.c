@@ -442,8 +442,16 @@ static void draw_ingame(void)
     /* headstarts al empezar (UIHeadStartHelper) */
     if (ginfo.time < ginfo.headstart_until) {
         float hx = 6, hy = SCR_H - 100 * UIS;
-        /* SlideinPowerupHelper de la 1.7: Score Booster (L) y Mega Headstart (R) */
-        if (ginfo.boosters > 0) {
+        /* SlideinPowerupHelper de la 1.7: Score Booster (L) y Mega Headstart (R). El clasico de la 1.0: el headstart
+         * pequeno (L) y el Mega (R), sin Score Booster */
+        if (game_classic() && ginfo.hs500 > 0) {
+            ui_sliced(a_ui, "background_ingame_transparent_withStroke", hx, hy, 60 * UIS, 74 * UIS, UIS, 0xc0000000);
+            ui_sprite_wh(a_ui, "button_ingame_headStart500", hx + 8 * UIS, hy + 4 * UIS, 44 * UIS, 66 * UIS, 0xffffffff);
+            snprintf(buf, sizeof(buf), "L  x%d", ginfo.hs500);
+            text_shadow(f_small, hx + 30 * UIS, hy + 76 * UIS, 0.6f, 0xffffffff, 1, buf);
+            hx += 70 * UIS;
+        }
+        if (!game_classic() && ginfo.boosters > 0) {
             ui_sliced(a_ui, "background_ingame_transparent_withStroke", hx, hy, 60 * UIS, 74 * UIS, UIS, 0xc0000000);
             /* el icono del original (icon_upgrades_scorebooster, sacado de la hoja de la 1.7 por el conversor); sin el,
              * una ficha azul con "+5" */
@@ -2067,8 +2075,8 @@ static void draw_box_popup(int sup)
         snprintf(buf, sizeof(buf), TR("Cajas: %d", "Boxes: %d"), ginfo.boxes_pending + ginfo.sboxes_pending);
         labc(0, bx, 216, 15, C_WHITE, 1, 1, buf);
         /* MysteryBoxPopup de la 1.5.2: "View Prizes" (boton naranja con la caja) arriba a la izquierda y el contador
-         * de monedas arriba a la derecha */
-        {
+         * de monedas arriba a la derecha. El clasico de la 1.0 no lo tiene (lo pidio el usuario) */
+        if (!game_classic()) {
             float px = 12, py = SCR_H - 52, pw = 150, ph = 40;   /* abajo: arriba esta el titulo de la caja */
             ui_sliced(a_ui, "whitebox", px, py, pw, ph, UIS, 0xff1f8df5u);   /* naranja (button_orange_buy) */
             ui_sliced(a_ui, "button_generic_3_outline", px - 3, py - 2, pw + 6, ph + 8, UIS, C_WHITE);
