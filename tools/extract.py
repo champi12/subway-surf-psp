@@ -3205,7 +3205,7 @@ def swap_guard16(ex, sc16):
 
 
 def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None,
-               sc19=None, sc110=None, sc111=None, keys=None, shared=True):
+               sc19=None, sc110=None, sc111=None, keys=None, shared=True, slim=None):
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
@@ -3214,6 +3214,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     # Halloween (data/whw) es el clasico con sus llaves y lo comun lo lee de data/
     if keys is None:
         keys = not classic
+    # slim: piezas unidas por textura y texturas reducidas como los mapas nuevos (el de Halloween); el clasico de la 1.0
+    # como al principio
+    if slim is None:
+        slim = not classic
     os.makedirs(outdir, exist_ok=True)
     scl = [sc] + ([level_sc] if level_sc is not sc else []) + \
         ([sc18] if sc18 is not None and sc18 is not level_sc else []) + \
@@ -3418,7 +3422,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     ui = export_ui(sc, ex, sc14, boards if boards is not None else boards_ui,
                    sc15 if sc15 is not None else (level_sc if level_sc is not sc else None), city_sc=city)
     print('Exportando mallas...')
-    ex.adaptive_parts = not classic   # solo el mapa de la 1.5.2 (el clasico como antes)
+    ex.adaptive_parts = slim   # los mapas nuevos y Halloween (el clasico de la 1.0 como antes)
     if sc16 is not None and level_sc is sc16:
         swap_guard16(ex, sc16)
     mesh, stats = export_meshes(ex)
@@ -3431,10 +3435,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     # las cuatro en la VRAM (el GE las lee mucho mas deprisa que de la RAM). Error medio de color 3,8/255 (con 16 bits
     # 1,8). El clasico (1.0/1.4): main de 16 bits y enemies a su tamano
     global SMALL_TEX_ON
-    SMALL_TEX_ON = not classic
+    SMALL_TEX_ON = slim
     # mapa clasico: main (su escenario) sigue en 16 bits; los trenes con paleta para que quepan los dos en la VRAM con
     # la tercera imagen (960 KB)
-    hq = ('main', 'FontAtlas') if classic else ('FontAtlas',)
+    hq = ('main', 'FontAtlas') if not slim else ('FontAtlas',)
     tex = export_textures(ex, hq=hq)
     print('Exportando animaciones...')
     anim = export_anims(ex)
@@ -3484,6 +3488,13 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             export_halloween(sc14, outdir, ex, hq, boards)
         elif boards is not None:
             export_extras_only(outdir, hq, boards)
+    if classic and not shared and slim and sc14 is not None:
+        # Halloween (data/whw) con texturas reducidas: su tema y los personajes de la 1.4 con las mismas medidas que su
+        # tex.bin (las de data/ no casarian: el juego no usa una textura del tema de otro tamano)
+        for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin'):
+            if os.path.exists(os.path.join(outdir, fn)):
+                os.remove(os.path.join(outdir, fn))
+        export_halloween(sc14, outdir, ex, hq, boards)
     if not classic and level_sc is not sc:
         # mundo de la 1.5.2: su Navidad (ThemeAssets "xmas") va en esta carpeta
         for fn in ('xm_tex.bin', 'xm_mesh.bin'):
@@ -3556,7 +3567,7 @@ def main():
     if sc14 is not None and (sc19 is not None or sc110 is not None or sc111 is not None):
         print('== Mapa de Halloween (data/whw/)')
         export_set(sc, sc, sc14, whw, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110,
-                   sc111=sc111, keys=True, shared=False)
+                   sc111=sc111, keys=True, shared=False, slim=True)
     elif os.path.isdir(whw):
         shutil.rmtree(whw, True)
     w15 = os.path.join(outdir, 'w15')

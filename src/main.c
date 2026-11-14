@@ -281,10 +281,10 @@ int main(int argc, char **argv)
             sceIoClose(f);
             wdir = "data/whw";
         }
-        { extern int r_light; r_light = strcmp(wdir, "data") != 0 && strcmp(wdir, "data/whw") != 0; }
+        { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* Halloween como los mapas nuevos */
         /* Rio y Roma: sin texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a lo
          * lejos y salian lineas */
-        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/w17") || !strcmp(wdir, "data/w18") || !strcmp(wdir, "data/w19") || !strcmp(wdir, "data/w110") || !strcmp(wdir, "data/w111"); }
+        { extern int r_nomips; r_nomips = !strcmp(wdir, "data/whw") || !strcmp(wdir, "data/w17") || !strcmp(wdir, "data/w18") || !strcmp(wdir, "data/w19") || !strcmp(wdir, "data/w110") || !strcmp(wdir, "data/w111"); }
         { extern int game_world; game_world = !strcmp(wdir, "data/w111") ? 111 : !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : !strcmp(wdir, "data/whw") ? 4 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
         dlog("Mundo: %s", !strcmp(wdir, "data/w111") ? "1.11 Miami (data/w111)" : !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : !strcmp(wdir, "data/whw") ? "Halloween (data/whw)" : "clasico (data/)");
     }

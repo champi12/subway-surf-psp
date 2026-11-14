@@ -42,6 +42,15 @@ static void *load_file(const char *name, int *size)
 
 static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
 static void *load_file_opt(const char *path);
+/* archivo comun (hw_tex.bin, chars14.bin): el de la carpeta del mundo si lo trae (Halloween, data/whw, con texturas
+ * reducidas como su tex.bin), si no el de data/ */
+static void shared_path(char *out, int n, const char *name)
+{
+    snprintf(out, n, "%s/%s", basedir, name);
+    FILE *f = fopen(out, "rb");
+    if (f) { fclose(f); return; }
+    snprintf(out, n, "data/%s", name);
+}
 
 /* archivo opcional de la carpeta del mundo (fx.bin...): NULL si no esta. Se queda en memoria */
 void *data_load_world_opt(const char *name)
@@ -334,7 +343,7 @@ void data_tex_path(int i, char *out, int n)
     /* ruta completa: sceIoOpen no resuelve las relativas como fopen (la carpeta actual la lleva la libreria de C) */
     static char cwd[160];
     if (!cwd[0] && !getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
-    if (gd.tex[i].src) snprintf(out, n, "%s/data/hw_tex.bin", cwd);
+    if (gd.tex[i].src) snprintf(out, n, "%s/%s", cwd, hwtexpath);
     else snprintf(out, n, "%s/%s/tex.bin", cwd, basedir);
 }
 
@@ -439,7 +448,7 @@ int data_theme_init_tex(void)
         dlog("Tema de Navidad disponible: %d texturas", k);
     }
     /* en data/ aunque el mundo sea otro (data/w15): texturas de los personajes de la 1.4 y de las tablas */
-    snprintf(path, sizeof(path), "data/hw_tex.bin");
+    shared_path(path, sizeof(path), "hw_tex.bin");
     hwtexfile = fopen(path, "rb");
     snprintf(hwtexpath, sizeof(hwtexpath), "%s", path);
     if (!hwtexfile) return 0;
@@ -571,7 +580,7 @@ int data_theme_init(int need_meshes)
  * hasta data_mesh_acquire; data_mesh_release la vacia otra vez y devuelve la memoria (~140 KB cada una). */
 #define MAX_LAZY 48   /* mallas de chars14.bin (personajes y tablas: 35 con la 1.11) */
 static FILE *charsfile;
-static char charspath[64] = "data/chars14.bin";
+static char charspath[256] = "data/chars14.bin";
 static int chars_gen;
 static struct { int mesh; uint32_t off, len; uint8_t *buf; } lazy[MAX_LAZY];
 static int nlazy;
@@ -579,8 +588,9 @@ static int nlazy;
 static void chars14_init(void)
 {
     char path[256];
-    snprintf(path, sizeof(path), "data/chars14.bin");   /* compartido por todos los mundos */
+    shared_path(path, sizeof(path), "chars14.bin");   /* compartido por todos los mundos (menos Halloween) */
     charsfile = fopen(path, "rb");
+    snprintf(charspath, sizeof(charspath), "%s", path);   /* para volver a abrirlo tras la suspension */
     if (!charsfile) return;
     uint8_t h[8];
     if (fread(h, 1, 8, charsfile) != 8 || memcmp(h, "SSM3", 4)) { fclose(charsfile); charsfile = NULL; return; }
