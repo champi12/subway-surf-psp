@@ -3188,19 +3188,20 @@ def swap_guard16(ex, sc16):
 
 def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None,
                sc19=None, sc110=None, sc111=None, keys=None, shared=True):
+    """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
+    guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
+    siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     # keys: anadir las llaves de Save Me a los SpawnPoint que no las traen (por defecto en todos menos el clasico de la
     # 1.0). shared: escribir lo comun a todos los mapas (Halloween de la 1.4, tablas, trajes, musica); el mapa de
     # Halloween (data/whw) es el clasico con sus llaves y lo comun lo lee de data/
     if keys is None:
         keys = not classic
-    """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
-    guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
-    siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
     os.makedirs(outdir, exist_ok=True)
     scl = [sc] + ([level_sc] if level_sc is not sc else []) + \
         ([sc18] if sc18 is not None and sc18 is not level_sc else []) + \
         ([sc110] if sc110 is not None and sc110 is not level_sc and sc110 is not sc18 else []) + \
-        ([sc111] if sc111 is not None and sc111 is not level_sc else [])
+        ([sc111] if sc111 is not None and sc111 is not level_sc else []) + \
+        ([sc19] if sc19 is not None and sc19 is not level_sc and sc19 is not sc18 else [])   # huevo y llave de la 1.9
     eggsrc = sc18 or sc19
     msc = scl[0] if len(scl) == 1 else MultiScene(scl)
     ex = Exporter(msc)
@@ -3253,7 +3254,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         inject_hunts(ex, trees, native, {'egg': eggsrc, 'doll': sc110, 'miami': sc111})
     # llaves de Save Me en los mapas que no las traen (los de la 1.9 en adelante ya las llevan en sus SpawnPoint)
     if keys and (sc19 is not None or sc110 is not None or sc111 is not None):
-        inject_keys(ex, trees, sc19 or sc110 or sc111)
+        inject_keys(ex, trees, sc111 or sc110 or sc19)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
