@@ -1,7 +1,7 @@
 # Subway Surfers para PSP
 
-Port nativo para PSP de **Subway Surfers** clásico (Android, Kiloo/SYBO, 2012): la **1.0** con todo el contenido
-hasta la **1.4** integrado. No es un juego "parecido": el código
+Port nativo para PSP de **Subway Surfers** clásico (Android, Kiloo/SYBO, 2012-2013): la **1.0** con todo el contenido
+hasta la **1.11** integrado (ver [Qué tiene el juego](#qué-tiene-el-juego)). No es un juego "parecido": el código
 del juego original (C# de Unity, `Assembly-CSharp.dll`) se ha decompilado y **traducido a C** clase por clase, y
 los modelos, texturas, animaciones, sonidos y la estructura de los tramos de vía se **extraen del propio APK**.
 
@@ -49,6 +49,127 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 * Las misiones de ganar a amigos necesitan conexión: se dan por completadas.
 * Partículas (chispas de la tabla, polvo del jetpack) y brillos de las calabazas de Halloween: no se portan para
   no perder fotogramas.
+* Las versiones 1.12 en adelante.
+
+## Qué tiene el juego
+
+Todo el contenido jugable de la **1.0 a la 1.11** (lo que no necesita internet). Los mapas, personajes y tablas de
+cada versión salen solo si se extrajo su APK.
+
+### Mapas (10)
+
+Se pueden jugar todos en cualquier fecha con el **selector de mapas** (START → Mapa): un carrusel con la miniatura de
+cada mapa (el grafiti de su vagón de salida), su nombre y su versión. Al elegir uno, el juego se reinicia con su
+pantalla de carga. Sin elegir ninguno, el mapa cambia solo según la fecha, como en el original.
+
+| Mapa | Versión | Cuándo sale solo (por la fecha) |
+|---|---|---|
+| Clásico | 1.0 | Solo si se elige |
+| Halloween | 1.4 | 24 oct – 4 nov |
+| Subway Surfers | 1.5.2 | El de siempre, fuera de las temporadas |
+| Navidad | 1.5.2 | 18 dic – 1 ene |
+| Nueva York | 1.6 | 3 – 29 ene |
+| Río de Janeiro | 1.7 | 30 ene – 27 feb |
+| Roma | 1.8 | 28 feb – 3 abr |
+| Sídney | 1.9 | 4 abr – 1 may |
+| Tokio | 1.10 | 2 – 29 may |
+| Miami | 1.11 | 30 may – 27 jun |
+
+### Personajes (23)
+
+| Personaje | Cómo se consigue | Versión |
+|---|---|---|
+| Jake | Gratis (inicial) | 1.0 |
+| Tricky | 3 fichas (gorra) de las cajas misteriosas | 1.0 |
+| Fresh | 50 fichas (radio) | 1.0 |
+| Spike | 200 fichas (guitarra) | 1.0 |
+| Yutani | 500 fichas (ovni) | 1.0 |
+| Lucy | 7.000 monedas | 1.0 |
+| Ninja | 20.000 monedas | 1.0 |
+| Frank | 40.000 monedas | 1.0 |
+| King | 80.000 monedas | 1.0 |
+| Frizzy | 150.000 monedas | 1.0 |
+| Tagbot | 12.000 monedas | 1.4 |
+| Tasha | 30.000 monedas | 1.4 |
+| Zoe | 120.000 monedas | 1.4 |
+| Brody | 350.000 monedas | 1.4 |
+| Prince K | 980.000 monedas | 1.4 |
+| Zombie Jake | 95.000, solo en Halloween | 1.4 |
+| Elf Tricky | 95.000, solo en Navidad | 1.5.2 |
+| Tony | 95.000, solo en temporada de Nueva York | 1.6 |
+| Carmen | 95.000, solo en temporada de Río | 1.7 |
+| Roberto | 95.000, solo en temporada de Roma | 1.8 |
+| Kim | 95.000, solo en temporada de Sídney | 1.9 |
+| Harumi | 95.000, solo en temporada de Tokio | 1.10 |
+| Nick | 95.000, solo en temporada de Miami | 1.11 |
+
+Los de temporada, una vez comprados, se quedan para siempre. **Trajes (1.11):** Jake (Oscuro y Estrella) y Tricky
+(Camuflaje y Corazón), con llaves o de regalo, tras haber jugado en la temporada de Miami.
+
+### Tablas (23)
+
+| Tabla | Precio / cómo se consigue | Efecto | Versión |
+|---|---|---|---|
+| Hoverboard | La de siempre | — | 1.0 |
+| Superhero | 8.000 | — | 1.5.2 |
+| Freestyler | 45.000 | — | 1.5.2 |
+| Big Kahuna | 65.000 | — | 1.5.2 |
+| Bouncer | 280.000 | Súper salto | 1.5.2 |
+| Lowrider | 320.000 | Va agachado | 1.5.2 |
+| Starboard | Gratis (regalo) | — | 1.5.2 |
+| Miami | 12.000 | — | 1.6 |
+| Monster | 30.000 | — | 1.6 |
+| Skull Fire | 75.000 | — | 1.6 |
+| Liberty | 50.000, solo en temporada de Nueva York | — | 1.6 |
+| Lumberjack | 4.000 | — | 1.7 |
+| Daredevil | 85.000 | Acelera el juego | 1.7 |
+| Toucan | 50.000, solo en temporada de Río | — | 1.7 |
+| Scoot | 35.000 | — | 1.8 |
+| Kick-Off | 50.000, solo en temporada de Roma | — | 1.8 |
+| Chicky | 100 huevos de Pascua | — | 1.8 |
+| Great White | 20.000 | — | 1.9 |
+| Outback | 50.000, solo en temporada de Sídney | — | 1.9 |
+| Kitty | 50.000, solo en temporada de Tokio | — | 1.10 |
+| Cherry | 60 muñecas (caza semanal de Tokio) | — | 1.10 |
+| Hotrod | 280.000 | Velocidad | 1.11 |
+| Flamingo | 50.000, solo en temporada de Miami | — | 1.11 |
+
+### Power-ups y objetos
+
+| Nombre | Qué hace | Versión |
+|---|---|---|
+| Jetpack | Vuela por encima, con monedas en el aire | 1.0 |
+| Súper zapatillas | Saltos más altos | 1.0 |
+| Imán de monedas | Atrae las monedas (también las de los trenes en marcha) | 1.0 |
+| Multiplicador x2 | Dobla los puntos | 1.0 |
+| Tabla (hoverboard) | Te salva de un choque | 1.0 |
+| Caja misteriosa y súper caja | Premios: monedas, fichas, tablas, trofeos, llaves… | 1.0 / 1.4 |
+| Headstart 500 y Mega Headstart | Sales volando al empezar | 1.0 / 1.7 |
+| Score Booster | +5 al multiplicador durante una carrera | 1.7 |
+| Llaves (Save Me) | Revivir; cada vez cuesta el doble | 1.9 |
+| Letras de la palabra del día | Completar la palabra da una caja | 1.0 |
+| Huevos de Pascua | Con 100 se gana Chicky (temporada de Roma) | 1.8 |
+| Objetos de la caza semanal | Muñecas en Tokio y el objeto de Miami | 1.10 / 1.11 |
+
+En la tienda se mejora la duración de los power-ups, como en el original.
+
+### Eventos
+
+* **Por temporada:**
+  * **Halloween:** su mapa con su tema, el inspector zombi y Zombie Jake.
+  * **Navidad:** el mapa de la 1.5.2 con vías, trenes y cielo navideños, el inspector Papá Noel, nieve en la portada
+    y Elf Tricky.
+  * **Nueva York, Río, Roma, Sídney, Tokio y Miami:** cada uno con su mapa, su inspector y su perro, el aviso de
+    "¡Bienvenido a…!", su personaje y su tabla especial.
+  * **Búsqueda de huevos de Pascua** (temporada de Roma): el premio es Chicky.
+  * **Caza semanal de Tokio:** 4 semanas recogiendo muñecas; premios: hoverboards, llaves y la tabla Cherry.
+  * **Caza semanal de Miami:** 4 semanas; premios: Score Boosters, Mega Headstarts y llaves.
+* **Siempre:**
+  * **Misiones:** los 29 grupos del original; cada grupo sube el multiplicador, hasta ×30.
+  * **Palabra del día / reto diario:** con racha de 5 días; el 5.º día da súper caja.
+  * **Trofeos:** los 8 de las cajas misteriosas.
+  * **Save Me con llaves:** en todos los mapas menos el Clásico 1.0, con llaves en las vías.
+  * **Tutorial:** en la primera partida.
 
 ## Cómo generar los datos
 
