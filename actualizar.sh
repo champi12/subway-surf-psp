@@ -64,7 +64,7 @@ else
     # la 1.6: Tony y sus tablas (en todos los mapas) y su mapa de Nueva York en data/w16 (del 3 al 29 de enero)
     if [ -n "$APK16" ] && [ -f "$APK16" ]; then echo "Con el contenido de la 1.6 de $APK16"; OPTS+=(--apk16 "$APK16"); fi
     # la 1.7: Carmen, sus tablas y su mapa de Rio en data/w17 (del 30 de enero al 27 de febrero)
-    if [ -n "$APK17" ] && [ -f "$APK17" ]; then echo "Con la 1.7 de $APK17 (en pruebas)"; OPTS+=(--apk17 "$APK17"); fi
+    if [ -n "$APK17" ] && [ -f "$APK17" ]; then echo "Con la 1.7 de $APK17"; OPTS+=(--apk17 "$APK17"); fi
     # la 1.8: Roberto, sus tablas, la busqueda de huevos (en todos los mapas) y su mapa de Roma en data/w18 (del 28 de
     # febrero al 3 de abril)
     if [ -n "$APK18" ] && [ -f "$APK18" ]; then echo "Con la 1.8 de $APK18"; OPTS+=(--apk18 "$APK18"); fi

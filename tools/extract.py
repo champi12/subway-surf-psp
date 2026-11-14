@@ -2837,7 +2837,8 @@ def export_xmas(sc15, outdir, ex, hq):
     tobj, td = themes
     by_theme = {a['theme']: a for a in td['assets']}
     if 'xmas' not in by_theme or 'normal' not in by_theme:
-        print('  AVISO: sin tema de Navidad en ThemeAssets')
+        # normal: solo la 1.5.2 trae el tema de Navidad; los mapas de la 1.6 en adelante no (no es un fallo)
+        print('  (este mapa no trae tema de Navidad: solo lo tiene el de la 1.5.2)')
         return None
 
     def tex_map(a):
@@ -3356,7 +3357,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
             if not isinstance(c, tuple):
                 names10.add(c.read_typetree()['m_Name'])
         # con la 1.6 todas las tablas salen de ella (la misma hoja de texturas para las 11)
-        # con la 1.7 (en pruebas) las tablas salen de ella: trae las de la 1.6 y Daredevil
+        # con la 1.7 las tablas salen de ella: trae las de la 1.6 y Daredevil
         # con la 1.8 salen de ella: trae las 14 anteriores, Chicky, Scoot y Kick-Off
         # con la 1.9, de ella: trae las 17 anteriores, Outback y Great White
         bsrc = sc111 or sc110 or sc19 or sc18 or sc17 or sc16 or sc15
@@ -3555,7 +3556,7 @@ def main():
         sc16 = Scene(unpack_apk(apk16))
     sc17 = None
     if apk17:
-        print('Descomprimiendo el APK de la 1.7 (en pruebas)...')
+        print('Descomprimiendo el APK de la 1.7...')
         sc17 = Scene(unpack_apk(apk17))
     sc18 = None
     if apk18:
@@ -3587,15 +3588,15 @@ def main():
         shutil.rmtree(whw, True)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
-        print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
+        print('== Mapa de la 1.5.2 (data/w15/)')
         export_set(sc, sc15, sc14, w15, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w15):
         shutil.rmtree(w15, True)
-    # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas (en pruebas). Las tablas y Elf
+    # mapa de la 1.6 (data/w16/): un mapa aparte, con sus propias mallas y texturas. Las tablas y Elf
     # Tricky siguen saliendo de la 1.5.2
     w16 = os.path.join(outdir, 'w16')
     if sc16 is not None and os.environ.get('WORLD16', '1') != '0':
-        print('== Mapa de la 1.6 (data/w16/, en pruebas)')
+        print('== Mapa de la 1.6 (data/w16/)')
         export_set(sc, sc16, sc14, w16, classic=False, boards_ui=exc.boards, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w16):
         shutil.rmtree(w16, True)
@@ -3603,7 +3604,7 @@ def main():
     # su inspector y su perro (de Rio) se cambian igual que los de Nueva York
     w17 = os.path.join(outdir, 'w17')
     if sc17 is not None:
-        print('== Mapa de la 1.7 (data/w17/, en pruebas)')
+        print('== Mapa de la 1.7 (data/w17/)')
         # la interfaz (libreta, ME, SHOP, manchas...) de la 1.5.2: la de la 1.7 es de Unity 4 y no se lee entera
         export_set(sc, sc17, sc14, w17, classic=False, sc15=sc15, boards_ui=exc.boards, sc16=sc17, sc17=sc17,
                    sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
