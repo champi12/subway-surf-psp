@@ -98,6 +98,7 @@ void char_theme_shift(int dir);                 /* ver el traje siguiente (+1) o
 int char_theme_buy(void);                       /* comprar con llaves el traje que se mira; 1 si se hizo cargo de la X */
 int char_theme_count(int ci);                   /* cuantos trajes tiene el personaje */
 int outfits_avail(void);                        /* 1 si ya se jugo en la temporada de Miami */
+#define CELEB_SECS 3.0f   /* lo que dura la celebracion al desbloquear (fondo de colores y el personaje corriendo) */
 int game_theme_hi(void);
 int game_theme_mode(void);                      /* 1 si se esta dentro del selector de trajes */
 int game_theme_sel(int i);

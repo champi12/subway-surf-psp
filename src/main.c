@@ -587,7 +587,9 @@ int main(int argc, char **argv)
         if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;   /* a personajes */
         if (frame_no == 90 || frame_no == 100 || frame_no == 110) pr |= PSP_CTRL_SELECT;   /* quita el overlay para ver el selector */
         if (frame_no == 300) pr |= PSP_CTRL_CROSS;                      /* X: entra al selector de trajes */
-        if (frame_no == 390 || frame_no == 630) pr |= PSP_CTRL_RIGHT;  /* traje siguiente */
+        if (frame_no == 390) pr |= PSP_CTRL_RIGHT;                      /* al traje sin comprar */
+        if (frame_no == 450) pr |= PSP_CTRL_CROSS;                      /* X: lo compra -> celebracion (corre) */
+        if (frame_no == 750) pr |= PSP_CTRL_RIGHT;                      /* traje siguiente */
 #elif defined(AT_BOARDMENU)
         /* prueba de los tirones al volver de Tablas al menu: personajes -> tablas, se miran varias y se vuelve */
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */

@@ -181,6 +181,7 @@ static void jet_clouds_update(void)
 static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static void char_pose(int i);
+static void char_celebrate(int i);   /* celebracion al desbloquear: corre con el fondo de colores */
 static CharCtrl cc;
 static V3 cc_center0; static float cc_height0;
 static V3 col_center0; static float col_height0, col_height, col_radius = 3.0f; static V3 col_center;
@@ -3987,7 +3988,7 @@ int char_theme_buy(void)
     char_theme_sel[i] = sel;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
     hud_slide(TR("¡Traje desbloqueado!", "Outfit unlocked!"), chars[i].name);
-    hud_celebrate();
+    char_celebrate(i);
     char_show_model(i);
     game_save_bg();   /* en el menu: en segundo plano (si no, tiron de 50-100 ms) */
     return 1;
@@ -4053,6 +4054,27 @@ static void char_pose(int i)
         nrt[n_avatar].lrot = qident();
         char_posing = 0;
     }
+}
+
+/* Celebracion de la 1.11 al desbloquear un personaje o un traje (UIModelController + CelebrationBackgroundHelper): el
+ * personaje corre mientras dura el fondo de colores y luego vuelve a su pose. Solo en la pantalla de personajes */
+static float celeb_t0 = -1;
+static void char_celebrate(int i)
+{
+    hud_celebrate();   /* el fondo de colores con las rayas */
+    if (i < 0 || !char_posing || anim_find(&anim_char, an.run) < 0) return;
+    anim_stop_all(&anim_char);
+    skeleton_rest(n_avatar);
+    anim_play(&anim_char, an.run);
+    celeb_t0 = game_time;
+}
+/* una vez por fotograma: al acabar la celebracion (o al salir de la pantalla) vuelve a su pose */
+static void char_celebrate_tick(void)
+{
+    if (celeb_t0 < 0) return;
+    if (game_time - celeb_t0 < CELEB_SECS && state == GS_CHARS) return;
+    celeb_t0 = -1;
+    if (state == GS_CHARS) char_pose(char_shown);
 }
 
 /* textura del personaje i (la de su material de piel; los de la 1.4, la de su material propio) */
@@ -4362,7 +4384,7 @@ static void chars_input(unsigned in, int confirm)
             ginfo.character = i;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
             hud_slide(TR("Has desbloqueado", "You unlocked"), chars[i].name);
-            hud_celebrate();   /* 1.11: fondo de colores con rayas detras del personaje */
+            char_celebrate(i);   /* 1.11: corre con el fondo de colores con rayas detras */
             game_save_bg();
         } else {
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
@@ -4960,6 +4982,7 @@ void game_update(float dt)
     }
     DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
+    char_celebrate_tick();
     if (fade_t0 >= 0 && fade_run && state != GS_RUNNING && state != GS_JETPACK) fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
     if (fade_t0 >= 0) {
         /* MusicFader: baja en 0,5 s (fadeDownTime), calla fade_pause y sube en fade_up hasta el volumen de antes */

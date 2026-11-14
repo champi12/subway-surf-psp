@@ -683,7 +683,7 @@ void hud_celebrate(void) { celeb_t = ginfo.time; }
 static int draw_celebration(void)
 {
     float e = ginfo.time - celeb_t;
-    if (e < 0 || e > 3.0f || ginfo.state != GS_CHARS) return 0;
+    if (e < 0 || e > CELEB_SECS || ginfo.state != GS_CHARS) return 0;
     static int tb = -2, ts = -2;
     if (tb == -2) { tb = data_tex_find("ui_celeb_bg"); ts = data_tex_find("ui_celeb_stripe"); }
     if (tb < 0) return 0;

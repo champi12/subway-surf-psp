@@ -232,7 +232,10 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    ni gafas) y encima el accesorio que toque (el Camuflaje cambia a casco y gafas oscuras; el Corazón añade gorra,
    pendientes y el top con corazón); Jake solo cambia textura y añade su accesorio. Los trajes gratis vienen de regalo
    (`outfits_gift_free`). El traje puesto se dibuja en la portada (pintando el tren), en la carrera y en el fin de
-   partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan. Guardado en e3[7].
+   partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan (bit propio: el de
+   las tablas tambien lo encienden las de la 1.11 vistas o compradas). Guardado en e3[7]. Al desbloquear un traje (o un
+   personaje) sale la celebracion de la 1.11: el fondo de colores con rayas y el personaje CORRIENDO 3 s, y luego vuelve
+   a su pose (`char_celebrate`; UIModelController + CelebrationBackgroundHelper). No cuesta dibujos ni CPU.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano
