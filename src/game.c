@@ -181,6 +181,7 @@ static void jet_clouds_update(void)
 static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static void char_pose(int i);
+static void skeleton_rest(int root);   /* el esqueleto a su postura de reposo */
 static void celeb_queue(int ci, int theme);   /* pone en cola la pagina de celebracion */
 static void celeb_queue_board(int r);          /* ...la de una tabla */
 static CharCtrl cc;
@@ -3298,6 +3299,11 @@ static void saveme_revive(void)
     /* OnReviveJump: salto alto */
     ch.jumping = 1; ch.falling = 0; ch.rolling = 0;
     ch.verticalSpeed = jump_vs(15.0f);
+    /* fuera las animaciones de la muerte: "caught" / "caught2" (atrapado por el inspector) van en su capa (4) y nadie
+     * las apagaba, asi que seguian encima de la de correr con peso 1: tras revivir corria con la postura de atrapado.
+     * Y el esqueleto a su postura de reposo (la de "caught" lo deja girado) */
+    anim_stop_all(&anim_char);
+    skeleton_rest(n_avatar);
     SetRunAnim();
     anim_play(&anim_char, an.jump);
     anim_crossfade_queued(&anim_char, an.run, 0.1f);
@@ -4232,7 +4238,9 @@ static void celeb_page_close(void)
     if (celeb_kind == 1) {
         celeb_page_t0 = -1; celeb_pend_board = -1; celeb_kind = 0;
         char_show_model(char_shown);                      /* vuelve el personaje encima de la tabla */
-        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);   /* la pose de la vista previa */
+        /* y su animacion de ir en la tabla: en la pagina se pararon todas (para que la tabla solo girase) y, sin esto,
+         * al cerrarla se quedaba en pose de T encima de ella */
+        board_preview(ginfo.board_sel);
         game_save_bg();
         return;
     }
@@ -5114,6 +5122,11 @@ static int extra_cols[8];
 
 void game_update(float dt)
 {
+#ifdef AT_CATCHREVIVE
+    /* prueba: a los 25 s (pasado el tutorial) te atrapa el inspector (como tropezar dos veces) y con AT_KEYS se revive con la llave */
+    { static int done; if (state == GS_RUNNING && game_time - start_time > 25.0f && !done && !track_running_tutorial) {
+        done = 1; guard_show(1); anim_crossfade(&anim_char, "stumbleFall", 0.2f); game_die(); } }   /* game_die le atrapa */
+#endif
 #ifdef AT_CAUGHT
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
@@ -5256,7 +5269,8 @@ void game_update(float dt)
     /* posicion del personaje */
     if (cc.pos.y < 0 && state != GS_MENU) cc.pos.y = 1.0f;
     nrt[n_character].lpos = cc.pos;
-    set_node_active(n_shadow, ch.shadow_on);
+    /* en la pagina de una tabla no: era un circulo oscuro en medio y la tabla, al girar, pasaba por debajo */
+    set_node_active(n_shadow, ch.shadow_on && !game_unlock_board());
     scene_update_world(n_character);
     /* objetos moviles, pickups y monedas */
     DBG_PHASE(main, "game_update: trenes, power-ups y monedas");

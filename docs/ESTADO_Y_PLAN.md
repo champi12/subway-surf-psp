@@ -264,6 +264,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
      (1.10) rosa (244,46,183) con la muneca; Miami (1.11) verde (19,211,149) con el flamenco. Antes Roma salia en rojo,
      Miami en azul y el borde descolocado (asomaba el color por la derecha y por abajo).
    Pruebas nuevas: AT_NOPERF (sin el medidor), AT_MENUONLY (se queda en la portada), AT_BOARDCEL=n, AT_UNLOCKCH.
+   * Save Me tras atraparte el inspector: "caught"/"caught2" van en su capa (4) y al revivir nadie las apagaba, asi que
+     seguia corriendo con la postura de atrapado. saveme_revive para todas las animaciones y deja el esqueleto en
+     reposo antes del salto (prueba AT_CATCHREVIVE + AT_KEYS: a los 25 s, pasado el tutorial, te atrapa y revive).
+   * Pagina de la tabla: sin la sombra del personaje (un circulo oscuro en medio y la tabla pasaba por debajo) y, al
+     cerrarla, vuelve la vista previa (board_preview): antes se quedaba en pose de T encima de la tabla.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano
