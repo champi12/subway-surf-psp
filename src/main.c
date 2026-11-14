@@ -569,8 +569,9 @@ int main(int argc, char **argv)
         /* prueba: quieto en el menu */
 #elif defined(AT_CHARCYCLE)
         /* prueba de memoria: recorre todos los personajes dos veces y vuelve al menu */
+        if ((frame_no == 25 || frame_no == 32) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos (Miami, llaves) */
         if (frame_no == 40) pr |= PSP_CTRL_LTRIGGER;
-        if (frame_no > 60 && frame_no < 60 + 32 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_DOWN;
+        if (frame_no > 60 && frame_no < 60 + 32 * 15 && frame_no % 15 == 0) pr |= PSP_CTRL_RIGHT;   /* el carrusel */
         if (frame_no == 60 + 32 * 15 + 10) pr |= PSP_CTRL_CIRCLE;
 #elif defined(AT_HUNTPOPUP)
         /* prueba: cierra los avisos de Tokio y de las llaves y abre la caza semanal con la flecha izquierda */

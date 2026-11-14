@@ -3760,6 +3760,7 @@ const char *char_token_sprite(int row) { return chars[char_id(row)].tok_sprite; 
  * menu, asi que sin spray parecia que pintaba con la mano.
  * Memoria: solo quedan cargadas la malla y la textura del que se ve y las del elegido */
 static int char_shown = -1;   /* personaje cuyo modelo se esta viendo */
+static void outfits_trim_tex(int shown);
 static void char_show_model(int i)
 {
     if (i < 0 || i >= NCHARS) i = 0;
@@ -3786,6 +3787,7 @@ static void char_show_model(int i)
         }
     }
     outfit_apply_tex(i);   /* 1.11: si el personaje lleva un traje, su textura */
+    outfits_trim_tex(i);   /* y fuera de la memoria las de los trajes que no se ven */
 }
 
 /* ------------------------------------------------------------ trajes de la 1.11 (CharacterCustomization)
@@ -3804,6 +3806,8 @@ static int noutfits;
 static int char_theme_owned[NCHARS];   /* bit t: traje t comprado */
 static int char_theme_sel[NCHARS];     /* 0 normal, t+1 el traje t puesto */
 static int theme_hi;                   /* en la pantalla de personajes: el traje que se esta mirando */
+static int theme_shown;                /* ...y el que lleva el modelo: cambia cuando sus texturas ya estan leidas (como
+                                        * el resto de personajes en el carrusel; antes se leian de golpe al pasar) */
 static int theme_mode;                 /* 1: dentro del selector de trajes (X para entrar, O para salir) */
 static const char *const OUTFIT_JOINTS[18] = {
     "jRoot", "jLeg_L", "jKnee_L", "jFoot_L", "jToes_L", "jLeg_R", "jKnee_R", "jFoot_R", "jToes_R",
@@ -3888,7 +3892,7 @@ static void outfits_gift_free(void)
 }
 static int outfit_view(int i)
 {
-    if (state == GS_CHARS && i == char_shown) return theme_hi;
+    if (state == GS_CHARS && i == char_shown) return theme_shown;
     return char_theme_sel[i];
 }
 static int outfit_owned(int i, int sel) { return sel > 0 && (char_theme_owned[i] >> (sel - 1) & 1); }
@@ -3944,6 +3948,40 @@ static void outfit_apply_tex(int i)
     }
     if (o->mat >= 0) sk[3] = (uint32_t)o->mat;
 }
+/* texturas de trajes que hacen falta para dibujar al personaje ci con el traje th (2 como mucho) */
+static int outfit_tex_names(int ci, int th, const char **out)
+{
+    int n = 0;
+    if (ci < 0 || ci >= NCHARS) return 0;
+    int oi = outfit_find(ci, th);
+    if (oi >= 0) { out[n++] = outfits[oi].btex; if (outfits[oi].has_acc) out[n++] = outfits[oi].atex; }
+    else if (outfit_replaces(ci)) { out[n++] = ochar[ci].base_tex; out[n++] = ochar[ci].def_tex; }
+    return n;
+}
+/* como char_show_model con las de los personajes: fuera de la memoria (257 KB cada una) las texturas de trajes que
+ * no lleva ni el que se ve ni el elegido. Antes se quedaban todas: la memoria subia ~300 KB por traje mirado */
+static void outfits_trim_tex(int shown)
+{
+    if (noutfits <= 0) return;
+    const char *keep[4] = {0};
+    int nk = outfit_tex_names(shown, outfit_view(shown), keep);
+    if (ginfo.character != shown) nk += outfit_tex_names(ginfo.character, char_theme_sel[ginfo.character], keep + nk);
+    const char *all[40];
+    int na = 0;
+    for (int k = 0; k < noutfits && na < 36; k++) { all[na++] = outfits[k].btex; all[na++] = outfits[k].atex; }
+    for (int ci = 0; ci < 2 && na < 40; ci++) { all[na++] = ochar[ci].base_tex; all[na++] = ochar[ci].def_tex; }
+    for (int a = 0; a < na; a++) {
+        if (!all[a] || !all[a][0]) continue;
+        int kept = 0;
+        for (int k = 0; k < nk && !kept; k++) kept = keep[k] && !strcmp(keep[k], all[a]);
+        if (kept) continue;
+        int t = data_tex_find(all[a]);
+#ifdef AUTOTEST
+        if (t >= 0 && gd.tex[t].loaded) dlog("TRAJES fuera de la memoria: %s", all[a]);
+#endif
+        r_tex_unload(t);   /* si no esta cargada no hace nada */
+    }
+}
 /* dibuja el cuerpo de la 1.11 (si procede) y el accesorio del traje puesto, con los huesos del personaje */
 void outfit_draw_accessory(void)
 {
@@ -3976,8 +4014,7 @@ void char_theme_shift(int dir)
     int i = char_shown;
     if (i < 0 || !outfits_avail() || char_theme_count(i) == 0) return;
     int n = 1 + char_theme_count(i);
-    theme_hi = ((theme_hi + dir) % n + n) % n;   /* solo previsualiza; la X aplica (como el original) */
-    char_show_model(i);
+    theme_hi = ((theme_hi + dir) % n + n) % n;   /* solo previsualiza (cuando sus texturas esten); la X aplica */
 }
 /* X sobre un traje sin comprar: lo compra con llaves (SendBuyThemeRequest) */
 int char_theme_buy(void)
@@ -4130,14 +4167,39 @@ static void celeb_check_themes(void)
         for (int t = 1; t <= char_theme_count(ci); t++)
             if (outfit_owned(ci, t) && !(celeb_theme_done[ci] >> (t - 1) & 1)) { celeb_queue(ci, t); break; }
 }
+/* las texturas que lleva ese traje (o el aspecto normal de Tricky, que va con su cuerpo de la 1.11): se piden en segundo
+ * plano de una en una (el lector solo se queda con la ultima pedida). 1 cuando ya estan todas. Sin esto, la textura del
+ * traje se leia de la Memory Stick al abrir la pagina: un pico de 44-70 ms de CPU */
+static int outfit_tex_ready(int ci, int sel)
+{
+    if (ci < 0 || ci >= NCHARS) return 1;
+    const char *need[2] = {NULL, NULL};
+    int oi = outfit_find(ci, sel);
+    if (oi >= 0) { need[0] = outfits[oi].btex; if (outfits[oi].has_acc) need[1] = outfits[oi].atex; }
+    else if (ochar[ci].replace) { need[0] = ochar[ci].base_tex; need[1] = ochar[ci].def_tex; }
+    for (int k = 0; k < 2; k++) {
+        if (!need[k] || !need[k][0]) continue;
+        int t = data_tex_find(need[k]);
+        if (t >= 0 && !r_tex_request(t)) return 0;   /* esta aun se lee: la siguiente, cuando acabe */
+    }
+    return 1;
+}
+/* el personaje i se puede ensenar ya en el carrusel: su textura y la de su traje leidas (se piden en segundo plano) */
+static int char_tex_ready(int i)
+{
+    if (!outfit_replaces(i) && !r_tex_request(char_tex(i))) return 0;   /* Tricky va con su cuerpo de la 1.11 */
+    return outfit_tex_ready(i, char_theme_sel[i]);
+}
 /* abre la pagina si hay algo pendiente (solo en la pantalla de personajes) */
 static void celeb_page_open(void)
 {
     if (celeb_pend_char < 0 || celeb_page_t0 >= 0 || state != GS_CHARS || ginfo.popup) return;
     /* su textura puede no estar en memoria (p. ej. lo desbloqueo una caja): se lee en segundo plano y se abre al estar */
-    if (!r_tex_request(char_tex(celeb_pend_char))) return;
+    /* su textura (Tricky no: va con su cuerpo de la 1.11 y la vieja no se usa) y las de su traje */
+    if (!(outfit_replaces(celeb_pend_char) || r_tex_request(char_tex(celeb_pend_char)))) return;
+    if (!outfit_tex_ready(celeb_pend_char, celeb_pend_theme)) return;
     ginfo.char_sel = char_row(celeb_pend_char);
-    theme_hi = celeb_pend_theme;
+    theme_hi = theme_shown = celeb_pend_theme;   /* sus texturas ya estan (outfit_tex_ready) */
     char_show_model(celeb_pend_char);
     celeb_kind = 0;
     celeb_page_t0 = game_time;
@@ -4168,7 +4230,7 @@ static void celeb_page_close(void)
     if (ci >= 0) {
         if (th > 0) char_theme_sel[ci] = th;   /* el traje nuevo queda puesto */
         if (ch_unlocked(ci)) ginfo.character = ci;
-        theme_hi = th;
+        theme_hi = theme_shown = th;
         char_show_model(ci);
         char_pose(ci);
     }
@@ -4180,6 +4242,11 @@ static void char_celebrate_tick(void)
     int pst = celeb_kind == 1 ? GS_BOARDS : GS_CHARS;
     if (celeb_page_t0 >= 0 && state != pst) { celeb_page_t0 = -1; celeb_kind = 0; return; }   /* se salio: al volver */
     if (state == GS_CHARS) { celeb_check_themes(); celeb_page_open(); }
+    if (state == GS_CHARS && celeb_page_t0 < 0 && char_shown >= 0 && theme_shown != theme_hi &&
+        outfit_tex_ready(char_shown, theme_hi)) {
+        theme_shown = theme_hi;
+        char_show_model(char_shown);
+    }
     if (state == GS_BOARDS) celeb_board_open();
     if (celeb_page_t0 >= 0 && celeb_kind == 1) {
         /* la tabla sola girando en 3D (un poco inclinada para que se vea por encima), una vuelta cada 4 s */
@@ -4424,7 +4491,7 @@ static void open_chars(void)
 {
     outfits_gift_free();   /* por si se acaban de desbloquear los trajes: los gratis ya puestos como regalo */
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
-    theme_hi = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
+    theme_hi = theme_shown = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
     theme_mode = 0;                               /* se empieza en el carrusel, no dentro del selector */
     char_show_model(ginfo.character);
     char_pose(ginfo.character);
@@ -4482,7 +4549,10 @@ static void chars_input(unsigned in, int confirm)
     int i = char_id(ginfo.char_sel);
     /* el modelo cambia cuando su textura ya esta en memoria (se lee en segundo plano): mientras tanto se sigue viendo
      * el anterior. Antes cada personaje nuevo paraba el juego 83-100 ms leyendo de la Memory Stick */
-    if (i != char_shown && r_tex_request(char_tex(i))) { char_show_model(i); char_pose(i); theme_hi = char_theme_sel[i]; }
+    if (i != char_shown && char_tex_ready(i)) {
+        theme_hi = theme_shown = char_theme_sel[i];
+        char_show_model(i); char_pose(i);
+    }
     /* X sobre un personaje ya suyo con trajes: entra al selector de trajes (empieza en el que lleva puesto) */
     if (confirm && ch_unlocked(i) && i == i0 && i == char_shown && outfits_avail() && char_theme_count(i)) {
         snd_play(sfx_tap, 1, 1, 0);
@@ -5701,7 +5771,7 @@ void game_debug_outfit(void)
     int c = AT_OUTFIT_CH;
     ginfo.character = c;
     if (!is14(c) && chars[c].unlock != UL_FREE) char_tokens[chars[c].token] = chars[c].price;   /* desbloquea el personaje */
-    theme_hi = 0;
+    theme_hi = theme_shown = 0;
     char_show_model(c);
 #ifdef AT_UNLOCKCH
     celeb_queue(c, 0);   /* prueba: la pagina de un personaje desbloqueado */

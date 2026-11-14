@@ -246,6 +246,13 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Tokio, Chicky con los huevos). En el port, por decision del usuario y para no gastar, sale SOLO LA TABLA girando en 3D
    (una vuelta cada 4 s, algo inclinada) sobre el fondo de colores, sin el personaje: 4 dibujos, 449 triangulos, CPU
    0,5-0,8 ms. La pendiente se guarda en e3[4] (bits 1-6, tabla+1; 0 = ninguna, asi las partidas viejas no traen nada).
+   Rendimiento de los trajes, como el resto de personajes: el modelo solo cambia de traje (selector) o de personaje
+   (carrusel) cuando sus texturas ya estan leidas en segundo plano (`theme_shown` separado de la marca `theme_hi`;
+   `char_tex_ready`, `outfit_tex_ready`, de una en una porque el lector solo guarda la ultima pedida), y las texturas de
+   trajes que no lleva ni el que se ve ni el elegido salen de la memoria (`outfits_trim_tex`; 257 KB cada una). Tricky
+   no pide su textura vieja (va con su cuerpo de la 1.11). Medido: sin tirones en Personajes (CPU max. 7,5 ms; antes
+   44-70 ms al pasar por un traje o abrir su pagina), 30 FPS minimos recorriendo todos los personajes, y la memoria de
+   texturas ya no crece.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano
