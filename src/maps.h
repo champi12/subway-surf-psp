@@ -12,6 +12,7 @@ typedef struct {
     const char *es, *en;    /* nombre */
     const char *ver;        /* version del juego de la que sale */
     const char *need;       /* archivo que tiene que existir (ademas de dir/world.bin), o NULL */
+    const char *thumb;      /* su miniatura, en la carpeta del mapa (sin ella no sale en el selector) */
 } MapDef;
 
 extern const MapDef maps_def[];
@@ -20,7 +21,8 @@ extern const int maps_n;
 extern int map_forced;          /* mapa elegido en el selector y en uso (-1: ninguno, el de la fecha) */
 extern int map_theme_force;     /* -1: el tema por la fecha; si no, MAP_THEME_* del mapa elegido */
 
-int maps_available(int i);              /* 1 si sus datos estan en la Memory Stick */
+int maps_available(int i);              /* 1 si el mapa y su miniatura estan en la Memory Stick */
+void maps_init_thumbs(void);            /* anade las miniaturas de los mapas que hay (antes de r_init) */
 int maps_cfg_read(void);                /* indice del mapa guardado en mapa.cfg, o -1 */
 int maps_cfg_write(int i);              /* guarda la eleccion: 0 bien */
 int maps_current(void);                 /* indice del mapa que se esta jugando (por el mundo y el tema) */

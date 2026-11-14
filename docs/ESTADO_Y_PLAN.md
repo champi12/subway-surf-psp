@@ -139,8 +139,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 1b. HECHO (en pruebas): **selector de mapas** en los ajustes (START → Mapa). Carrusel como el de personajes con los
    mapas que haya en data/ (Clásico 1.0, Halloween 1.4, Subway Surfers 1.5.2, Navidad 1.5.2, Nueva York, Río, Roma,
    Sídney, Tokio y Miami), su nombre y su versión. Miniatura: el grafiti del vagón de salida (`train_start`, con el
-   nombre de la ciudad) de cada APK, en `data/maps_tex.bin` (128x128, 17 KB cada una, solo en memoria con los ajustes
-   abiertos). La elección va en `mapa.cfg` (carpeta del juego) y el juego se vuelve a lanzar entero
+   nombre de la ciudad) de cada APK, en la carpeta de su mapa (`thumb.bin`; Navidad `data/w15/thumb_xmas.bin`; 128x128,
+   17 KB, solo en memoria con los ajustes abiertos). Cada mapa es independiente: solo sale si su carpeta trae el mapa y
+   su miniatura, así que compilado sin algún APK (o solo con el clásico) no hay mapas ni cuadros vacíos. La elección va en `mapa.cfg` (carpeta del juego) y el juego se vuelve a lanzar entero
    (`sceKernelLoadExec`): la consola libera toda la memoria del mapa anterior y sale la pantalla de carga del nuevo.
    En la consola el relanzamiento en modo usuario no funciona (sale al XMB): ahora lo hace `relaunch.prx`, un modulo
    de kernel diminuto que llama a `sctrlKernelLoadExecVSHMs2` (Ef2 en la PSP Go) del CFW, como sus menus al abrir un

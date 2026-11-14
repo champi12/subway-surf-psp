@@ -307,6 +307,7 @@ int main(int argc, char **argv)
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */
     if (data_load_step(wdir, 0) != 0) fatal(data_err());
     data_theme_init_tex();   /* texturas de Halloween y las nuevas de la 1.4 (antes de r_init: puede anadir) */
+    maps_init_thumbs();      /* miniaturas del selector de mapas, de la carpeta de cada mapa (antes de r_init) */
     if (ui_load(wdir) != 0) dlog_error("No se pudo cargar ui.bin: la interfaz no tendra textos");
     r_init();
     {

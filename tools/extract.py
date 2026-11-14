@@ -3645,17 +3645,14 @@ def main():
                    sc17=sc17 or sc111, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w111):
         shutil.rmtree(w111, True)
-    print('== Miniaturas del selector de mapas (data/maps_tex.bin)')
-    thumbs = [('clasico', sc, None)]
-    if os.path.isdir(whw) and sc14 is not None:
-        thumbs.append(('halloween', sc14, 'halloween'))
-    if os.path.isdir(w15) and sc15 is not None:
-        thumbs.append(('subway', sc15, None))
-        if os.path.exists(os.path.join(w15, 'xm_tex.bin')):
-            thumbs.append(('navidad', sc15, 'xmas'))
-    for mid, scx in (('nuevayork', sc16), ('rio', sc17), ('roma', sc18), ('sidney', sc19), ('tokio', sc110),
-                     ('miami', sc111)):
-        thumbs.append((mid, scx, None))
+    print('== Miniaturas del selector de mapas (thumb.bin en la carpeta de cada mapa)')
+    thumbs = [('clasico', sc, None, outdir, 'thumb.bin'), ('halloween', sc14, 'halloween', whw, 'thumb.bin'),
+              ('subway', sc15, None, w15, 'thumb.bin')]
+    if os.path.exists(os.path.join(w15, 'xm_tex.bin')):
+        thumbs.append(('navidad', sc15, 'xmas', w15, 'thumb_xmas.bin'))
+    for mid, scx, folder in (('nuevayork', sc16, w16), ('rio', sc17, w17), ('roma', sc18, w18), ('sidney', sc19, w19),
+                             ('tokio', sc110, w110), ('miami', sc111, w111)):
+        thumbs.append((mid, scx, None, folder, 'thumb.bin'))
     export_map_thumbs(outdir, thumbs)
     check_ui_textures(outdir)
     print('Listo.')
@@ -3691,13 +3688,19 @@ MAP_THUMB = 128
 
 
 def export_map_thumbs(outdir, maps):
-    """Miniaturas del selector de mapas (data/maps_tex.bin): el grafiti del vagon de salida (train_start) de cada mapa,
-    que lleva el nombre de la ciudad en los de la vuelta al mundo. maps: [(id, escena, tema o None)]. 128x128 con
-    paleta (17 KB cada una); el juego solo las lee mientras esta abierto el selector."""
+    """Miniaturas del selector de mapas: el grafiti del vagon de salida (train_start) de cada mapa, que lleva el nombre
+    de la ciudad en los de la vuelta al mundo. Cada una en la carpeta de su mapa (thumb.bin; la de Navidad,
+    thumb_xmas.bin en data/w15): cada mapa es independiente y el juego solo lista los que traen la suya. Sin
+    train_start, su portada (splashScreen). maps: [(id, escena, tema o None, carpeta, archivo)]. 128x128 con paleta
+    (17 KB); el juego solo la lee mientras estan abiertos los ajustes."""
     from types import SimpleNamespace
-    gen = []
-    for mid, scx, theme in maps:
-        if scx is None:
+    old = os.path.join(outdir, 'maps_tex.bin')   # version anterior: todas juntas en data/
+    if os.path.exists(old):
+        os.remove(old)
+    done = []
+    for mid, scx, theme, folder, fname in maps:
+        path = os.path.join(folder, fname)
+        if scx is None or not os.path.isdir(folder):
             continue
         im = None
         try:
@@ -3707,20 +3710,22 @@ def export_map_thumbs(outdir, maps):
                     for o in f.objects.values():
                         if im is None and o.type.name == 'Texture2D' and o.read().m_Name == 'train_start':
                             im = tex_rgba(o.read())
+            if im is None:
+                im = find_texture(scx, 'splashScreen')
+                if im is not None:
+                    print('  AVISO: el mapa %s no tiene train_start: su miniatura es la portada' % mid)
         except Exception as e:
             print('  AVISO: miniatura de %s: %s' % (mid, e))
         if im is None:
-            print('  AVISO: el mapa %s no tiene train_start: sin miniatura' % mid)
+            print('  AVISO: el mapa %s se queda sin miniatura (no saldra en el selector)' % mid)
+            if os.path.exists(path):
+                os.remove(path)
             continue
-        gen.append(('gen', 'map_' + mid, im.convert('RGB').resize((MAP_THUMB, MAP_THUMB), Image.LANCZOS), True))
-    path = os.path.join(outdir, 'maps_tex.bin')
-    if not gen:
-        if os.path.exists(path):
-            os.remove(path)
-        return
-    with open(path, 'wb') as f:
-        f.write(export_textures(SimpleNamespace(textures=gen)))
-    print('  selector de mapas: %d miniaturas (%s)' % (len(gen), ', '.join(g[1][4:] for g in gen)))
+        gen = [('gen', 'map_' + mid, im.convert('RGB').resize((MAP_THUMB, MAP_THUMB), Image.LANCZOS), True)]
+        with open(path, 'wb') as f:
+            f.write(export_textures(SimpleNamespace(textures=gen)))
+        done.append(mid)
+    print('  selector de mapas: %d miniaturas (%s)' % (len(done), ', '.join(done) or 'ninguna'))
 
 
 def check_ui_textures(outdir):

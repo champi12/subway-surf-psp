@@ -15,16 +15,16 @@
 
 /* por version, como en el carrusel */
 const MapDef maps_def[] = {
-    {"clasico",   "data",      MAP_THEME_NONE,      0,   "Clásico",        "Classic",        "1.0",   NULL},
-    {"halloween", "data/whw",  MAP_THEME_HALLOWEEN, 4,   "Halloween",      "Halloween",      "1.4",   "data/hw_tex.bin"},
-    {"subway",    "data/w15",  MAP_THEME_NONE,      15,  "Subway Surfers", "Subway Surfers", "1.5.2", NULL},
-    {"navidad",   "data/w15",  MAP_THEME_XMAS,      15,  "Navidad",        "Holidays",       "1.5.2", "data/w15/xm_tex.bin"},
-    {"nuevayork", "data/w16",  MAP_THEME_NONE,      16,  "Nueva York",     "New York",       "1.6",   NULL},
-    {"rio",       "data/w17",  MAP_THEME_NONE,      17,  "Río",            "Rio",            "1.7",   NULL},
-    {"roma",      "data/w18",  MAP_THEME_NONE,      18,  "Roma",           "Rome",           "1.8",   NULL},
-    {"sidney",    "data/w19",  MAP_THEME_NONE,      19,  "Sídney",         "Sydney",         "1.9",   NULL},
-    {"tokio",     "data/w110", MAP_THEME_NONE,      110, "Tokio",          "Tokyo",          "1.10",  NULL},
-    {"miami",     "data/w111", MAP_THEME_NONE,      111, "Miami",          "Miami",          "1.11",  NULL},
+    {"clasico",   "data",      MAP_THEME_NONE,      0,   "Clásico",        "Classic",        "1.0",   NULL,                  "data/thumb.bin"},
+    {"halloween", "data/whw",  MAP_THEME_HALLOWEEN, 4,   "Halloween",      "Halloween",      "1.4",   "data/hw_tex.bin",     "data/whw/thumb.bin"},
+    {"subway",    "data/w15",  MAP_THEME_NONE,      15,  "Subway Surfers", "Subway Surfers", "1.5.2", NULL,                  "data/w15/thumb.bin"},
+    {"navidad",   "data/w15",  MAP_THEME_XMAS,      15,  "Navidad",        "Holidays",       "1.5.2", "data/w15/xm_tex.bin", "data/w15/thumb_xmas.bin"},
+    {"nuevayork", "data/w16",  MAP_THEME_NONE,      16,  "Nueva York",     "New York",       "1.6",   NULL,                  "data/w16/thumb.bin"},
+    {"rio",       "data/w17",  MAP_THEME_NONE,      17,  "Río",            "Rio",            "1.7",   NULL,                  "data/w17/thumb.bin"},
+    {"roma",      "data/w18",  MAP_THEME_NONE,      18,  "Roma",           "Rome",           "1.8",   NULL,                  "data/w18/thumb.bin"},
+    {"sidney",    "data/w19",  MAP_THEME_NONE,      19,  "Sídney",         "Sydney",         "1.9",   NULL,                  "data/w19/thumb.bin"},
+    {"tokio",     "data/w110", MAP_THEME_NONE,      110, "Tokio",          "Tokyo",          "1.10",  NULL,                  "data/w110/thumb.bin"},
+    {"miami",     "data/w111", MAP_THEME_NONE,      111, "Miami",          "Miami",          "1.11",  NULL,                  "data/w111/thumb.bin"},
 };
 const int maps_n = sizeof(maps_def) / sizeof(maps_def[0]);
 
@@ -48,9 +48,21 @@ int maps_available(int i)
     if (!cache[i]) {
         char p[64];
         snprintf(p, sizeof(p), "%s/world.bin", maps_def[i].dir);
-        cache[i] = file_exists(p) && (!maps_def[i].need || file_exists(maps_def[i].need)) ? 1 : -1;
+        /* cada mapa es independiente: sale solo si su carpeta trae el mapa y su miniatura (y lo que necesite su tema).
+         * Asi, compilado sin algun APK (o solo con el clasico), no aparecen mapas ni cuadros vacios */
+        cache[i] = file_exists(p) && file_exists(maps_def[i].thumb) &&
+                   (!maps_def[i].need || file_exists(maps_def[i].need)) ? 1 : -1;
     }
     return cache[i] > 0;
+}
+
+void maps_init_thumbs(void)
+{
+    extern int data_add_thumb(const char *path);
+    int n = 0;
+    for (int i = 0; i < maps_n; i++)
+        if (maps_available(i) && data_add_thumb(maps_def[i].thumb) > 0) n++;
+    dlog("Selector de mapas: %d mapas con su miniatura", n);
 }
 
 int maps_cfg_read(void)
