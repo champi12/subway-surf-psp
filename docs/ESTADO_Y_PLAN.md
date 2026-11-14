@@ -253,6 +253,17 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    no pide su textura vieja (va con su cuerpo de la 1.11). Medido: sin tirones en Personajes (CPU max. 7,5 ms; antes
    44-70 ms al pasar por un traje o abrir su pagina), 30 FPS minimos recorriendo todos los personajes, y la memoria de
    texturas ya no crece.
+   Correcciones tras probarlo en la consola (comprobado en la 1.11):
+   * Pagina del personaje/traje: AvatarAnimations.StartUnlockAnimations pone su animacion de REPOSO y gira el modelo a
+     50 grados/s (no corre: la de la carrera iba demasiado rapida).
+   * Pagina de la tabla: el esqueleto quieto, asi la tabla solo gira (antes se movia con la animacion de correr).
+   * Trajes gratis: NO se dan solos. PlayerInfo.isAnyCharacterWithFreeTheme -> pegatina FREE GIFT en el boton ME
+     (GiftBradCharacters); en Personajes el traje sale como REGALO y con X se reclama (y entonces su pagina).
+   * Boton de la caza en la portada, como el de cada version (sacado de su escena): relleno button_generic_1 y el icono
+     centrado, borde gris claro con el mismo margen en los 4 lados. Roma (1.8) verde (91,170,28) con el huevo; Tokio
+     (1.10) rosa (244,46,183) con la muneca; Miami (1.11) verde (19,211,149) con el flamenco. Antes Roma salia en rojo,
+     Miami en azul y el borde descolocado (asomaba el color por la derecha y por abajo).
+   Pruebas nuevas: AT_NOPERF (sin el medidor), AT_MENUONLY (se queda en la portada), AT_BOARDCEL=n, AT_UNLOCKCH.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano

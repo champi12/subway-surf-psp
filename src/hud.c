@@ -1006,6 +1006,13 @@ static void draw_menu(void)
             }
             lab(0, bx + 6, y1 - h + 2, 14, C_WHITE, 0, 1, fb[i].key);
             if (i == 0) new_badge(bx + bw - 6, y1 - h + 4, board_new_count());   /* tablas nuevas, en ME */
+            if (i == 0 && game_free_outfit()) {
+                /* GiftBradCharacters de la 1.11: la pegatina naranja "FREE GIFT" mientras quede un traje gratis */
+                float sx = bx + bw - U(16), sy = y1 - h - U(4), sw = U(40) * (1.0f + 0.06f * sinf(ginfo.time * 4.0f));
+                spr_c("background_sticker_medium", sx, sy, sw, sw, C_ORANGE);
+                labc(1, sx, sy - U(6), 12, C_WHITE, 1, 1, TR("¡REGALO", "FREE"));
+                labc(1, sx, sy + U(6), 12, C_WHITE, 1, 1, TR("GRATIS!", "GIFT"));
+            }
         }
         if (ginfo.missions_open) draw_missions_popup();
         if (ginfo.popup == POPUP_HALLOWEEN) draw_halloween_popup();
@@ -1330,9 +1337,16 @@ static void draw_hunt_button(void)
     char buf[16];
     int wk = game_hunt_week();
     float cx = U(30), cy = U(84), sz = U(40);
-    /* 1.8 (FrontScreen.eggButton): en Roma el huevo con los que se llevan de 100, en rojo de Roma */
-    ui_sliced(a_ui, "whitebox", cx - sz * 0.5f, cy - sz * 0.5f, sz, sz, UIS, kind == 1 ? 0xff2c3cc8u : kind == 3 ? 0xffd8a020u : C_HUNT);
-    ui_sliced(a_ui, "button_generic_2_outline", cx - sz * 0.5f - U(2), cy - sz * 0.5f - U(2), sz + U(5), sz + U(6), UIS, C_OUTLINE);
+    /* como el boton original de cada version (sacado de su escena): relleno button_generic_1 con su color, el icono
+     * centrado encima y el borde gris claro (214) alrededor, con el mismo margen en los cuatro lados.
+     *   1.8 Roma  (FrontScreen.eggButton):        verde (91,170,28)   y el huevo
+     *   1.10 Tokio (GuidelineButton itemHunt):    rosa  (244,46,183)  y la muneca
+     *   1.11 Miami (GuidelineButton itemHunt):    verde (19,211,149)  y el flamenco
+     * (antes: Roma en rojo, Miami en azul y el borde descolocado: asomaba el color por la derecha y por abajo) */
+    unsigned fill = kind == 1 ? 0xff1caa5bu : kind == 3 ? 0xff95d313u : 0xffb72ef4u;
+    float x0 = cx - sz * 0.5f, y0 = cy - sz * 0.5f, m = U(3);
+    ui_sliced(a_ui, "button_generic_1", x0, y0, sz, sz, UIS, fill);
+    ui_sliced(a_ui, "button_generic_2_outline", x0 - m, y0 - m, sz + 2 * m, sz + 2 * m, UIS, 0xffd6d6d6u);
     if (kind == 1) {
         static int te = -2;
         if (te == -2) te = data_tex_find("ui_egg");
@@ -1781,7 +1795,12 @@ static void draw_chars(void)
      * o SELECCIONAR (X) para ponerselo. Mirando un traje sin comprar -> su precio en llaves (X para comprarlo) */
     int look_owned = ho == 0 || game_theme_owned(i, ho - 1);
     int look_active = un && char_is_selected(i) && game_theme_sel(i) == ho;
-    if (ho > 0 && !look_owned) {
+    if (ho > 0 && !look_owned && game_theme_price(i, ho - 1) == 0) {
+        /* traje gratis sin reclamar: "FREE GIFT" (BOARD_SCREEN_FREE / GIFT) y X para reclamarlo */
+        labc(0, bx, by - U(6), 20, C_WHITE, 1, 1, TR("¡REGALO!", "FREE GIFT"));
+        labc(0, bx, by + U(14), 13, C_WHITE, 1, 1, char_unlocked(i) ? TR("Reclamar (X)", "Claim (X)")
+                                                                     : TR("Desbloquea al personaje", "Unlock character first"));
+    } else if (ho > 0 && !look_owned) {
         int price = game_theme_price(i, ho - 1);
         snprintf(buf, sizeof(buf), "%d", price);
         float pw = labw(0, 20, buf), px = bx + U(10) - pw * 0.5f;
@@ -1862,7 +1881,7 @@ static void draw_chars(void)
             int ico = t == 0 ? tc : tk; float is = t == 0 ? U(18) : U(16);
             if (ico >= 0) r_sprite(ico, cx - is * 0.5f, cy - is * 0.5f, is, is, 0, 0, 1, 1, ci);
             else if (t == 0) spr_c("icon_character_owned", cx, cy, U(16), U(16), C_WHITE);
-            if (t > 0 && !game_theme_owned(i, t - 1)) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
+            if (t > 0 && !game_theme_owned(i, t - 1) && game_theme_price(i, t - 1) > 0) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
         }
     }
     /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos (los trofeos van aqui, no en la portada) */

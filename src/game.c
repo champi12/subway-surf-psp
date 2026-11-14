@@ -3882,13 +3882,15 @@ int char_theme_count(int ci) { int n = 0; for (int i = 0; i < noutfits; i++) if 
  * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
  * compradas (y PRUEBA_TABLAS las desbloquea todas), y los trajes salian sin haber llegado a la fecha */
 int outfits_avail(void) { return (updates_reached >> 7) & 1; }
-/* los trajes gratis (precio 0) son un regalo: al tener los trajes disponibles vienen ya desbloqueados (GiftBradCharacters) */
-static void outfits_gift_free(void)
+/* PlayerInfo.isAnyCharacterWithFreeTheme (1.11): queda un traje gratis sin reclamar. Los gratis NO se dan solos: el
+ * boton ME lleva la pegatina FREE GIFT (GiftBradCharacters) y en la pantalla de personajes se reclaman con X */
+int game_free_outfit(void)
 {
-    if (!outfits_avail()) return;
+    if (!outfits_avail()) return 0;
     for (int k = 0; k < noutfits; k++)
-        if (outfits[k].price == 0 && outfits[k].ci >= 0 && outfits[k].ci < NCHARS)
-            char_theme_owned[outfits[k].ci] |= 1 << outfits[k].ti;
+        if (outfits[k].price == 0 && outfits[k].ci < NCHARS && !(char_theme_owned[outfits[k].ci] >> outfits[k].ti & 1))
+            return 1;
+    return 0;
 }
 static int outfit_view(int i)
 {
@@ -4151,6 +4153,8 @@ static void celeb_board_open(void)
     if (celeb_pend_board >= gd_nboards) { celeb_pend_board = -1; return; }
     ginfo.board_sel = celeb_pend_board;
     board_preview(celeb_pend_board);
+    anim_stop_all(&anim_char);   /* quieta: solo gira (antes llevaba la animacion de correr encima de ella) */
+    skeleton_rest(n_avatar);
     /* solo la tabla: el cuerpo del personaje (y su traje) no se dibuja mientras la pagina este abierta */
     if (n_avatars >= 0)
         for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling) nrt[c].rend = 0;
@@ -4203,14 +4207,9 @@ static void celeb_page_open(void)
     char_show_model(celeb_pend_char);
     celeb_kind = 0;
     celeb_page_t0 = game_time;
-    if (char_posing || anim_find(&anim_char, an.run) >= 0) {
-        anim_stop_all(&anim_char);
-        skeleton_rest(n_avatar);
-        anim_play(&anim_char, an.run);
-        nrt[n_sprayCan].rend = 0;
-        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);
-        char_posing = 1;
-    }
+    /* AvatarAnimations.StartUnlockAnimations: su animacion de reposo (la de la pantalla de personajes) y el modelo
+     * girando despacio (50 grados por segundo, en char_celebrate_tick). Antes corria con la de la carrera: muy rapido */
+    char_pose(celeb_pend_char);
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
     game_save_bg();
 }
@@ -4248,6 +4247,8 @@ static void char_celebrate_tick(void)
         char_show_model(char_shown);
     }
     if (state == GS_BOARDS) celeb_board_open();
+    if (celeb_page_t0 >= 0 && celeb_kind == 0)
+        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN + game_unlock_time() * 50.0f, 0);   /* Target.Rotate(0, 50*dt, 0) */
     if (celeb_page_t0 >= 0 && celeb_kind == 1) {
         /* la tabla sola girando en 3D (un poco inclinada para que se vea por encima), una vuelta cada 4 s */
         nrt[n_avatar].lrot = qeuler(20, 200 + game_unlock_time() * 90.0f, 0);
@@ -4489,7 +4490,6 @@ static void boards_input(unsigned in, int confirm)
 }
 static void open_chars(void)
 {
-    outfits_gift_free();   /* por si se acaban de desbloquear los trajes: los gratis ya puestos como regalo */
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
     theme_hi = theme_shown = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
     theme_mode = 0;                               /* se empieza en el carrusel, no dentro del selector */
@@ -5701,7 +5701,6 @@ void game_load(void)
         /* partidas de antes: las actualizaciones cuyas tablas ya se vieron o se compraron cuentan como alcanzadas */
         for (int r = 7; r < 32; r++) if ((board_seen | board_owned) >> r & 1) updates_reached |= 1 << board_update(r);
     }
-    outfits_gift_free();   /* los trajes gratis vienen desbloqueados si ya estan disponibles */
     /* misiones de la 1.10 (40 repetibles): quien venia de antes sigue en su grupo */
     if (!(ne3 >= 5 && e3[4] >= 1)) missions_upgrade_110();
     audio_set_mute(ginfo.opt_sound_off);

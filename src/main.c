@@ -326,6 +326,9 @@ int main(int argc, char **argv)
 #ifdef AUTOTEST
 #ifndef AT_NOPERF
     show_perf = 1;
+#ifdef AT_NOPERF
+    show_perf = 0;   /* prueba: sin el medidor, para ver lo que tapa (arriba a la izquierda) */
+#endif
 #endif
     int frame_no = 0;
 #endif
@@ -437,7 +440,9 @@ int main(int argc, char **argv)
         { extern void game_debug_powerup(int k); if (frame_no == AT_JET) game_debug_powerup(3); }
 #endif
 #ifdef AT_PAGES
+#ifndef AT_NOPERF
         if (frame_no % 600 == 0) show_perf = show_perf % 3 + 1;   /* recorre las paginas del medidor */
+#endif
 #endif
 #ifdef AT_MISS14
         /* prueba de la 1.4: misiones repetibles (grupo 30) y super cajas */
@@ -582,6 +587,9 @@ int main(int argc, char **argv)
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_CROSS;   /* JUGAR */
         { static int k; if (ginfo.state == GS_RUNNING && ++k % 55 == 0) pr |= PSP_CTRL_UP; }
+#elif defined(AT_MENUONLY)
+        /* prueba: se queda en la portada (cierra los avisos de bienvenida) para ver sus botones */
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60 || frame_no == 75) && ginfo.popup) pr |= PSP_CTRL_CROSS;
 #elif defined(AT_OUTFIT)
         if (frame_no == 20) { extern void game_debug_outfit(void); game_debug_outfit(); }
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */
