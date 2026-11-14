@@ -3629,7 +3629,34 @@ def main():
                    sc17=sc17 or sc111, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
     elif os.path.isdir(w111):
         shutil.rmtree(w111, True)
+    check_ui_textures(outdir)
     print('Listo.')
+
+
+def check_ui_textures(outdir):
+    """Que cada mapa tenga los iconos que dibuja el juego (las cadenas "ui_..." de src/*.c que el juego busca con
+    data_tex_find). Si falta uno se ve un cuadro de color (p. ej. el Score Booster sin la 1.7): se avisa al extraer."""
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
+    want = set()
+    for fn in os.listdir(src):
+        if fn.endswith('.c'):
+            want |= set(re.findall(r'data_tex_find\("(ui_[A-Za-z0-9_]+)"\)', open(os.path.join(src, fn), encoding='utf-8',
+                                                                                    errors='ignore').read()))
+    def names(path):
+        try:
+            b = open(path, 'rb').read()
+        except OSError:
+            return b''
+        return b
+    shared = names(os.path.join(outdir, 'hw_tex.bin'))
+    dirs = [outdir] + sorted(os.path.join(outdir, d) for d in os.listdir(outdir)
+                             if d.startswith('w') and os.path.isfile(os.path.join(outdir, d, 'tex.bin')))
+    for d in dirs:
+        blob = names(os.path.join(d, 'tex.bin')) + names(os.path.join(d, 'hw_tex.bin')) + shared
+        miss = sorted(n for n in want if (n.encode() + b'\0') not in blob)
+        if miss:
+            print('  AVISO %s: faltan iconos %s (sale un cuadro de color; falta el APK que los trae?)' %
+                  (os.path.relpath(d, outdir) if d != outdir else 'data', ', '.join(miss)))
 
 
 if __name__ == '__main__':
