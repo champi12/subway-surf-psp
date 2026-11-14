@@ -295,11 +295,12 @@ int main(int argc, char **argv)
                 dlog("MAPA del selector: %s (%s, version %s)", maps_def[m].es, wdir, maps_def[m].ver);
             } else if (m >= 0) dlog("AVISO el mapa de mapa.cfg (%s) no esta en data/: el de la fecha", maps_def[m].id);
         }
-        { extern int r_light; r_light = strcmp(wdir, "data") != 0; }   /* Halloween como los mapas nuevos */
-        /* los mapas nuevos sin texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a
-         * lo lejos y salian lineas. La 1.5.2 y la 1.6 eran los unicos que las llevaban: ~0,55 MB mas de RAM (main,
-         * props, environment, trenes, personaje...) que los demas mapas. El clasico de la 1.0 (data/) las conserva */
-        { extern int r_nomips; r_nomips = strcmp(wdir, "data") != 0; }
+        /* todos los mapas, tambien el clasico de la 1.0, reducidos y dibujados igual (antes el clasico era el unico como
+         * al principio del port: el que mas RAM pedia) */
+        { extern int r_light; r_light = 1; }
+        /* ningun mapa con texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a lo
+         * lejos y salian lineas, y costaban ~0,5 MB de RAM (main, props, environment, trenes, personaje...) */
+        { extern int r_nomips; r_nomips = 1; }
         { extern int game_world; game_world = !strcmp(wdir, "data/w111") ? 111 : !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : !strcmp(wdir, "data/whw") ? 4 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
         dlog("Mundo: %s", !strcmp(wdir, "data/w111") ? "1.11 Miami (data/w111)" : !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : !strcmp(wdir, "data/whw") ? "Halloween (data/whw)" : "clasico (data/)");
     }

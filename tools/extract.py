@@ -3576,7 +3576,11 @@ def main():
         sc111 = Scene(unpack_apk(apk111))
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
-    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
+    # reducido como los demas mapas (slim: piezas unidas por textura, texturas con paleta, enemies a 256), igual que
+    # Halloween, que es este mismo mapa y ya se probo en la consola. Antes era el unico como al principio del port y
+    # el que mas RAM pedia (main de 16 bits, 512 KB)
+    exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110,
+                     sc111=sc111, slim=True)
     # mapa de Halloween (data/whw/): el clasico con las mejoras (llaves de Save Me en las vias). El de la 1.0 (data/)
     # se queda como al principio del port
     whw = os.path.join(outdir, 'whw')
