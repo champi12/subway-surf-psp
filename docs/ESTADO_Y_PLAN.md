@@ -338,6 +338,14 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   lista era de 64 fijos y `bonus_long` tiene 119 objetos (`trainTops_moving_combined` 73): los que no cabían se
   quedaban escondidos para siempre y el tramo salía vacío en las siguientes carreras. Ahora crece como el diccionario
   del original. Visto en el devlog del 24 nov: revivir a los 258 s y `bonus_long` vacío a los 321 s.
+- RAM (devlog de la 1.5.2: 15,35 MB en carrera, 15,9-16,3 en el fin, pico 16,7 en personajes):
+  * Sin mipmaps en todos los mapas nuevos (`r_nomips` = todo menos `data/`): la 1.5.2 y la 1.6 eran los únicos que las
+    llevaban (~0,55 MB más). El clásico de la 1.0 las conserva.
+  * Efectos en mu-law de 8 bits (G.711, `SSS2`/`SSB2`; el juego sigue leyendo `SSS1`/`SSB1`): sfx.bin pasa de ~2,2 MB a
+    ~1,1 MB siempre en la RAM; la caja 151 KB y revivir 73 KB al usarlos. Se pasa a 16 bits con una tabla al mezclar (sin
+    coste de CPU). Error ~38 dB bajo la señal. Hay que volver a extraer (actualizar.sh lo hace solo).
+  * La caja ya no se lee al morir (a la vez que revivir y la pantalla de fin): en la pantalla de fin o el menú. Revivir
+    solo se lee si hay llaves para pagarlo.
   Extracción completa con los 9 APK: ningún aviso; llaves en Halloween, 1.5.2, 1.6, Río y Roma (36 puntos).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)

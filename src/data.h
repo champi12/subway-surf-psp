@@ -110,9 +110,10 @@ typedef struct {
 typedef struct {
     char name[32];
     uint32_t off, n;    /* muestras s16 22050 Hz */
-    int16_t *pcm;
+    void *pcm;          /* int16_t (16 bits) o uint8_t (mu-law, ulaw = 1) */
     uint32_t boff, bn;  /* efecto largo de sfxbig.bin (bn muestras): n = 0 hasta que se lee (sfx_ready) */
     int big;
+    int ulaw;           /* sfx.bin/sfxbig.bin nuevos (SSS2/SSB2): 1 byte por muestra, la mitad de RAM */
 } SfxData;
 
 typedef struct {

@@ -1047,6 +1047,18 @@ def decode_mp3(raw):
 SFX_BIG_SECS = 2.5
 
 
+def ulaw_encode(pcm16):
+    """PCM de 16 bits (bytes '<i2') a mu-law de 8 bits (G.711): la mitad de memoria. sfx.bin esta siempre en la RAM
+    (~2,2 MB en 16 bits, ~1,1 MB asi); el juego lo pasa a 16 bits con una tabla de 256 valores al mezclar (sin coste).
+    Error de ~38 dB por debajo de la senal a cualquier volumen (calidad de telefono), tapado por el propio sonido."""
+    x = np.frombuffer(pcm16, '<i2').astype(np.int32)
+    sign = np.where(x < 0, 0x80, 0)
+    m = np.minimum(np.abs(x), 32635) + 0x84
+    e = np.clip(np.floor(np.log2(np.maximum(m >> 7, 1))).astype(np.int32), 0, 7)
+    man = (m >> (e + 3)) & 0x0F
+    return (~(sign | (e << 4) | man) & 0xFF).astype(np.uint8).tobytes()
+
+
 def export_audio(ex, outdir, write_files=True):
     # write_files: la musica (mp3) y los wav de consulta solo en data/ (los demas mundos la comparten)
     if write_files:
@@ -1105,12 +1117,15 @@ def export_audio(ex, outdir, write_files=True):
             else:
                 blobs.append(pcm)
                 print('  efecto %s: %.1f s (MP3 a PCM)' % (name, len(a) / 22050))
+    # SSB2/SSS2: muestras en mu-law (1 byte cada una); SSB1/SSS1 eran de 16 bits (el juego lee los dos)
+    big = [(n, ulaw_encode(b)) for n, b in big]
+    blobs = [ulaw_encode(b) for b in blobs]
     if big:
-        sb = bytearray(b'SSB1') + struct.pack('<I', len(big))
+        sb = bytearray(b'SSB2') + struct.pack('<I', len(big))
         off = 8 + len(big) * 40
         for n, b in big:
             nb = n.encode()[:31]
-            sb += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b) // 2)
+            sb += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b))
             off += len(b) + (4 - len(b) % 4) % 4
         for n, b in big:
             sb += b
@@ -1118,12 +1133,12 @@ def export_audio(ex, outdir, write_files=True):
                 sb += b'\0'
         with open(os.path.join(outdir, 'sfxbig.bin'), 'wb') as f:
             f.write(sb)
-    out = bytearray(b'SSS1')
+    out = bytearray(b'SSS2')
     out += struct.pack('<I', len(names))
     off = 8 + len(names) * 40
     for n, b in zip(names, blobs):
         nb = n.encode()[:31]
-        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b) // 2)
+        out += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b))
         off += len(b)
         off += (4 - off % 4) % 4
     for b in blobs:

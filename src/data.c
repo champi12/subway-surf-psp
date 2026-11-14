@@ -1060,6 +1060,7 @@ static int load_sfx(void)
 {
     uint8_t *b = load_file("sfx.bin", NULL);
     if (!b) return -1;
+    int ulaw = !memcmp(b, "SSS2", 4);   /* mu-law (extract.py nuevo); SSS1: 16 bits */
     gd.nsfx = rd32(b + 4);
     gd.sfx = calloc(gd.nsfx, sizeof(SfxData));
     for (int i = 0; i < gd.nsfx; i++) {
@@ -1068,7 +1069,8 @@ static int load_sfx(void)
         int l = p[0]; if (l > 31) l = 31;
         memcpy(s->name, p + 1, l); s->name[l] = 0;
         s->off = rd32(p + 32); s->n = rd32(p + 36);
-        s->pcm = (int16_t *)(b + s->off);
+        s->pcm = b + s->off;
+        s->ulaw = ulaw;
     }
     sfx_big_open();
     return 0;
@@ -1101,7 +1103,7 @@ static int check_alignment(void)
                 if (bad++ < 5) dlog_error("Animacion %s pista %d desalineada", gd.clips[i].name, t);
             }
     for (int i = 0; i < gd.nsfx; i++)
-        if (MISALIGNED(gd.sfx[i].pcm, 2)) { if (bad++ < 5) dlog_error("Sonido %s desalineado", gd.sfx[i].name); }
+        if (!gd.sfx[i].ulaw && MISALIGNED(gd.sfx[i].pcm, 2)) { if (bad++ < 5) dlog_error("Sonido %s desalineado", gd.sfx[i].name); }
     dlog("Alineacion de los datos: %s (%d problemas)", bad ? "MAL" : "correcta", bad);
     return bad;
 }
@@ -1192,7 +1194,9 @@ static void sfx_big_open(void)
     if (!f) { snprintf(sb_path, sizeof(sb_path), "%s/data/sfxbig.bin", cwd); f = fopen(sb_path, "rb"); }
     if (!f) { sb_path[0] = 0; return; }
     uint8_t h[8];
-    int n = fread(h, 1, 8, f) == 8 && !memcmp(h, "SSB1", 4) ? (int)rd32(h + 4) : 0;
+    int got = fread(h, 1, 8, f) == 8;
+    int ulaw = got && !memcmp(h, "SSB2", 4);   /* mu-law; SSB1: 16 bits */
+    int n = got && (ulaw || !memcmp(h, "SSB1", 4)) ? (int)rd32(h + 4) : 0;
     for (int k = 0; k < n; k++) {
         uint8_t e[40];
         if (fread(e, 1, 40, f) != 40) break;
@@ -1201,11 +1205,11 @@ static void sfx_big_open(void)
         /* todas las entradas con ese nombre (sfx.bin puede traer el mismo clip dos veces, de escenas distintas) */
         for (int i = 0; i < gd.nsfx; i++) {
             if (strcmp(gd.sfx[i].name, nm) || gd.sfx[i].n || gd.sfx[i].big) continue;   /* con sonido en sfx.bin */
-            gd.sfx[i].big = 1; gd.sfx[i].boff = rd32(e + 32); gd.sfx[i].bn = rd32(e + 36);
+            gd.sfx[i].big = 1; gd.sfx[i].boff = rd32(e + 32); gd.sfx[i].bn = rd32(e + 36); gd.sfx[i].ulaw = ulaw;
             /* load_sfx le puso un puntero dentro de sfx.bin (con 0 muestras): sfx_ready leia ahi encima de otros sonidos
              * y luego hacia free de ese puntero (el monton se rompia: 350 MB "usados" en el devlog) */
             gd.sfx[i].pcm = NULL;
-            dlog("SONIDO largo %s: %u KB, se lee al usarlo", nm, (unsigned)(gd.sfx[i].bn * 2 / 1024));
+            dlog("SONIDO largo %s: %u KB, se lee al usarlo", nm, (unsigned)(gd.sfx[i].bn * (ulaw ? 1 : 2) / 1024));
         }
     }
     fclose(f);
@@ -1218,10 +1222,11 @@ int sfx_ready(int i)
     if (sb_want) sb_want[i] = sb_frame;
     if (s->n) return 1;
     if (sb_reading >= 0 || !sb_path[0]) return 0;    /* de uno en uno */
-    if (!s->pcm) s->pcm = memalign(64, s->bn * 2);
+    uint32_t bytes = s->bn * (s->ulaw ? 1 : 2);
+    if (!s->pcm) s->pcm = memalign(64, bytes);
     if (!s->pcm) return 0;
     sb_fd = sceIoOpen(sb_path, PSP_O_RDONLY, 0);
-    if (sb_fd < 0 || sceIoLseek(sb_fd, s->boff, PSP_SEEK_SET) != (SceOff)s->boff || sceIoReadAsync(sb_fd, s->pcm, s->bn * 2) < 0) {
+    if (sb_fd < 0 || sceIoLseek(sb_fd, s->boff, PSP_SEEK_SET) != (SceOff)s->boff || sceIoReadAsync(sb_fd, s->pcm, bytes) < 0) {
         if (sb_fd >= 0) sceIoClose(sb_fd);
         sb_fd = -1; free(s->pcm); s->pcm = NULL;
         dlog_error("No se puede leer el sonido %s de sfxbig.bin", s->name);
@@ -1239,9 +1244,10 @@ void sfx_big_tick(void)
         if (sceIoPollAsync(sb_fd, &res) == 1) return;   /* aun leyendo */
         SfxData *s = &gd.sfx[sb_reading];
         sceIoClose(sb_fd); sb_fd = -1;
-        if (res == (SceInt64)(s->bn * 2)) {
+        uint32_t bytes = s->bn * (s->ulaw ? 1 : 2);
+        if (res == (SceInt64)bytes) {
             s->n = s->bn;
-            dlog("SONIDO %s leido (%u KB)", s->name, (unsigned)(s->bn * 2 / 1024));
+            dlog("SONIDO %s leido (%u KB)", s->name, (unsigned)(bytes / 1024));
         } else { free(s->pcm); s->pcm = NULL; }
         sb_reading = -1;
     }

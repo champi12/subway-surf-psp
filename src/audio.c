@@ -22,7 +22,8 @@
 #define MIX_SAMPLES 512
 
 typedef struct {
-    const int16_t *pcm;
+    const void *pcm;       /* int16_t, o uint8_t en mu-law (ulaw) */
+    int ulaw;
     uint32_t n;
     uint32_t pos;          /* muestra actual (entera) */
     uint32_t frac;         /* fraccion de la muestra, 0..0xffff */
@@ -36,6 +37,16 @@ typedef struct {
 } Voice;
 
 static Voice voices[MAX_VOICES];
+/* mu-law (G.711) -> 16 bits: sfx.bin nuevo guarda 1 byte por muestra (la mitad de RAM); al mezclar es una tabla */
+static int16_t ulaw_tab[256];
+static void ulaw_init(void)
+{
+    for (int i = 0; i < 256; i++) {
+        int u = ~i & 0xff, e = (u >> 4) & 7, m = u & 0x0f;
+        int s = (((m << 3) + 0x84) << e) - 0x84;
+        ulaw_tab[i] = (int16_t)((u & 0x80) ? -s : s);
+    }
+}
 static int16_t __attribute__((aligned(64))) mixbuf[2][MIX_SAMPLES * 2];
 static volatile int audio_running, audio_paused;
 /* Ajustes de la 1.5.2 (SoundButton: Settings.optionSound): sin ningun sonido ni musica */
@@ -59,17 +70,27 @@ static int mixer_thread(SceSize args, void *argp)
                 if (!v->active) continue;
                 int vol = v->vol;
                 uint32_t n = v->n, ip = v->pos, fq = v->frac, step = v->step;
-                for (int i = 0; i < MIX_SAMPLES; i++) {
-                    if (ip >= n) {
-                        if (v->loop && n > 0) ip %= n;
-                        else { v->active = 0; break; }
-                    }
-                    int s0 = v->pcm[ip], s1 = ip + 1 < n ? v->pcm[ip + 1] : s0;
-                    int s = s0 + (((s1 - s0) * (int)(fq >> 8)) >> 8);
-                    acc[i] += (s * vol) >> 8;
-                    fq += step;
-                    ip += fq >> 16;
-                    fq &= 0xffff;
+#define MIX_LOOP(S)                                                                         \
+                for (int i = 0; i < MIX_SAMPLES; i++) {                                     \
+                    if (ip >= n) {                                                          \
+                        if (v->loop && n > 0) ip %= n;                                      \
+                        else { v->active = 0; break; }                                      \
+                    }                                                                       \
+                    int s0 = S(ip), s1 = ip + 1 < n ? S(ip + 1) : s0;                       \
+                    int s = s0 + (((s1 - s0) * (int)(fq >> 8)) >> 8);                       \
+                    acc[i] += (s * vol) >> 8;                                               \
+                    fq += step;                                                             \
+                    ip += fq >> 16;                                                         \
+                    fq &= 0xffff;                                                           \
+                }
+                if (v->ulaw) {
+                    const uint8_t *p8 = v->pcm;
+#define S8(k) ulaw_tab[p8[k]]
+                    MIX_LOOP(S8)
+                } else {
+                    const int16_t *p16 = v->pcm;
+#define S16(k) p16[k]
+                    MIX_LOOP(S16)
                 }
                 v->pos = ip; v->frac = fq;
             }
@@ -111,6 +132,7 @@ int snd_play(int id, float vol, float pitch, int loop)
     /* el mezclador (prioridad mas alta) puede interrumpir aqui: que vea la voz apagada hasta que este completa */
     __asm__ volatile("" ::: "memory");
     v->pcm = gd.sfx[id].pcm;
+    v->ulaw = gd.sfx[id].ulaw;
     v->n = gd.sfx[id].n;
     v->pos = 0;
     v->frac = 0;
@@ -326,6 +348,7 @@ void music_pause(int p) { mus_paused = p; }
 
 int audio_init(void)
 {
+    ulaw_init();
     /* los hilos no tienen directorio actual en la PSP: ruta absoluta */
     if (!getcwd(basedir, sizeof(basedir))) strcpy(basedir, "ms0:/PSP/GAME/SUBWAY");
     strncat(basedir, "/data", sizeof(basedir) - strlen(basedir) - 1);

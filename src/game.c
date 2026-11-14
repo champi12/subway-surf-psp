@@ -3407,9 +3407,10 @@ static void die_tick(float dt)
             /* Game.DieSequence de la 1.9: a los 0,5 s la ventana de Save Me (SaveMePopup), 3 s con el reloj. X revive si
              * hay llaves; O o el tiempo, fin de partida */
             if (saveme_t0 < 0) { saveme_t0 = game_time; in_up = 0; }
-            /* el sonido de revivir (3 s) no esta siempre en la RAM: se lee mientras la ventana esta abierta */
+            /* el sonido de revivir (3 s, 146 KB) no esta siempre en la RAM: se lee mientras la ventana esta abierta, y
+             * solo si hay llaves para revivir (sin ellas no va a sonar) */
             if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");
-            sfx_ready(sfx_revive);
+            if (keys >= saveme_cost) sfx_ready(sfx_revive);
             if (in_up) {
                 in_up = 0;
                 if (keys >= saveme_cost) { saveme_done = 0; saveme_revive_start(); return; }
@@ -4891,7 +4892,10 @@ static void box_open_sound(void)
  * memoria mientras suena; en la carrera no ocupa nada */
 static void box_sound_prefetch(void)
 {
-    int run = state == GS_INTRO || state == GS_RUNNING || state == GS_JETPACK || state == GS_CHECKPOINT;
+    /* tampoco al morir: se leia en la caida (302 KB) a la vez que el de revivir y las texturas de la pantalla de fin
+     * (el pico de RAM de la partida). Se lee ya en la pantalla de fin o en el menu, antes de abrir la caja */
+    int run = state == GS_INTRO || state == GS_RUNNING || state == GS_JETPACK || state == GS_CHECKPOINT ||
+              state == GS_DIEFALL || state == GS_DIE;
     if (run || box_from_shop) return;
     if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || (ginfo.reward_t > 0 && game_time - ginfo.reward_t < 1.0f)) {
         if (s_box == -2) s_box = sfx_find("Hr_mysteryBoxOpen");
