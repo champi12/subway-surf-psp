@@ -1763,7 +1763,9 @@ static void draw_chars(void)
     int i = ginfo.char_sel, nc = char_count(), un = char_unlocked(i);
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
-    float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, char_name(i));
+    /* dentro del selector de trajes, el nombre del traje marcado (CharacterThemes *_THEME_TITLE); si no, el del personaje */
+    int tho = outfits_avail() && char_theme_count(i) && game_theme_mode() ? game_theme_hi() : 0;
+    float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, tho > 0 ? game_theme_name(i, tho) : char_name(i));
     if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 8 ? TR("Especial de Miami", "Miami Special")
                                                    : limited == 7 ? TR("Especial de Tokio", "Tokyo Special")
                                                    : limited == 6 ? TR("Especial de Sídney", "Sydney Special")

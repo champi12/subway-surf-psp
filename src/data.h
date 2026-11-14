@@ -111,6 +111,8 @@ typedef struct {
     char name[32];
     uint32_t off, n;    /* muestras s16 22050 Hz */
     int16_t *pcm;
+    uint32_t boff, bn;  /* efecto largo de sfxbig.bin (bn muestras): n = 0 hasta que se lee (sfx_ready) */
+    int big;
 } SfxData;
 
 typedef struct {
@@ -175,6 +177,8 @@ int node_find_root(const char *name);
 int node_find_path(int from, const char *path);                 /* "a/b/c" */
 int clip_find(const char *name);
 int sfx_find(const char *name);
+int sfx_ready(int i);       /* 1 si el efecto se puede tocar; los largos (sfxbig.bin) se leen en segundo plano al pedirlo */
+void sfx_big_tick(void);    /* una vez por fotograma: termina las lecturas y suelta los largos que ya no se piden */
 static inline float u2f(uint32_t u) { union { uint32_t u; float f; } c; c.u = u; return c.f; }
 
 #endif

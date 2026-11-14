@@ -128,6 +128,7 @@ static Voice *voice_of(int h)
 
 void snd_stop(int h) { Voice *v = voice_of(h); if (v) v->active = 0; }
 int snd_playing(int h) { Voice *v = voice_of(h); return v && v->active; }
+int snd_uses(const void *pcm) { for (int i = 0; i < MAX_VOICES; i++) if (voices[i].active && voices[i].pcm == pcm) return 1; return 0; }
 void snd_set(int h, float vol, float pitch)
 {
     Voice *v = voice_of(h);

@@ -10,6 +10,7 @@ int snd_play(int sfx, float vol, float pitch, int loop);
 void snd_stop(int h);
 void snd_set(int h, float vol, float pitch);
 int snd_playing(int h);
+int snd_uses(const void *pcm);   /* 1 si alguna voz esta tocando esas muestras */
 void snd_stop_all(void);
 void snd_pause_all(int pause);
 void audio_set_mute(int mute);   /* ajustes: sonido apagado (efectos y musica) */

@@ -107,6 +107,7 @@ int game_free_outfit(void);          /* queda un traje gratis sin reclamar (pega
 const char *game_unlock_name(void);  /* nombre del personaje o del traje */
 #define CELEB_SECS 3.0f   /* lo que dura la celebracion al desbloquear (fondo de colores y el personaje corriendo) */
 int game_theme_hi(void);
+const char *game_theme_name(int ci, int th);   /* nombre del traje th (1..) del personaje ci */
 int game_theme_mode(void);                      /* 1 si se esta dentro del selector de trajes */
 int game_theme_sel(int i);
 int game_theme_owned(int i, int t);

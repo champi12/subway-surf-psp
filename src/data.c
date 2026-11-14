@@ -8,7 +8,9 @@
 #include <malloc.h>
 #include "data.h"
 #include "devlog.h"
+#include "audio.h"
 #include <pspkernel.h>
+#include <pspiofilemgr.h>
 
 GameData gd;
 static char errbuf[128];
@@ -1041,6 +1043,7 @@ int data_board_clips_async(const char *const *names, int n, int *added)
 /* 1 si el hilo de las animaciones de la tabla esta leyendo (no se puede soltar su bufer) */
 int data_board_clips_busy(void) { return bc_state == 1; }
 
+static void sfx_big_open(void);
 static int load_sfx(void)
 {
     uint8_t *b = load_file("sfx.bin", NULL);
@@ -1055,6 +1058,7 @@ static int load_sfx(void)
         s->off = rd32(p + 32); s->n = rd32(p + 36);
         s->pcm = (int16_t *)(b + s->off);
     }
+    sfx_big_open();
     return 0;
 }
 
@@ -1157,6 +1161,76 @@ int clip_find(const char *name)
     return -1;
 }
 
+/* ---- efectos largos (sfxbig.bin): la caja misteriosa (6 s, 265 KB) y revivir (3 s) venian en MP3 y se quedaban sin
+ * sonido. En sfx.bin estarian siempre en la RAM; aqui solo se leen (sceIoReadAsync, sin parar el juego) mientras el
+ * juego los pide con sfx_ready, y se sueltan unos fotogramas despues de dejar de pedirlos y de sonar */
+static char sb_path[200];
+static int sb_fd = -1, sb_reading = -1, sb_frame;
+static int sb_want[64];
+static void sfx_big_open(void)
+{
+    char cwd[160];
+    if (!getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
+    snprintf(sb_path, sizeof(sb_path), "%s/%s/sfxbig.bin", cwd, basedir);
+    FILE *f = fopen(sb_path, "rb");
+    if (!f) { snprintf(sb_path, sizeof(sb_path), "%s/data/sfxbig.bin", cwd); f = fopen(sb_path, "rb"); }
+    if (!f) { sb_path[0] = 0; return; }
+    uint8_t h[8];
+    int n = fread(h, 1, 8, f) == 8 && !memcmp(h, "SSB1", 4) ? (int)rd32(h + 4) : 0;
+    for (int k = 0; k < n; k++) {
+        uint8_t e[40];
+        if (fread(e, 1, 40, f) != 40) break;
+        char nm[32]; int l = e[0] > 31 ? 31 : e[0];
+        memcpy(nm, e + 1, l); nm[l] = 0;
+        int i = sfx_find(nm);
+        if (i < 0 || gd.sfx[i].n) continue;   /* ya tiene sonido en sfx.bin */
+        gd.sfx[i].big = 1; gd.sfx[i].boff = rd32(e + 32); gd.sfx[i].bn = rd32(e + 36);
+        dlog("SONIDO largo %s: %u KB, se lee al usarlo", nm, (unsigned)(gd.sfx[i].bn * 2 / 1024));
+    }
+    fclose(f);
+}
+int sfx_ready(int i)
+{
+    if (i < 0 || i >= gd.nsfx) return 0;
+    SfxData *s = &gd.sfx[i];
+    if (!s->big) return s->n > 0;
+    if (i < 64) sb_want[i] = sb_frame;
+    if (s->n) return 1;
+    if (sb_reading >= 0 || !sb_path[0]) return 0;    /* de uno en uno */
+    if (!s->pcm) s->pcm = memalign(64, s->bn * 2);
+    if (!s->pcm) return 0;
+    sb_fd = sceIoOpen(sb_path, PSP_O_RDONLY, 0);
+    if (sb_fd < 0 || sceIoLseek(sb_fd, s->boff, PSP_SEEK_SET) != (SceOff)s->boff || sceIoReadAsync(sb_fd, s->pcm, s->bn * 2) < 0) {
+        if (sb_fd >= 0) sceIoClose(sb_fd);
+        sb_fd = -1; free(s->pcm); s->pcm = NULL;
+        dlog_error("No se puede leer el sonido %s de sfxbig.bin", s->name);
+        sb_path[0] = 0;   /* no se vuelve a intentar */
+        return 0;
+    }
+    sb_reading = i;
+    return 0;
+}
+void sfx_big_tick(void)
+{
+    sb_frame++;
+    if (sb_reading >= 0) {
+        SceInt64 res = 0;
+        if (sceIoPollAsync(sb_fd, &res) == 1) return;   /* aun leyendo */
+        SfxData *s = &gd.sfx[sb_reading];
+        sceIoClose(sb_fd); sb_fd = -1;
+        if (res == (SceInt64)(s->bn * 2)) {
+            s->n = s->bn;
+            dlog("SONIDO %s leido (%u KB)", s->name, (unsigned)(s->bn * 2 / 1024));
+        } else { free(s->pcm); s->pcm = NULL; }
+        sb_reading = -1;
+    }
+    for (int i = 0; i < gd.nsfx && i < 64; i++) {
+        SfxData *s = &gd.sfx[i];
+        if (!s->big || !s->n || sb_frame - sb_want[i] < 30 || snd_uses(s->pcm)) continue;
+        s->n = 0;   /* snd_play ya no lo toca */
+        free(s->pcm); s->pcm = NULL;
+    }
+}
 int sfx_find(const char *name)
 {
     for (int i = 0; i < gd.nsfx; i++) if (!strcmp(gd.sfx[i].name, name)) return i;

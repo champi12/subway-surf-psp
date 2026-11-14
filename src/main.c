@@ -587,6 +587,17 @@ int main(int argc, char **argv)
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_CROSS;   /* JUGAR */
         { static int k; if (ginfo.state == GS_RUNNING && ++k % 55 == 0) pr |= PSP_CTRL_UP; }
+#elif defined(AT_TEXLIST2)
+        /* prueba de memoria con el recorrido del devlog: tienda, personajes (varios, y trajes), tablas y a correr */
+        if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
+        if (frame_no == 80) pr |= PSP_CTRL_RTRIGGER;                    /* tienda */
+        if (frame_no == 140) pr |= PSP_CTRL_CIRCLE;                     /* al menu */
+        if (frame_no == 170) pr |= PSP_CTRL_LTRIGGER;                   /* personajes */
+        if (frame_no > 200 && frame_no < 200 + 8 * 25 && frame_no % 25 == 0) pr |= PSP_CTRL_RIGHT;   /* varios */
+        if (frame_no == 420) pr |= PSP_CTRL_RTRIGGER;                   /* tablas */
+        if (frame_no == 460 || frame_no == 490 || frame_no == 520) pr |= PSP_CTRL_RIGHT;
+        if (frame_no == 560) pr |= PSP_CTRL_CIRCLE;                     /* al menu */
+        if (frame_no == 620) pr |= PSP_CTRL_CROSS;                      /* a correr */
 #elif defined(AT_MENUONLY)
         /* prueba: se queda en la portada (cierra los avisos de bienvenida) para ver sus botones */
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60 || frame_no == 75) && ginfo.popup) pr |= PSP_CTRL_CROSS;
@@ -610,6 +621,9 @@ int main(int argc, char **argv)
         if (frame_no == 170 || frame_no == 210 || frame_no == 250) pr |= PSP_CTRL_RIGHT;   /* vistas previas */
         if (frame_no == 300) pr |= PSP_CTRL_CROSS;                      /* elegir la tabla marcada */
         if (frame_no == 340) pr |= PSP_CTRL_CIRCLE;                     /* volver al menu */
+#ifdef AT_TEXLIST
+        if (frame_no == 440) pr |= PSP_CTRL_CROSS;                      /* y a correr: lista de texturas en la RAM */
+#endif
 #elif defined(AT_HUNTBOX)
         /* prueba: caja de la caza semanal al acabar la carrera y la pausa con la mision de los segundos */
         if (frame_no == 30 || frame_no == 50 || frame_no == 80) pr |= PSP_CTRL_CROSS;   /* avisos y jugar */

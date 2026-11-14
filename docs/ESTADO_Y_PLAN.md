@@ -280,6 +280,15 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    el momento (el menu pinta el tren, no corre con la tabla): 30 FPS fijos, CPU max. 17 ms. Comprar en la tienda,
    tablas, personajes, trajes, abrir cajas y los ajustes guardan en segundo plano (`game_save_bg`; eran tirones de
    50-100 ms en la tienda).
+4l. RAM en los mapas y sonidos (devlog del 14 nov): en Miami el montón pasaba de 14,4 a 15,2 MB en la carrera. Causas:
+   la textura normal de Jake se quedaba cargada con su traje puesto (257 KB; ahora `char_base_used` decide si se
+   dibuja y si no se suelta), las de la tienda/personajes/tablas al empezar (`run_tex_trim`) y las de la pantalla de
+   fin tras revivir (`fin_tex_release`). Con traje: 1552 KB de texturas en la RAM en la carrera (antes ~2020).
+   Los efectos que el APK trae en MP3 (caja misteriosa, revivir, monedas del menú) se quedaban vacíos en sfx.bin: solo
+   se oía bajar la música. El extractor los pasa a PCM con ffmpeg; los largos (caja 7 s, revivir 3,4 s) van a
+   `sfxbig.bin` y el juego los lee en segundo plano solo cuando hacen falta (`sfx_ready`: ventana de Save Me, cajas por
+   abrir) y los suelta al acabar de sonar. Hay que volver a extraer para tenerlos. El selector de trajes enseña el
+   nombre del traje marcado.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los

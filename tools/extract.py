@@ -1022,6 +1022,28 @@ def streamed_audio(ao):
         return name, f.read(size)
 
 
+def decode_mp3(raw):
+    """PCM mono 22050 Hz (float) de un MP3, con ffmpeg; None si no esta."""
+    import subprocess
+    exe = shutil.which('ffmpeg')
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, '-v', 'error', '-i', 'pipe:0', '-ac', '1', '-ar', '22050', '-f', 's16le', 'pipe:1'],
+                           input=raw, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
+    except Exception:
+        return None
+    a = np.frombuffer(r.stdout, '<i2').astype(np.float32)
+    # sin la cola en silencio (-54 dB): la caja dura 8 s en el MP3 pero a los 6 ya no se oye
+    loud = np.nonzero(np.abs(a) > 64)[0]
+    return a[:loud[-1] + 1] if len(loud) else a[:0]
+
+
+# efectos largos (MP3 del juego, p. ej. la caja misteriosa 6 s y revivir 3 s): no van en sfx.bin (que esta siempre
+# en la RAM) sino en sfxbig.bin, que el juego lee solo cuando los va a usar
+SFX_BIG_SECS = 2.5
+
+
 def export_audio(ex, outdir, write_files=True):
     # write_files: la musica (mp3) y los wav de consulta solo en data/ (los demas mundos la comparten)
     if write_files:
@@ -1029,6 +1051,7 @@ def export_audio(ex, outdir, write_files=True):
         os.makedirs(os.path.join(outdir, 'wav'), exist_ok=True)
     names = []
     blobs = []
+    big = []
     for ao in ex.audio:
         try:
             d = ao.read()
@@ -1064,7 +1087,33 @@ def export_audio(ex, outdir, write_files=True):
             if write_files:
                 with open(os.path.join(outdir, 'music', name + '.mp3'), 'wb') as f:
                     f.write(raw)
-            blobs.append(b'')
+            # los efectos en MP3 (caja misteriosa, revivir, monedas del menu) se quedaban vacios: solo se oia bajar la
+            # musica. Se pasan a PCM; la musica no (va por el reproductor de MP3)
+            a = None if 'music' in name.lower() else decode_mp3(raw)
+            if a is None or len(a) == 0:
+                blobs.append(b'')
+                continue
+            pcm = np.clip(a, -32768, 32767).astype('<i2').tobytes()
+            if len(a) > SFX_BIG_SECS * 22050:
+                big.append((name, pcm))
+                blobs.append(b'')
+                print('  efecto %s: %.1f s, en sfxbig.bin' % (name, len(a) / 22050))
+            else:
+                blobs.append(pcm)
+                print('  efecto %s: %.1f s (MP3 a PCM)' % (name, len(a) / 22050))
+    if big:
+        sb = bytearray(b'SSB1') + struct.pack('<I', len(big))
+        off = 8 + len(big) * 40
+        for n, b in big:
+            nb = n.encode()[:31]
+            sb += struct.pack('<B', len(nb)) + nb.ljust(31, b'\0') + struct.pack('<II', off, len(b) // 2)
+            off += len(b) + (4 - len(b) % 4) % 4
+        for n, b in big:
+            sb += b
+            while len(sb) % 4:
+                sb += b'\0'
+        with open(os.path.join(outdir, 'sfxbig.bin'), 'wb') as f:
+            f.write(sb)
     out = bytearray(b'SSS1')
     out += struct.pack('<I', len(names))
     off = 8 + len(names) * 40

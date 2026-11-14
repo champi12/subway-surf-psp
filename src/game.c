@@ -182,6 +182,11 @@ static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static void char_pose(int i);
 static void skeleton_rest(int root);   /* el esqueleto a su postura de reposo */
+static void fin_tex_release(void);     /* fuera las texturas de la pantalla de fin */
+static void run_tex_trim(void);        /* al empezar la carrera: fuera las que solo usan los menus */
+static int char_tex(int i);
+static int char_base_used(int i, int th);
+static int outfit_view(int i);
 static void celeb_queue(int ci, int theme);   /* pone en cola la pagina de celebracion */
 static void celeb_queue_board(int r);          /* ...la de una tabla */
 static CharCtrl cc;
@@ -2784,6 +2789,19 @@ static void game_start_run(void)
     currentLevelSpeed = Speed(0);
     high_speed_reset();
     start_time = game_time;
+    fin_tex_release();   /* las de la pantalla de fin de la carrera anterior, fuera */
+    run_tex_trim();
+#ifdef AT_TEXLIST
+    {   /* prueba: que texturas siguen en la RAM al empezar la carrera (para ver que no se suelta) */
+        int tot = 0;
+        for (int t = 0; t < gd.ntex; t++)
+            if (gd.tex[t].loaded && gd.tex[t].data) {
+                int kb = (int)((gd.tex[t].databytes + gd.tex[t].palbytes) / 1024); tot += kb;
+                dlog("RAM al correr: %-26s %4d KB", gd.tex[t].name, kb);
+            }
+        dlog("RAM al correr: total %d KB", tot);
+    }
+#endif
 #if DEVLOG
     unsigned int rt0 = sceKernelGetSystemTimeLow();
 #endif
@@ -3256,6 +3274,29 @@ static void game_die(void)
 }
 
 
+/* texturas de la pantalla de fin (y de la ventana de Save Me) que se leen en segundo plano mientras cae el personaje */
+static const char *const fin_tex[] = {"ui_settings", "ui_key", "ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
+/* ...y fuera de la memoria cuando ya no hacen falta: al revivir con Save Me (no se llega a la pantalla de fin) y al
+ * empezar otra carrera. Antes se quedaban: +0,39 MB el resto de la carrera tras revivir (en el devlog de 14,9 a 15,2
+ * MB) y la siguiente carrera empezaba con ellas. Si vuelven a hacer falta se leen otra vez en segundo plano, sin tiron.
+ * La llave no: pesa 2 KB y la usa el contador de llaves */
+/* las de los menus que no se dibujan en la carrera (se vuelven a leer al volver a ellos, son pequenas) y la textura
+ * normal del personaje si lleva un traje que la cambia (257 KB): en el devlog de Miami la RAM pasaba de 14.4 a 15.2 MB
+ * por quedarse cargadas la normal de Jake con su traje puesto y las de la tienda, personajes y tablas */
+static const char *const menu_tex[] = {"ui_booster_shop", "ui_sel_fill", "ui_sel_char", "ui_sel_skin", "ui_chars",
+                                       "ui_boards", "ui_celeb_bg", "ui_celeb_stripe"};
+static void run_tex_trim(void)
+{
+    for (int i = 0; i < (int)(sizeof(menu_tex) / sizeof(menu_tex[0])); i++) r_tex_unload(data_tex_find(menu_tex[i]));
+    int c = ginfo.character;
+    if (!char_base_used(c, outfit_view(c))) r_tex_unload(char_tex(c));
+}
+static void fin_tex_release(void)
+{
+    for (int i = 0; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++)
+        if (strcmp(fin_tex[i], "ui_key")) r_tex_unload(data_tex_find(fin_tex[i]));
+}
+
 /* Revive.ReviveNow + Game.Revive de la 1.9: fuera los obstaculos de delante (250 por la velocidad), el inspector se
  * reinicia lejos y escondido, sin power-ups, y el personaje sale de un salto (altura 15) */
 static int sfx_revive = -2;
@@ -3270,7 +3311,7 @@ static void saveme_revive(void)
     saveme_cost *= 2;   /* SaveMeManager.IncrementNumberOfUsedKeys */
     saveme_t0 = -1;
     if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");   /* AudioStateLoop.reviveSound de la 1.9 */
-    if (sfx_revive >= 0) snd_play(sfx_revive, 1.0f, 1.0f, 0);
+    if (sfx_ready(sfx_revive)) snd_play(sfx_revive, 1.0f, 1.0f, 0);
     else play_ci(&snd_powerup);
     music_dip(0.5f, 3.0f, 1);   /* PlayReviveSound: revivePauseTime 0,5 y reviveFadeUpTime 3 (1.11) */
     track_remove_obstacles(ch.z + 250.0f * normalized_speed());
@@ -3290,6 +3331,7 @@ static void saveme_revive(void)
      * cada fotograma desde enemiesStartPos; aqui solo se ponia al empezar la carrera (guard_play_intro) */
     if (n_guard >= 0) { nrt[n_guard].lpos = enemy_start[0]; nrt[n_guard].lrot = qident(); }
     if (n_dog >= 0) { nrt[n_dog].lpos = enemy_start[1]; nrt[n_dog].lrot = qident(); }
+    fin_tex_release();   /* no se llega a la pantalla de fin: sus texturas fuera */
     mods_stop_no_ending();
     clear_powerups();
     gu.catching = 0; gu.hit_train = 0;
@@ -3329,6 +3371,9 @@ static void die_tick(float dt)
             /* Game.DieSequence de la 1.9: a los 0,5 s la ventana de Save Me (SaveMePopup), 3 s con el reloj. X revive si
              * hay llaves; O o el tiempo, fin de partida */
             if (saveme_t0 < 0) { saveme_t0 = game_time; in_up = 0; }
+            /* el sonido de revivir (3 s) no esta siempre en la RAM: se lee mientras la ventana esta abierta */
+            if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");
+            sfx_ready(sfx_revive);
             if (in_up) {
                 in_up = 0;
                 if (keys >= saveme_cost) { saveme_done = 0; saveme_revive(); return; }
@@ -3772,6 +3817,9 @@ const char *char_token_sprite(int row) { return chars[char_id(row)].tok_sprite; 
  * Memoria: solo quedan cargadas la malla y la textura del que se ve y las del elegido */
 static int char_shown = -1;   /* personaje cuyo modelo se esta viendo */
 static void outfits_trim_tex(int shown);
+static int char_base_used(int i, int th);
+static int outfit_view(int i);
+static int outfit_shows(int i, int sel);
 static void char_show_model(int i)
 {
     if (i < 0 || i >= NCHARS) i = 0;
@@ -3788,7 +3836,12 @@ static void char_show_model(int i)
         slick_skin[3] = (uint32_t)(e ? ext_mat[i] : slick_mat);
     }
     int sel = ginfo.character;
-    int keep1 = char_tex(i), keep2 = char_tex(sel);
+    /* la textura normal solo si se dibuja: con un traje que la cambia (Jake) o con su cuerpo de la 1.11 (Tricky) no.
+     * Antes se quedaba en la memoria aunque llevara traje: 257 KB de mas en toda la carrera */
+    int th = outfit_view(i);
+    if (!outfit_shows(i, th)) th = 0;
+    int keep1 = char_base_used(i, th) ? char_tex(i) : -1;
+    int keep2 = char_base_used(sel, outfit_view(sel)) ? char_tex(sel) : -1;
     for (int c = 0; c < NCHARS; c++) {
         int t = char_tex(c);
         if (t >= 0 && t != keep1 && t != keep2) r_tex_unload(t);
@@ -3961,6 +4014,14 @@ static void outfit_apply_tex(int i)
     }
     if (o->mat >= 0) sk[3] = (uint32_t)o->mat;
 }
+/* si el personaje i con el traje th se dibuja con su textura de siempre (no: Tricky con su cuerpo de la 1.11, o un traje
+ * que trae su propia textura del cuerpo) */
+static int char_base_used(int i, int th)
+{
+    if (i < 0 || i >= NCHARS || outfit_replaces(i)) return 0;
+    int oi = outfit_find(i, th);
+    return !(oi >= 0 && outfits[oi].btex[0]);
+}
 /* texturas de trajes que hacen falta para dibujar al personaje ci con el traje th (2 como mucho) */
 static int outfit_tex_names(int ci, int th, const char **out)
 {
@@ -4058,6 +4119,7 @@ int char_theme_buy(void)
     return 1;
 }
 int game_theme_hi(void) { return theme_hi; }
+const char *game_theme_name(int ci, int th) { int oi = outfit_find(ci, th); return oi >= 0 ? outfit_name(oi) : chars[ci].name; }
 int game_theme_mode(void) { return theme_mode; }
 int game_theme_sel(int i) { return (i >= 0 && i < NCHARS) ? char_theme_sel[i] : 0; }
 int game_theme_owned(int i, int t) { return (i >= 0 && i < NCHARS) ? (char_theme_owned[i] >> t & 1) : 0; }
@@ -4192,6 +4254,8 @@ static int outfit_tex_ready(int ci, int sel)
     int oi = outfit_find(ci, sel);
     if (oi >= 0) { need[0] = outfits[oi].btex; if (outfits[oi].has_acc) need[1] = outfits[oi].atex; }
     else if (ochar[ci].replace) { need[0] = ochar[ci].base_tex; need[1] = ochar[ci].def_tex; }
+    /* la normal, si es la que se dibuja (con un traje que la cambia ya no se tiene en la memoria) */
+    if (char_base_used(ci, sel) && !r_tex_request(char_tex(ci))) return 0;
     for (int k = 0; k < 2; k++) {
         if (!need[k] || !need[k][0]) continue;
         int t = data_tex_find(need[k]);
@@ -4210,8 +4274,7 @@ static void celeb_run_speed(float v)
 /* el personaje i se puede ensenar ya en el carrusel: su textura y la de su traje leidas (se piden en segundo plano) */
 static int char_tex_ready(int i)
 {
-    if (!outfit_replaces(i) && !r_tex_request(char_tex(i))) return 0;   /* Tricky va con su cuerpo de la 1.11 */
-    return outfit_tex_ready(i, char_theme_sel[i]);
+    return outfit_tex_ready(i, char_theme_sel[i]);   /* la normal (si se dibuja) y las de su traje */
 }
 /* abre la pagina si hay algo pendiente (solo en la pantalla de personajes) */
 static void celeb_page_open(void)
@@ -4219,7 +4282,6 @@ static void celeb_page_open(void)
     if (celeb_pend_char < 0 || celeb_page_t0 >= 0 || state != GS_CHARS || ginfo.popup) return;
     /* su textura puede no estar en memoria (p. ej. lo desbloqueo una caja): se lee en segundo plano y se abre al estar */
     /* su textura (Tricky no: va con su cuerpo de la 1.11 y la vieja no se usa) y las de su traje */
-    if (!(outfit_replaces(celeb_pend_char) || r_tex_request(char_tex(celeb_pend_char)))) return;
     if (!outfit_tex_ready(celeb_pend_char, celeb_pend_theme)) return;
     ginfo.char_sel = char_row(celeb_pend_char);
     theme_hi = theme_shown = celeb_pend_theme;   /* sus texturas ya estan (outfit_tex_ready) */
@@ -4770,13 +4832,24 @@ static int rio_box_booster(void)
 /* MysteryBoxPopup.OpenBox -> AudioStateLoop.PlayMysteryBoxOpenSound: el sonido de la caja al salir el premio y la
  * musica baja (pauseTime 3, fadeUpTime 4), en todos los mapas */
 static int box_from_shop;   /* la caja se compro en la tienda: ahi se queda el sonido de siempre (lo pidio el usuario) */
+static int s_box = -2;
 static void box_open_sound(void)
 {
-    static int s_box = -2;
     if (box_from_shop) { snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0); return; }
     if (s_box == -2) s_box = sfx_find("Hr_mysteryBoxOpen");
-    if (s_box >= 0) { snd_play(s_box, 1.0f, 1.0f, 0); music_dip(3.0f, 4.0f, 0); }
+    if (sfx_ready(s_box)) { snd_play(s_box, 1.0f, 1.0f, 0); music_dip(3.0f, 4.0f, 0); }
     else snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
+}
+/* el sonido de la caja (6 s, 265 KB) se lee de antemano mientras hay cajas por abrir fuera de la carrera, y sigue en la
+ * memoria mientras suena; en la carrera no ocupa nada */
+static void box_sound_prefetch(void)
+{
+    int run = state == GS_INTRO || state == GS_RUNNING || state == GS_JETPACK || state == GS_CHECKPOINT;
+    if (run || box_from_shop) return;
+    if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || (ginfo.reward_t > 0 && game_time - ginfo.reward_t < 1.0f)) {
+        if (s_box == -2) s_box = sfx_find("Hr_mysteryBoxOpen");
+        sfx_ready(s_box);
+    }
 }
 static void mystery_open_type(int super)
 {
@@ -5200,7 +5273,6 @@ void game_update(float dt)
     if (state == GS_DIEFALL || state == GS_DIE) {
         /* con Save Me (1.9) primero las de su ventana (sale a los 0,5 s): el panel y la llave; antes se leian de golpe
          * al abrirse (~70 ms, un tiron) */
-        static const char *const fin_tex[] = {"ui_settings", "ui_key", "ui_bg", "ui_notebook", "ui_mbox_bg", "ui_boxes"};
         for (int i = game_saveme_on() ? 0 : 2; i < (int)(sizeof(fin_tex) / sizeof(fin_tex[0])); i++) {
             int t = data_tex_find(fin_tex[i]);
             if (t >= 0 && !r_tex_request(t)) break;   /* esta se esta leyendo: las demas, despues */
@@ -5209,6 +5281,8 @@ void game_update(float dt)
     DBG_PHASE(main, "game_update: power-ups");
     if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
     char_celebrate_tick();
+    box_sound_prefetch();
+    sfx_big_tick();   /* los efectos largos: termina de leerlos y suelta los que ya no se piden */
     if (fade_t0 >= 0 && fade_run && state != GS_RUNNING && state != GS_JETPACK) fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
     if (fade_t0 >= 0) {
         /* MusicFader: baja en 0,5 s (fadeDownTime), calla fade_pause y sube en fade_up hasta el volumen de antes */
