@@ -314,6 +314,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
   en adelante traen 33 SpawnPointEgg propios). Lo común (hw_tex, tablas, personajes, música) lo lee de `data/`.
   El clásico de la 1.0 (`data/`) sin llaves, sin cazas (`classic_10`) y sin Save Me. Probado en el emulador:
   Halloween con llaves en la vía y la ventana de Save Me; el clásico muere directo a la pantalla de fin.
+- Halloween reducido como los mapas nuevos (`slim`: piezas unidas por textura, texturas reducidas, sin mipmaps, dibujo
+  con `r_light`) y con su propio hw_tex/hw_mesh/chars14 de las mismas medidas. Emulador: 14,39 MB en carrera (antes
+  15,46), 30 FPS, ~190 dibujos por fotograma (antes ~275), el tema de Halloween entero (5 texturas, 2 mallas).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
 
