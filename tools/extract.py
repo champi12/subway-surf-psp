@@ -3001,23 +3001,40 @@ def inject_hunts(ex, trees, level_sc, scs):
 
 
 def egg_materials(ex, tpl, maxsz=(64, 128)):
-    """Los materiales del huevo (props y EFX de la 1.8) con solo el trozo de la hoja que usan sus mallas: textura
-    pequena generada y escala/desplazamiento del material para que las UV de siempre caigan en ella."""
-    st = [tpl]
-    while st:
-        g = st.pop()
-        st += g['children']
-        mf = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
-        mr = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
-        if mf is None or mr is None:
-            continue
-        mo = ex.sc.resolve_ptr(mf['obj'], mf['data']['m_Mesh'])
-        ma = ex.sc.resolve_ptr(mr['obj'], mr['data']['m_Materials'][0])
-        if mo is None or ma is None or key(ma) in ex.mat_idx:
-            continue
-        h = MeshHandler(mo.read(check_read=False))
-        h.process()
-        uv = np.array(h.m_UV0, np.float64).reshape(-1, 2)
+    """Apunta un objeto anadido (huevo, muneca, llave...) para recortar sus materiales en egg_materials_flush."""
+    if not hasattr(ex, 'inj_tpls'):
+        ex.inj_tpls = []
+    ex.inj_tpls.append((tpl, maxsz))
+
+
+def egg_materials_flush(ex):
+    """Los materiales de los objetos anadidos (props y EFX de otra version) con solo el trozo de la hoja que usan sus
+    mallas: textura pequena generada y escala/desplazamiento del material para que las UV de siempre caigan en ella.
+    Si varios objetos comparten material (la llave y el objeto de la caza de la misma version) el trozo los cubre a
+    todos: antes se recortaba para el primero y el segundo salia con la textura equivocada."""
+    groups = {}
+    for tpl, maxsz in getattr(ex, 'inj_tpls', []):
+        st = [tpl]
+        while st:
+            g = st.pop()
+            st += g['children']
+            mf = next((c for c in g['comps'] if c['type'] == 'MeshFilter' and c.get('data')), None)
+            mr = next((c for c in g['comps'] if c['type'] == 'MeshRenderer' and c.get('data')), None)
+            if mf is None or mr is None:
+                continue
+            mo = ex.sc.resolve_ptr(mf['obj'], mf['data']['m_Mesh'])
+            ma = ex.sc.resolve_ptr(mr['obj'], mr['data']['m_Materials'][0])
+            if mo is None or ma is None or key(ma) in ex.mat_idx:
+                continue
+            h = MeshHandler(mo.read(check_read=False))
+            h.process()
+            uv = np.array(h.m_UV0, np.float64).reshape(-1, 2)
+            gr = groups.setdefault(key(ma), [ma, [], maxsz])
+            gr[1].append(uv)
+            gr[2] = (max(gr[2][0], maxsz[0]), max(gr[2][1], maxsz[1]))
+    ex.inj_tpls = []
+    for ma, uvs, maxsz in groups.values():
+        uv = np.concatenate(uvs)
         tex = None
         for _, t in ma.read_typetree()['m_SavedProperties']['m_TexEnvs']:
             to = ex.sc.resolve(ma.assets_file, t['m_Texture']['m_FileID'], t['m_Texture']['m_PathID'])
@@ -3255,6 +3272,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     # llaves de Save Me en los mapas que no las traen (los de la 1.9 en adelante ya las llevan en sus SpawnPoint)
     if keys and (sc19 is not None or sc110 is not None or sc111 is not None):
         inject_keys(ex, trees, sc111 or sc110 or sc19)
+    egg_materials_flush(ex)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
