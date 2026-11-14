@@ -587,8 +587,14 @@ int main(int argc, char **argv)
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_CROSS;   /* JUGAR */
         { static int k; if (ginfo.state == GS_RUNNING && ++k % 55 == 0) pr |= PSP_CTRL_UP; }
+#ifdef AT_PAUSE
+        if (frame_no == 600 || frame_no == 660) pr |= PSP_CTRL_START;   /* pausa y seguir */
+#endif
 #elif defined(AT_TEXLIST2)
         /* prueba de memoria con el recorrido del devlog: tienda, personajes (varios, y trajes), tablas y a correr */
+        if (frame_no == 20) { extern void game_debug_unlock_all(void), game_debug_outfit(void); game_debug_unlock_all(); game_debug_outfit(); }
+        if (frame_no == 1500 || frame_no == 1560) pr |= PSP_CTRL_START;   /* pausa y seguir, en la carrera */
+        { static int k; if (ginfo.state == GS_RUNNING && ++k % 55 == 0) pr |= PSP_CTRL_UP; }
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;
         if (frame_no == 80) pr |= PSP_CTRL_RTRIGGER;                    /* tienda */
         if (frame_no == 140) pr |= PSP_CTRL_CIRCLE;                     /* al menu */

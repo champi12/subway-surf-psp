@@ -5220,7 +5220,12 @@ void game_update(float dt)
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
             ginfo.countdown -= dt;
-            if (ginfo.countdown <= 0) { ginfo.countdown = 0; ginfo.paused = 0; snd_pause_all(0); music_pause(0); }
+            if (ginfo.countdown <= 0) {
+                ginfo.countdown = 0; ginfo.paused = 0; snd_pause_all(0); music_pause(0);
+                /* la pausa leia la libreta y su fondo (~190 KB) y se quedaban toda la carrera: en el devlog del 14 nov,
+                 * cada pausa en una carrera larga dejaba la RAM mas alta */
+                fin_tex_release();
+            }
         }
         return;
     }
@@ -5871,7 +5876,7 @@ void game_debug_outfit(void)
 {
     updates_reached |= 1 << 6 | 1 << 7;
     char_theme_owned[0] = 2; char_theme_owned[1] = 2;   /* el 2o comprado; el 1o no, para ver su precio */
-#ifdef AT_OUTFITRUN
+#if defined(AT_OUTFITRUN) || defined(AT_TEXLIST2)
     char_theme_sel[0] = 2; char_theme_sel[1] = 2;   /* en la prueba de carrera: lleva puesto el 2o traje */
 #else
     char_theme_sel[0] = 0; char_theme_sel[1] = 0;

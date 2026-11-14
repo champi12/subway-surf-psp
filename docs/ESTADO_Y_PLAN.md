@@ -289,6 +289,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    `sfxbig.bin` y el juego los lee en segundo plano solo cuando hacen falta (`sfx_ready`: ventana de Save Me, cajas por
    abrir) y los suelta al acabar de sonar. Hay que volver a extraer para tenerlos. El selector de trajes enseña el
    nombre del traje marcado.
+   La pausa leía la libreta y su fondo (~190 KB) y se quedaban el resto de la carrera: cada pausa en una carrera larga
+   dejaba la RAM más alta. Se sueltan al acabar la cuenta atrás. Prueba (Jake con traje, pausa, jetpack): 14,58 MB
+   fijos en toda la carrera, 1552 KB de texturas, y vuelve a eso tras la pausa.
 4d. Cámara en los túneles: los túneles son varios colliders "Subway" que se solapan. El original lleva la lista de
    los que toca (Character.subwayColliders) y sigue dentro mientras quede alguno; el port salía al dejar cualquiera y
    la cámara se quedaba sin techo hasta el siguiente (con zapatillas atravesaba el techo). Arreglado en todos los
