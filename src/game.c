@@ -424,11 +424,6 @@ static int board_default(void)
 static int board_has(int i)
 {
     if (i < 0 || i >= gd_nboards) return 0;
-#if defined(PRUEBA_TABLAS) && PRUEBA_TABLAS
-    /* PRUEBA (make PRUEBA_TABLAS=1): las tablas con efecto (Bouncer, Lowrider, Daredevil, Hotrod...) salen como tuyas para
-     * probarlas. No se marcan como compradas en la partida: sin la prueba vuelven a su precio */
-    if (gd_boards[i].effect) return 1;
-#endif
     return gd_boards[i].unlock == BOARD_ALWAYS || (board_owned >> i & 1);
 }
 int ny_season(void);
@@ -3987,7 +3982,7 @@ static const char *outfit_name(int oi)
 int char_theme_count(int ci) { int n = 0; for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci) n++; return n; }
 /* como las tablas de cada actualizacion: aparecen la primera vez que se juega en la temporada de Miami (su fecha) y
  * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
- * compradas (y PRUEBA_TABLAS las desbloquea todas), y los trajes salian sin haber llegado a la fecha */
+ * compradas, y los trajes salian sin haber llegado a la fecha */
 int outfits_avail(void) { return (updates_reached >> 7) & 1; }
 /* PlayerInfo.isAnyCharacterWithFreeTheme (1.11): queda un traje gratis sin reclamar. Los gratis NO se dan solos: el
  * boton ME lleva la pegatina FREE GIFT (GiftBradCharacters) y en la pantalla de personajes se reclaman con X */

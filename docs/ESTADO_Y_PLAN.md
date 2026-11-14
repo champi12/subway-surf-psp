@@ -192,7 +192,7 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Power-ups: el port usaba las probabilidades de la 1.0; desde la 1.4 son 2x 32, imán 32, zapatillas 22, jetpack 14
    y caja 20. Letras de la palabra del día: el peso de la 1.0 (15), mezcladas con los power-ups (desde la 1.4 el
    original sacaba letra en cada hueco hasta completar la palabra); con la palabra completa, ninguna.
-   PRUEBA: Bouncer, Lowrider y Daredevil desbloqueadas (PRUEBA_TABLAS=1 en build_dist.sh); quitar al terminar.
+   (La prueba que dejaba desbloqueadas las tablas con efecto, PRUEBA_TABLAS, ya se quitó: todas a su precio.)
 4g. 1.9 (Sídney): su mapa en data/w19 (`--apk19`) del 4 de abril al 1 de mayo (`WORLD19=1` lo deja siempre), sin
    mipmaps, con su inspector y su perro (en la 1.9 las mallas se llaman como en la 1.0) y su pantalla de carga. Por
    fecha y en todos los mapas: Kim (95000) y Outback (50000, "Especial de Sídney"); Great White (20000) siempre.
