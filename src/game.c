@@ -612,6 +612,8 @@ static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (
 static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
 /* mapas con Save Me y llaves: todos menos el clasico sin el evento de Halloween (de momento) */
 extern int theme_halloween;
+/* Save Me y llaves: en todos los mapas menos el de la 1.0 (el clasico, como al principio del port). Halloween es su
+ * propio mapa (4); con datos viejos sin data/whw se juega en el clasico con el tema y tambien lo lleva */
 int game_saveme_map(void) { extern int game_world; return game_world != 0 || theme_halloween; }
 int game_saveme_on(void) { return game_saveme_map() && keys_popup_shown; }
 int game_keys(void) { return keys; }
@@ -2589,7 +2591,7 @@ static void xmas_popup_check(void)
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
 static int ny_popup_year, rio_popup_year, rome_popup_year, sydney_popup_year, tokyo_popup_year, miami_popup_year;
-int game_world;   /* mapa cargado (main.c): 0 clasico, 15, 16, 17, 18 o 19 */
+int game_world;   /* mapa cargado (main.c): 0 clasico (1.0), 4 Halloween (data/whw), 15, 16, 17, 18, 19, 110 o 111 */
 static int tony_ready(void);
 /* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
 static int carmen_ready(void);

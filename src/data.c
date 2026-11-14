@@ -24,6 +24,8 @@ static void *load_file(const char *name, int *size)
     snprintf(path, sizeof(path), "%s/%s", basedir, name);
     unsigned int t0 = sceKernelGetSystemTimeLow();
     FILE *f = fopen(path, "rb");
+    /* el mapa de Halloween (data/whw) solo lleva lo suyo: lo compartido con el clasico (hw_mesh.bin...) de data/ */
+    if (!f && !strcmp(basedir, "data/whw")) { snprintf(path, sizeof(path), "data/%s", name); f = fopen(path, "rb"); }
     if (!f) { snprintf(errbuf, sizeof(errbuf), "No se encuentra %s", path); return NULL; }
     fseek(f, 0, SEEK_END);
     int n = ftell(f);

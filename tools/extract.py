@@ -328,7 +328,10 @@ class Exporter:
                           'mysteryBox']
                     if 'saveMeToken' in f:   # la 1.9: la llave (Save Me)
                         ks.append('saveMeToken')
-                    out.append((C_SPAWNPOINT, [self.ref(o, f[k_]) & 0xffffffff for k_ in ks]))
+                    refs = [self.ref(o, f[k_]) & 0xffffffff for k_ in ks]
+                    if 'saveMeToken' not in f and go.get('key_slot') is not None:
+                        refs.append(n['children'][go['key_slot']])   # la llave anadida (inject_keys)
+                    out.append((C_SPAWNPOINT, refs))
                     if go.get('hunt'):           # huevo y muneca anadidos (inject_hunts)
                         out.append((C_SPAWNEGG, self.hunt_slots(n, o, f)))
                 elif cl == 'SpawnPointEgg':
@@ -3048,6 +3051,53 @@ def egg_materials(ex, tpl, maxsz=(64, 128)):
         print('  huevo: material %s, trozo %dx%d de %s' % (m['name'], cw, chh, tex.m_Name))
 
 
+def key_template(scx):
+    """La llave de la 1.9 (SaveMeTokenPickup con su malla, giro y brillo) tal como esta en un SpawnPoint del Level."""
+    for r in scx.roots('level0'):
+        g = scx.go_tree(r)
+        if g['name'] != 'Level':
+            continue
+        st = [g]
+        while st:
+            n = st.pop()
+            st += n['children']
+            if any(c.get('class') == 'SaveMeTokenPickup' for c in n['comps']):
+                return n
+    return None
+
+
+def inject_keys(ex, trees, sck):
+    """Llaves en las vias de los mapas que tienen Save Me pero no las traen (el clasico en Halloween, 1.5.2, 1.6, Rio y
+    Roma): a cada SpawnPoint sin saveMeToken se le anade de hijo una copia de la de la 1.9, en su septimo hueco, como
+    en los mapas que la traen. El juego solo la saca con Save Me (spawn.c: getKeySpawnProbability)."""
+    t = key_template(sck)
+    if t is None:
+        return
+    zero = dict(t['tr'])
+    zero['data'] = dict(t['tr']['data'])
+    zero['data']['m_LocalPosition'] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+    cnt = 0
+    for tr in trees:
+        if tr['name'] != 'Level':
+            continue
+        st = [tr]
+        while st:
+            g = st.pop()
+            st += g['children']
+            sp = next((c for c in g['comps'] if c.get('class') == 'SpawnPoint'), None)
+            if sp is None or g.get('key_slot') is not None or 'saveMeToken' in (sp.get('fields') or {}):
+                continue
+            cp = dict(t)
+            cp['tr'] = zero
+            cp['copy'] = True
+            g['key_slot'] = len(g['children'])
+            g['children'] = g['children'] + [cp]
+            cnt += 1
+    if cnt:
+        egg_materials(ex, t, (64, 128))
+        print('  llaves de Save Me anadidas en %d puntos de power-ups' % cnt)
+
+
 def add_guard_clips(ex, scx):
     """FollowingGuard de la 1.7: animaciones nuevas del inspector y el perro (esquivar a cada lado, rodar y el perro en
     el aire). Se anaden a sus Animation (guard_prefab / dog_prefab) en todos los mapas; mismo esqueleto."""
@@ -3137,7 +3187,12 @@ def swap_guard16(ex, sc16):
 
 
 def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=None, sc16=None, sc17=None, sc18=None,
-               sc19=None, sc110=None, sc111=None):
+               sc19=None, sc110=None, sc111=None, keys=None, shared=True):
+    # keys: anadir las llaves de Save Me a los SpawnPoint que no las traen (por defecto en todos menos el clasico de la
+    # 1.0). shared: escribir lo comun a todos los mapas (Halloween de la 1.4, tablas, trajes, musica); el mapa de
+    # Halloween (data/whw) es el clasico con sus llaves y lo comun lo lee de data/
+    if keys is None:
+        keys = not classic
     """Un conjunto completo de datos (world, mat, mesh, tex, anim, sfx, ui) con el nucleo del juego de `sc` (personaje,
     guardia, camaras, interfaz...) y el mundo (la raiz Level: tramos, intro, vias) de `level_sc`. classic: el de
     siempre, en data/, con Halloween y la musica; si no, otro mundo (data/w15: la 1.5.2) que el juego elige al arrancar."""
@@ -3196,6 +3251,9 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     if eggsrc is not None or sc110 is not None or sc111 is not None:
         native = level_sc if level_sc in (sc18, sc19, sc110, sc111) and level_sc is not sc else None
         inject_hunts(ex, trees, native, {'egg': eggsrc, 'doll': sc110, 'miami': sc111})
+    # llaves de Save Me en los mapas que no las traen (los de la 1.9 en adelante ya las llevan en sus SpawnPoint)
+    if keys and (sc19 is not None or sc110 is not None or sc111 is not None):
+        inject_keys(ex, trees, sc19 or sc110 or sc111)
     for t in trees:
         ex.add_tree(t)
     print('  %d nodos' % len(ex.nodes))
@@ -3284,7 +3342,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         # Nick (la 1.11: 95000, "Miami Special")
         if sc111 is not None:
             extra_chars.append((sc111, 'nick', 'avatar_nick', '1.11'))
-        if sc111 is not None and boards is not None and classic:
+        if sc111 is not None and boards is not None and classic and shared:
             export_outfits(sc111, boards, outdir)
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
@@ -3368,7 +3426,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         print('  boardanim.bin: %d animaciones de las tablas, %d KB (se cargan solo las de la elegida)' %
               (len(boards.clips), len(boardanim) // 1024))
     print('Exportando audio...')
-    sfx, names = export_audio(ex, outdir, write_files=classic)
+    sfx, names = export_audio(ex, outdir, write_files=classic and shared)
     print('  %d sonidos' % len(names))
     # materiales
     mat = bytearray(b'SSX1')
@@ -3391,7 +3449,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     with open(os.path.join(outdir, 'meshes.txt'), 'w') as f:
         for i, s_ in enumerate(stats):
             f.write('%d %s %d %d %d\n' % (i, *s_))
-    if classic:
+    if classic and shared:
         for fn in ('hw_tex.bin', 'hw_mesh.bin', 'chars14.bin', 'boards.bin', 'boardanim.bin'):
             if os.path.exists(os.path.join(outdir, fn)):
                 os.remove(os.path.join(outdir, fn))
@@ -3471,6 +3529,15 @@ def main():
     print('== Mundo clasico (data/)')
     # el contenido de las versiones nuevas (tablas, Elf Tricky, Tony) va con el clasico: sirve para todos los mapas
     exc = export_set(sc, sc, sc14, outdir, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110, sc111=sc111)
+    # mapa de Halloween (data/whw/): el clasico con las mejoras (llaves de Save Me en las vias). El de la 1.0 (data/)
+    # se queda como al principio del port
+    whw = os.path.join(outdir, 'whw')
+    if sc14 is not None and (sc19 is not None or sc110 is not None or sc111 is not None):
+        print('== Mapa de Halloween (data/whw/)')
+        export_set(sc, sc, sc14, whw, classic=True, sc15=sc15, sc16=sc16, sc17=sc17, sc18=sc18, sc19=sc19, sc110=sc110,
+                   sc111=sc111, keys=True, shared=False)
+    elif os.path.isdir(whw):
+        shutil.rmtree(whw, True)
     w15 = os.path.join(outdir, 'w15')
     if sc15 is not None and os.environ.get('WORLD15', '0') != '0':
         print('== Mundo de la 1.5.2 (data/w15/, en pruebas)')
