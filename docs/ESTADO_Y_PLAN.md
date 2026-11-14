@@ -299,6 +299,17 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
+## 7a. Modo clásico (mapa 1.0) — pendiente, aún sin selector de mapa
+- El mapa 1.0 (data/, sin Halloween) será el juego como al principio del port, sin mejoras: sin Save Me, sin llaves
+  en las vías, sin eventos (cazas, avisos de temporada, Navidad), sin Score Booster y sin el cambio de headstarts de
+  la 1.7 (el pequeño y el Mega como en la 1.0).
+- Se quedan en el clásico (ya los traía esa versión aunque no estaban al principio del port): la pantalla de colores
+  al abrir cajas con su efecto, los menús de inicio como están, los avisos al comprar, los premios de las cajas
+  girando en 3D y la pantalla de fin actual.
+- Halloween y los demás mapas con todo (Save Me, llaves y eventos). Llaves en las vías también en 1.5.2, 1.6, Río y
+  Roma (traen Save Me pero no el SaveMeTokenPickup: inyectarlo en sus SpawnPoint como las cazas).
+- Música: solo baja al revivir (PlayReviveSound); al abrir cajas no baja (comprobado en la consola por el usuario).
+
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
 
 Antes de añadir nada, comparar con la versión anterior y decir si se puede pasar a la consola:

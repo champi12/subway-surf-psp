@@ -4829,15 +4829,17 @@ static int rio_box_booster(void)
 }
 
 /* abre una caja misteriosa (super: la de las misiones repetibles y la palabra del dia del quinto dia) */
-/* MysteryBoxPopup.OpenBox -> AudioStateLoop.PlayMysteryBoxOpenSound: el sonido de la caja al salir el premio y la
- * musica baja (pauseTime 3, fadeUpTime 4), en todos los mapas */
+/* MysteryBoxPopup.OpenBox -> AudioStateLoop.PlayMysteryBoxOpenSound: el sonido de la caja al salir el premio, en
+ * todos los mapas */
 static int box_from_shop;   /* la caja se compro en la tienda: ahi se queda el sonido de siempre (lo pidio el usuario) */
 static int s_box = -2;
 static void box_open_sound(void)
 {
     if (box_from_shop) { snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0); return; }
     if (s_box == -2) s_box = sfx_find("Hr_mysteryBoxOpen");
-    if (sfx_ready(s_box)) { snd_play(s_box, 1.0f, 1.0f, 0); music_dip(3.0f, 4.0f, 0); }
+    /* sin bajar la musica: en el juego (lo comprobo el usuario en la consola) solo baja al revivir. El codigo de la 1.11
+     * llama a MusicFader tambien aqui, pero en la pantalla de la caja no se nota */
+    if (sfx_ready(s_box)) snd_play(s_box, 1.0f, 1.0f, 0);
     else snd_play(sfx_find("Hr_powerUp"), 0.8f, 1.0f, 0);
 }
 /* el sonido de la caja (6 s, 265 KB) se lee de antemano mientras hay cajas por abrir fuera de la carrera, y sigue en la
