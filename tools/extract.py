@@ -1098,7 +1098,8 @@ def export_audio(ex, outdir, write_files=True):
                 continue
             pcm = np.clip(a, -32768, 32767).astype('<i2').tobytes()
             if len(a) > SFX_BIG_SECS * 22050:
-                big.append((name, pcm))
+                if name not in [b_[0] for b_ in big]:   # el mismo clip puede venir de dos escenas: una vez
+                    big.append((name, pcm))
                 blobs.append(b'')
                 print('  efecto %s: %.1f s, en sfxbig.bin' % (name, len(a) / 22050))
             else:
@@ -3266,7 +3267,8 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         add_jetpack_clips(ex, sc18 or sc19 or sc110)
     # busqueda de huevos de la 1.8 (por fecha, en todos los mapas): el de Roma ya trae sus SpawnPointEgg
     # (la 1.8, la 1.9 y la 1.10 traen sus propios puntos; a los demas mapas se les anaden en los de power-ups)
-    if eggsrc is not None or sc110 is not None or sc111 is not None:
+    # (no en el clasico de la 1.0: sin eventos, como al principio del port; Halloween y los demas mapas si)
+    if (eggsrc is not None or sc110 is not None or sc111 is not None) and not (classic and shared):
         native = level_sc if level_sc in (sc18, sc19, sc110, sc111) and level_sc is not sc else None
         inject_hunts(ex, trees, native, {'egg': eggsrc, 'doll': sc110, 'miami': sc111})
     # llaves de Save Me en los mapas que no las traen (los de la 1.9 en adelante ya las llevan en sus SpawnPoint)

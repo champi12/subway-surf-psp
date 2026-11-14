@@ -134,6 +134,9 @@ void spawn_perform_selection(int sp, int *visit, int *nv, int max)
             spawn_z = z + spawn_spacing;
         }
     }
+#ifdef AUTOTEST
+    if (chosen == 6) dlog("LLAVE en la via a %.0f m", z / DISTANCE_PER_METER);
+#endif
     for (int k = 0; k < NPK && k < nw; k++) {
         int g = (int)c[k];
         if (g < 0) continue;

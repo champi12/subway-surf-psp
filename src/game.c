@@ -502,8 +502,11 @@ static int season_year(void)
     return y;
 }
 /* EggHuntManager.ShouldSpawnEggs: temporada, menos de 100 y sin Chicky */
+/* el mapa de la 1.0 (data/, sin Halloween): el juego como al principio del port, sin cazas ni Save Me */
+static int classic_10(void) { extern int game_world, theme_halloween; return game_world == 0 && !theme_halloween; }
 static int egg_hunt_active(void)
 {
+    if (classic_10()) return 0;
     int r = chick_row();
     if (r < 0 || !rome_season() || board_has(r)) return 0;
     int y = season_year();
@@ -545,6 +548,7 @@ static int hunt_city(void)
 }
 static int hunt_active(void)
 {
+    if (classic_10()) return 0;
     int w = hunt_week_now(), hc = hunt_city();
     if (!w || !hc) return 0;
     int y = season_year();

@@ -1184,10 +1184,15 @@ static void sfx_big_open(void)
         if (fread(e, 1, 40, f) != 40) break;
         char nm[32]; int l = e[0] > 31 ? 31 : e[0];
         memcpy(nm, e + 1, l); nm[l] = 0;
-        int i = sfx_find(nm);
-        if (i < 0 || gd.sfx[i].n) continue;   /* ya tiene sonido en sfx.bin */
-        gd.sfx[i].big = 1; gd.sfx[i].boff = rd32(e + 32); gd.sfx[i].bn = rd32(e + 36);
-        dlog("SONIDO largo %s: %u KB, se lee al usarlo", nm, (unsigned)(gd.sfx[i].bn * 2 / 1024));
+        /* todas las entradas con ese nombre (sfx.bin puede traer el mismo clip dos veces, de escenas distintas) */
+        for (int i = 0; i < gd.nsfx; i++) {
+            if (strcmp(gd.sfx[i].name, nm) || gd.sfx[i].n || gd.sfx[i].big) continue;   /* con sonido en sfx.bin */
+            gd.sfx[i].big = 1; gd.sfx[i].boff = rd32(e + 32); gd.sfx[i].bn = rd32(e + 36);
+            /* load_sfx le puso un puntero dentro de sfx.bin (con 0 muestras): sfx_ready leia ahi encima de otros sonidos
+             * y luego hacia free de ese puntero (el monton se rompia: 350 MB "usados" en el devlog) */
+            gd.sfx[i].pcm = NULL;
+            dlog("SONIDO largo %s: %u KB, se lee al usarlo", nm, (unsigned)(gd.sfx[i].bn * 2 / 1024));
+        }
     }
     fclose(f);
 }

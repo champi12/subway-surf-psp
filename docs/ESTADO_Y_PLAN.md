@@ -309,6 +309,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 - Halloween y los demás mapas con todo (Save Me, llaves y eventos). Llaves en las vías también en 1.5.2, 1.6, Río y
   Roma (traen Save Me pero no el SaveMeTokenPickup: inyectarlo en sus SpawnPoint como las cazas).
 - Música: solo baja al revivir (PlayReviveSound); al abrir cajas no baja (comprobado en la consola por el usuario).
+- HECHO: Halloween es su propio mapa (`data/whw`, mundo 4): el clásico con llaves de Save Me en sus 36 puntos de
+  power-ups (como la 1.9-1.11: los 36 llevan llave) y las cazas en esos mismos puntos (como 1.5.2, 1.6 y Río; Roma
+  en adelante traen 33 SpawnPointEgg propios). Lo común (hw_tex, tablas, personajes, música) lo lee de `data/`.
+  El clásico de la 1.0 (`data/`) sin llaves, sin cazas (`classic_10`) y sin Save Me. Probado en el emulador:
+  Halloween con llaves en la vía y la ventana de Save Me; el clásico muere directo a la pantalla de fin.
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)
 
