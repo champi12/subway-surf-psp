@@ -333,6 +333,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 - Memoria: los dos se leen en segundo plano solo al necesitarlos (caja 310 KB en el menú con cajas por abrir,
   revivir 150 KB en la ventana de Save Me) y se sueltan al acabar de sonar. La lista de pedidos era de 64 sonidos fijos
   y uno más allá no se soltaba nunca; ahora cubre todos los de sfx.bin.
+- ARREGLADO (todos los mapas): tramos vacíos "de vez en cuando". Al revivir o chocar con la tabla se esconden los
+  obstáculos de delante (`TrackChunk.DeactivateObstacles`) y se apuntan para devolverlos al volver a usar el tramo. La
+  lista era de 64 fijos y `bonus_long` tiene 119 objetos (`trainTops_moving_combined` 73): los que no cabían se
+  quedaban escondidos para siempre y el tramo salía vacío en las siguientes carreras. Ahora crece como el diccionario
+  del original. Visto en el devlog del 24 nov: revivir a los 258 s y `bonus_long` vacío a los 321 s.
   Extracción completa con los 9 APK: ningún aviso; llaves en Halloween, 1.5.2, 1.6, Río y Roma (36 puntos).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)

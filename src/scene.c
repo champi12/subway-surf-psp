@@ -628,8 +628,10 @@ typedef struct {
     int prob, tutorial;
     int *objs, nobjs;
     int ncp; int cp_track[16]; float cp_z[16];
-    /* obstaculos escondidos por la tabla */
-    int hidden[64]; float hidden_y[64]; int nhidden;
+    /* obstaculos escondidos por la tabla o al revivir (hiddenObstacles: en el original un diccionario sin limite).
+     * Antes eran 64 fijos: en bonus_long (119 objetos) y trainTops_moving_combined (73) los que no cabian se
+     * escondian sin apuntarlos y no volvian nunca (el tramo salia vacio en las carreras siguientes). Crece al usarse */
+    int *hidden; float *hidden_y; int nhidden, hidden_cap;
 } Chunk;
 
 #define MAX_CHUNKS 96
@@ -730,6 +732,7 @@ void track_init(void)
         const uint32_t *c = node_comp(i, C_TRACKCHUNK, NULL);
         if (!c) continue;
         Chunk *ch = &chunks[nchunks];
+        free(ch->hidden); free(ch->hidden_y);   /* si se vuelven a leer los tramos */
         memset(ch, 0, sizeof(*ch));
         ch->node = i;
         ch->zSize = u2f(c[0]);
@@ -1169,8 +1172,19 @@ static void deactivate_obstacles_rec(Chunk *c, int n, float maxZ)
     }
     if (z < maxZ && gd.nodes[n].layer != 16) {
         int already = 0;
-        for (int i = 0; i < c->nhidden; i++) if (c->hidden[i] == n) already = 1;
-        if (!already && c->nhidden < 64) { c->hidden[c->nhidden] = n; c->hidden_y[c->nhidden++] = nrt[n].lpos.y; }
+        for (int i = 0; i < c->nhidden && !already; i++) if (c->hidden[i] == n) already = 1;
+        if (!already) {
+            if (c->nhidden == c->hidden_cap) {
+                int cap = c->hidden_cap ? c->hidden_cap * 2 : 64;
+                int *h = realloc(c->hidden, cap * sizeof(int));
+                if (h) c->hidden = h;
+                float *hy = h ? realloc(c->hidden_y, cap * sizeof(float)) : NULL;
+                if (hy) c->hidden_y = hy;
+                if (!h || !hy) return;   /* sin memoria: mejor no esconderlo que perderlo para siempre */
+                c->hidden_cap = cap;
+            }
+            c->hidden[c->nhidden] = n; c->hidden_y[c->nhidden++] = nrt[n].lpos.y;
+        }
         nrt[n].lpos.y = -1000.0f;
         nrt[n].hidden = 1;
         scene_update_world(n);
