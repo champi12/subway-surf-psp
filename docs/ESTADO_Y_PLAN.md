@@ -325,6 +325,14 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 - ARREGLADO: no se oían el sonido de revivir con llaves (3 s) ni el de abrir cajas (6 s). El mezclador guardaba la
   posición en 16.16 en 32 bits y el final como `n << 16`: con más de 65535 muestras (~3 s) se desbordaba y la voz se
   apagaba a los 0,03-0,06 s. Ahora la posición va en muestra entera + fracción (`audio.c`), sin límite de duración.
+- Revivir y caja como la 1.11 (`AudioStateLoop`, `Revive`, `MysteryBoxPopup`; valores de la escena): los dos a volumen
+  1. Revivir: suena al pulsar X y a los 0,144 s (`WaitForParticlesDelay`) se revive; la música baja en 0,5 s, calla
+  0,5 s y sube en 3 s hasta 0,25 (`menuMusicVolume`, como el original, aunque en carrera iba a 0,3). Caja: suena al
+  pulsar abrir (`FingerReleased`); sin bajar la música (lo pidió el usuario; el original la baja 0,5/3/4 s). Clips:
+  caja 8,0 s y revivir 3,8 s en el APK; extract.py quita la cola bajo −54 dB (7,0 y 3,4 s), que no se oye.
+- Memoria: los dos se leen en segundo plano solo al necesitarlos (caja 310 KB en el menú con cajas por abrir,
+  revivir 150 KB en la ventana de Save Me) y se sueltan al acabar de sonar. La lista de pedidos era de 64 sonidos fijos
+  y uno más allá no se soltaba nunca; ahora cubre todos los de sfx.bin.
   Extracción completa con los 9 APK: ningún aviso; llaves en Halloween, 1.5.2, 1.6, Río y Roma (36 puntos).
 
 ## 7b. Lista de revisión para cada actualización nueva (1.11 en adelante)

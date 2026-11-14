@@ -1178,9 +1178,13 @@ int clip_find(const char *name)
  * juego los pide con sfx_ready, y se sueltan unos fotogramas despues de dejar de pedirlos y de sonar */
 static char sb_path[200];
 static int sb_fd = -1, sb_reading = -1, sb_frame;
-static int sb_want[64];
+/* fotograma en que se pidio cada sonido por ultima vez. Antes eran 64 fijos: un sonido largo despues del 64 de sfx.bin
+ * no se soltaba nunca (la caja, 310 KB, se quedaba en la RAM tambien en la carrera) */
+static int *sb_want;
 static void sfx_big_open(void)
 {
+    free(sb_want);
+    sb_want = calloc(gd.nsfx ? gd.nsfx : 1, sizeof(int));
     char cwd[160];
     if (!getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
     snprintf(sb_path, sizeof(sb_path), "%s/%s/sfxbig.bin", cwd, basedir);
@@ -1211,7 +1215,7 @@ int sfx_ready(int i)
     if (i < 0 || i >= gd.nsfx) return 0;
     SfxData *s = &gd.sfx[i];
     if (!s->big) return s->n > 0;
-    if (i < 64) sb_want[i] = sb_frame;
+    if (sb_want) sb_want[i] = sb_frame;
     if (s->n) return 1;
     if (sb_reading >= 0 || !sb_path[0]) return 0;    /* de uno en uno */
     if (!s->pcm) s->pcm = memalign(64, s->bn * 2);
@@ -1241,7 +1245,7 @@ void sfx_big_tick(void)
         } else { free(s->pcm); s->pcm = NULL; }
         sb_reading = -1;
     }
-    for (int i = 0; i < gd.nsfx && i < 64; i++) {
+    for (int i = 0; i < gd.nsfx && sb_want; i++) {
         SfxData *s = &gd.sfx[i];
         if (!s->big || !s->n || sb_frame - sb_want[i] < 30 || snd_uses(s->pcm)) continue;
         s->n = 0;   /* snd_play ya no lo toca */

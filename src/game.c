@@ -245,11 +245,15 @@ static float currentSpeed, currentLevelSpeed = SPEED_MIN;
 static int isDead;
 /* AudioStateLoop.MusicFader de la 1.11: al revivir y al abrir una caja la musica baja (0,5 s), calla un rato y vuelve
  * a subir. fade_t0: game_time al empezar (-1 nada); fade_run: empezo en la carrera (al acabarla se corta) */
-static float fade_t0 = -1, fade_pause, fade_up, fade_vol;
+static float fade_t0 = -1, fade_pause, fade_up, fade_vol, fade_to;
 static int fade_run;
-static void music_dip(float pause, float up, int in_run)
+/* to: volumen al que sube al final (< 0: el de antes). El MusicFader del original sube siempre a menuMusicVolume
+ * (0,25 en la escena de la 1.11), tambien en la carrera (ingameMusicVolume 0,3): tras revivir la musica sigue un poco
+ * mas baja hasta la siguiente carrera */
+static void music_dip(float pause, float up, int in_run, float to)
 {
     if (fade_t0 < 0) fade_vol = music_get_volume();   /* si ya bajaba, se vuelve al volumen de antes */
+    fade_to = to < 0 ? fade_vol : to;
     fade_t0 = game_time; fade_pause = pause; fade_up = up; fade_run = in_run;
 }
 static V3 die_pos;   /* posicion del personaje al morir (Save Me lo devuelve ahi) */
@@ -623,6 +627,7 @@ static int keys_gift;   /* PlayerInfo de la 1.9/1.10: se empieza con 5 llaves; a
 static int saveme_cost = 1;           /* SaveMeManager._numberOfUsedKeysInCurrentRun */
 static float saveme_t0 = -1;          /* cuando se abrio la ventana de Save Me (-1: cerrada) */
 static int saveme_done;               /* ya se decidio en esta muerte (revivir o no) */
+static float revive_t0 = -1;          /* Revive.ReviveNow empezado: el sonido ya suena y a los 0,144 s se revive */
 /* mapas con Save Me y llaves: todos menos el clasico sin el evento de Halloween (de momento) */
 extern int theme_halloween;
 /* Save Me y llaves: en todos los mapas menos el de la 1.0 (el clasico, como al principio del port). Halloween es su
@@ -2827,7 +2832,7 @@ static void game_start_run(void)
 #endif
     egg_hunt_run = egg_hunt_active();   /* IngameScreen.Show: el contador de huevos solo si la busqueda sigue */
     hunt_run = hunt_active() != 0;      /* y el de la caza semanal (IsAnyPeriodActive) */
-    saveme_cost = 1; saveme_t0 = -1; saveme_done = 0;   /* SaveMeManager.ResetSaveMeForNewRun */
+    saveme_cost = 1; saveme_t0 = -1; saveme_done = 0; revive_t0 = -1;   /* SaveMeManager.ResetSaveMeForNewRun */
 #ifdef AT_KEYS
     { static int once; if (!once) { once = 1; keys = AT_KEYS; } }   /* prueba: llaves para Save Me */
 #endif
@@ -3318,7 +3323,10 @@ static void fin_tex_release(void)
  * reinicia lejos y escondido, sin power-ups, y el personaje sale de un salto (altura 15) */
 static int sfx_revive = -2;
 float game_saveme_left(void) { return saveme_t0 < 0 ? -1.0f : 3.0f - (game_time - saveme_t0); }
-static void saveme_revive(void)
+/* Revive.ReviveNow de la 1.11: la nube de colores y PlayReviveSound al pulsar; espera WaitForParticlesDelay (0,144 s
+ * en la escena) y entonces quita los obstaculos y revive. Antes todo pasaba a la vez y el sonido iba 0,144 s tarde
+ * respecto al salto */
+static void saveme_revive_start(void)
 {
     keys -= saveme_cost;
     if (keys < 0) keys = 0;
@@ -3328,9 +3336,16 @@ static void saveme_revive(void)
     saveme_cost *= 2;   /* SaveMeManager.IncrementNumberOfUsedKeys */
     saveme_t0 = -1;
     if (sfx_revive == -2) sfx_revive = sfx_find("deat mystery combo");   /* AudioStateLoop.reviveSound de la 1.9 */
+    /* reviveVolume 1 en la escena; el clip entero (3,8 s, los ultimos 0,4 por debajo de -54 dB los quita extract.py) */
     if (sfx_ready(sfx_revive)) snd_play(sfx_revive, 1.0f, 1.0f, 0);
     else play_ci(&snd_powerup);
-    music_dip(0.5f, 3.0f, 1);   /* PlayReviveSound: revivePauseTime 0,5 y reviveFadeUpTime 3 (1.11) */
+    /* PlayReviveSound: revivePauseTime 0,5 y reviveFadeUpTime 3 (1.11), y sube a menuMusicVolume (0,25) */
+    music_dip(0.5f, 3.0f, 1, 0.25f);
+    revive_t0 = game_time;
+}
+static void saveme_revive(void)
+{
+    revive_t0 = -1;
     track_remove_obstacles(ch.z + 250.0f * normalized_speed());
     /* Character.HandleRevive: StopAllCoroutines. Tras chocar con un tren en marcha el atropello (hbt) seguia
      * moviendo al personaje cada fotograma: se quedaba clavado bajo el suelo, invisible, y la camara quieta. Se para
@@ -3384,6 +3399,10 @@ static void die_tick(float dt)
     if (state == GS_DIE) {
         float e = game_time - state_time;
         if (e < 0.5f) return;
+        if (revive_t0 >= 0) {   /* ReviveNow: esperando WaitForParticlesDelay */
+            if (game_time - revive_t0 >= 0.144f) saveme_revive();
+            return;
+        }
         if (game_saveme_on() && !saveme_done) {
             /* Game.DieSequence de la 1.9: a los 0,5 s la ventana de Save Me (SaveMePopup), 3 s con el reloj. X revive si
              * hay llaves; O o el tiempo, fin de partida */
@@ -3393,7 +3412,7 @@ static void die_tick(float dt)
             sfx_ready(sfx_revive);
             if (in_up) {
                 in_up = 0;
-                if (keys >= saveme_cost) { saveme_done = 0; saveme_revive(); return; }
+                if (keys >= saveme_cost) { saveme_done = 0; saveme_revive_start(); return; }
                 /* sin llaves suficientes el original abria la compra de llaves; aqui solo se avisa */
                 snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
                 char b[40];
@@ -5324,8 +5343,8 @@ void game_update(float dt)
         float e = game_time - fade_t0, v;
         if (e < 0.5f) v = fade_vol * (1.0f - e / 0.5f);
         else if (e < 0.5f + fade_pause) v = 0;
-        else if (e < 0.5f + fade_pause + fade_up) v = fade_vol * (e - 0.5f - fade_pause) / fade_up;
-        else { v = fade_vol; fade_t0 = -1; }
+        else if (e < 0.5f + fade_pause + fade_up) v = fade_to * (e - 0.5f - fade_pause) / fade_up;
+        else { v = fade_to; fade_t0 = -1; }
         music_set_volume(v);
     }
     update_powerup_times(dt);
