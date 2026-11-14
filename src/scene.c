@@ -1206,6 +1206,29 @@ void track_remove_obstacles(float maxZ)
             for (int p = o; p >= 0; p = gd.nodes[p].parent) if (nrt[p].hidden) { hid = 1; break; }
             if (hid) coins[i].active = 0;
         }
+#if DEVLOG
+    /* diagnostico: monedas que se quedan en la via por delante del corte (hasta 400 mas alla). Para cada una, su linea
+     * de monedas, el objeto con SnapObject que la contiene (lo que se esconde o no), su z y su capa */
+    {
+        extern float scene_char_z;
+        int nleft = 0, logged = 0;
+        for (int i = 0; i < MAX_COINS; i++) {
+            const CoinRT *c = &coins[i];
+            if (!c->active || c->pos.z < scene_char_z || c->pos.z > maxZ + 400.0f) continue;
+            nleft++;
+            if (logged >= 8 || c->owner < 0) continue;
+            int snap = -1;
+            for (int p = c->owner; p >= 0; p = gd.nodes[p].parent) if (node_comp(p, C_SNAP, NULL)) { snap = p; }
+            int o = c->owner;
+            dlog("   moneda en z=%d (corte %d, personaje %d): %s, objeto %s z=%d capa %d %s", (int)c->pos.z, (int)maxZ,
+                 (int)scene_char_z, gd.strings[gd.nodes[o].name], snap >= 0 ? gd.strings[gd.nodes[snap].name] : "-",
+                 snap >= 0 ? (int)m34_pos(&nrt[snap].world).z : 0, snap >= 0 ? gd.nodes[snap].layer : -1,
+                 snap >= 0 && nrt[snap].hidden ? "ESCONDIDO" : "visible");
+            logged++;
+        }
+        dlog("OBSTACULOS quitados hasta z=%d: quedan %d monedas entre el personaje y 400 mas alla", (int)maxZ, nleft);
+    }
+#endif
 }
 
 float track_last_checkpoint(float charZ)
