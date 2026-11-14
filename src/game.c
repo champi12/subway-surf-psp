@@ -3285,6 +3285,11 @@ static void saveme_revive(void)
     guard_reset_catch_up();
     stumble_set(0);
     guard_restart(0);
+    /* el inspector y el perro a su sitio: la captura (CatchPlayer) los acerca a la posicion del personaje y aqui se
+     * quedaban alli, asi que en el siguiente tropiezo salian DELANTE de el. En el original su posicion se recalcula en
+     * cada fotograma desde enemiesStartPos; aqui solo se ponia al empezar la carrera (guard_play_intro) */
+    if (n_guard >= 0) { nrt[n_guard].lpos = enemy_start[0]; nrt[n_guard].lrot = qident(); }
+    if (n_dog >= 0) { nrt[n_dog].lpos = enemy_start[1]; nrt[n_dog].lrot = qident(); }
     mods_stop_no_ending();
     clear_powerups();
     gu.catching = 0; gu.hit_train = 0;
@@ -5123,9 +5128,14 @@ static int extra_cols[8];
 void game_update(float dt)
 {
 #ifdef AT_CATCHREVIVE
-    /* prueba: a los 25 s (pasado el tutorial) te atrapa el inspector (como tropezar dos veces) y con AT_KEYS se revive con la llave */
-    { static int done; if (state == GS_RUNNING && game_time - start_time > 25.0f && !done && !track_running_tutorial) {
-        done = 1; guard_show(1); anim_crossfade(&anim_char, "stumbleFall", 0.2f); game_die(); } }   /* game_die le atrapa */
+    /* prueba: a los 8 s (sale del tutorial) te atrapa el inspector (como tropezar dos veces) y con AT_KEYS se revive con la llave */
+    { static int done; static float t_rv = -1;
+      if (state == GS_RUNNING && game_time - start_time > 8.0f && !done && !mods[MOD_HOVERBOARD].active) {
+        track_running_tutorial = 0;   /* en el tutorial game_die no mata: vuelve al punto de control */
+        done = 1; guard_show(1); anim_crossfade(&anim_char, "stumbleFall", 0.2f); game_die(); }   /* game_die le atrapa */
+      /* y 3 s despues de revivir, un tropiezo: el inspector tiene que salir DETRAS (antes salia delante) */
+      if (done == 1 && state == GS_RUNNING && isDead == 0 && t_rv < 0) t_rv = game_time;
+      if (done == 1 && t_rv >= 0 && game_time - t_rv > 3.0f) { done = 2; stumble_set(1); dlog("PRUEBA tropiezo tras revivir"); } }
 #endif
 #ifdef AT_CAUGHT
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */

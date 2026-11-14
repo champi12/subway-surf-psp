@@ -266,7 +266,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    Pruebas nuevas: AT_NOPERF (sin el medidor), AT_MENUONLY (se queda en la portada), AT_BOARDCEL=n, AT_UNLOCKCH.
    * Save Me tras atraparte el inspector: "caught"/"caught2" van en su capa (4) y al revivir nadie las apagaba, asi que
      seguia corriendo con la postura de atrapado. saveme_revive para todas las animaciones y deja el esqueleto en
-     reposo antes del salto (prueba AT_CATCHREVIVE + AT_KEYS: a los 25 s, pasado el tutorial, te atrapa y revive).
+     reposo antes del salto (prueba AT_CATCHREVIVE + AT_KEYS: a los 8 s te atrapa, revive y 3 s despues tropieza).
+   * Y el inspector salia DELANTE en el siguiente tropiezo: la captura (CatchPlayer) acerca al inspector y al perro a la
+     posicion del personaje y al revivir se quedaban alli (solo guard_play_intro, al empezar la carrera, los devolvia a
+     enemy_start). Ahora saveme_revive los devuelve a su sitio; el original recalcula su posicion en cada fotograma
+     desde enemiesStartPos.
    * Pagina de la tabla: sin la sombra del personaje (un circulo oscuro en medio y la tabla pasaba por debajo) y, al
      cerrarla, vuelve la vista previa (board_preview): antes se quedaba en pose de T encima de la tabla.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
