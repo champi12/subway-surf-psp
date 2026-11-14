@@ -592,6 +592,9 @@ int main(int argc, char **argv)
         if (frame_no == 750) pr |= PSP_CTRL_RIGHT;                      /* traje siguiente */
 #elif defined(AT_BOARDMENU)
         /* prueba de los tirones al volver de Tablas al menu: personajes -> tablas, se miran varias y se vuelve */
+#ifdef AT_BOARDCEL
+        if (frame_no == 20) { extern void game_debug_boardcel(void); game_debug_boardcel(); }
+#endif
         if ((frame_no == 30 || frame_no == 45 || frame_no == 60) && ginfo.popup) pr |= PSP_CTRL_CROSS;   /* avisos */
         if (frame_no == 80) pr |= PSP_CTRL_LTRIGGER;                    /* a personajes */
         if (frame_no == 120) pr |= PSP_CTRL_RTRIGGER;                   /* a tablas */

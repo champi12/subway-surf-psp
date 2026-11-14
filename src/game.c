@@ -182,6 +182,7 @@ static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static void char_pose(int i);
 static void celeb_queue(int ci, int theme);   /* pone en cola la pagina de celebracion */
+static void celeb_queue_board(int r);          /* ...la de una tabla */
 static CharCtrl cc;
 static V3 cc_center0; static float cc_height0;
 static V3 col_center0; static float col_height0, col_height, col_radius = 3.0f; static V3 col_center;
@@ -581,7 +582,8 @@ static void hunt_picked(void)
         hunt_box = w;   /* Tokio 3 y Miami 4: una super caja normal, pero con el fondo de la caza */
         hunt_box_city = hc;
         if (hc == 1 && w == 4) {
-            for (int i = 0; i < gd_nboards; i++) if (gd_boards[i].unlock == BOARD_HUNT) board_owned |= 1 << i;
+            for (int i = 0; i < gd_nboards; i++)
+                if (gd_boards[i].unlock == BOARD_HUNT) { board_owned |= 1 << i; celeb_queue_board(i); }
         }
         hunt_run = 0;
         static const char *const pz[3][5][2] = {
@@ -618,6 +620,7 @@ static void egg_picked(void)
     int r = chick_row();
     if (eggs >= EGGS_MAX && r >= 0 && !board_has(r)) {
         board_owned |= 1 << r;
+        celeb_queue_board(r);   /* la pagina sale al entrar en la pantalla de tablas */
         egg_box = 1;
         ginfo.sboxes_pending++;   /* se abre con las cajas, al acabar la carrera (la primera) */
         egg_hunt_run = 0;
@@ -3945,7 +3948,7 @@ static void outfit_apply_tex(int i)
 void outfit_draw_accessory(void)
 {
     int i = char_shown;
-    if (i < 0) return;
+    if (i < 0 || game_unlock_board()) return;   /* la pagina de una tabla: solo la tabla */
     int sel = outfit_view(i);
     if (!outfit_shows(i, sel)) sel = 0;
     OutfitChar *oc = &ochar[i];
@@ -4075,12 +4078,17 @@ static int celeb_pend_char = -1, celeb_pend_theme;   /* lo que falta por celebra
 _Static_assert(NCHARS < 63, "el personaje pendiente se guarda en 6 bits (63 = ninguno)");
 static int celeb_theme_done[2];                      /* trajes ya celebrados de Jake y Tricky */
 static float celeb_page_t0 = -1;                     /* game_time al abrir la pagina (-1: cerrada) */
+static int celeb_pend_board = -1;                    /* tabla por celebrar (-1: nada) */
+static int celeb_kind;                               /* pagina abierta: 0 personaje o traje, 1 tabla */
+static void board_preview(int row);
 int game_unlock_show(void) { return celeb_page_t0 >= 0; }
 float game_unlock_time(void) { return celeb_page_t0 < 0 ? 0 : game_time - celeb_page_t0; }
 int game_unlock_char(void) { return celeb_pend_char; }
 int game_unlock_theme(void) { return celeb_pend_theme; }
+int game_unlock_board(void) { return celeb_page_t0 >= 0 && celeb_kind == 1; }
 const char *game_unlock_name(void)
 {
+    if (celeb_kind == 1) return celeb_pend_board >= 0 && celeb_pend_board < gd_nboards ? gd_boards[celeb_pend_board].name : "";
     if (celeb_pend_char < 0 || celeb_pend_char >= NCHARS) return "";
     if (celeb_pend_theme <= 0) return chars[celeb_pend_char].name;
     int oi = outfit_find(celeb_pend_char, celeb_pend_theme);
@@ -4092,6 +4100,27 @@ static void celeb_queue(int ci, int theme)
     if (ci < 0 || ci >= NCHARS || celeb_pend_char >= 0) return;   /* si ya hay una, esa se ve primero */
     celeb_pend_char = ci; celeb_pend_theme = theme;
     if (theme > 0 && ci < 2) celeb_theme_done[ci] |= 1 << (theme - 1);
+}
+/* HoverboardBuyButton.ShowUnlockAnimation: la tabla conseguida (comprada, de regalo, de una caza o de una caja) */
+static void celeb_queue_board(int r)
+{
+    if (r < 0 || r >= gd_nboards || celeb_pend_board >= 0) return;
+    celeb_pend_board = r;
+}
+/* abre la pagina de la tabla (solo en la pantalla de tablas): el personaje subido a ella, como su vista previa */
+static void celeb_board_open(void)
+{
+    if (celeb_pend_board < 0 || celeb_page_t0 >= 0 || state != GS_BOARDS || ginfo.popup) return;
+    if (celeb_pend_board >= gd_nboards) { celeb_pend_board = -1; return; }
+    ginfo.board_sel = celeb_pend_board;
+    board_preview(celeb_pend_board);
+    /* solo la tabla: el cuerpo del personaje (y su traje) no se dibuja mientras la pagina este abierta */
+    if (n_avatars >= 0)
+        for (int c = gd.nodes[n_avatars].first_child; c >= 0; c = gd.nodes[c].next_sibling) nrt[c].rend = 0;
+    celeb_kind = 1;
+    celeb_page_t0 = game_time;
+    snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+    game_save_bg();
 }
 /* trajes que ya son suyos y no se han celebrado (los de regalo entran por aqui) */
 static void celeb_check_themes(void)
@@ -4110,6 +4139,7 @@ static void celeb_page_open(void)
     ginfo.char_sel = char_row(celeb_pend_char);
     theme_hi = celeb_pend_theme;
     char_show_model(celeb_pend_char);
+    celeb_kind = 0;
     celeb_page_t0 = game_time;
     if (char_posing || anim_find(&anim_char, an.run) >= 0) {
         anim_stop_all(&anim_char);
@@ -4125,6 +4155,13 @@ static void celeb_page_open(void)
 /* X (o O) cierra la pagina y vuelve a la pantalla de personajes con lo conseguido puesto */
 static void celeb_page_close(void)
 {
+    if (celeb_kind == 1) {
+        celeb_page_t0 = -1; celeb_pend_board = -1; celeb_kind = 0;
+        char_show_model(char_shown);                      /* vuelve el personaje encima de la tabla */
+        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);   /* la pose de la vista previa */
+        game_save_bg();
+        return;
+    }
     int ci = celeb_pend_char, th = celeb_pend_theme;
     celeb_page_t0 = -1;
     celeb_pend_char = -1; celeb_pend_theme = 0;
@@ -4140,8 +4177,14 @@ static void celeb_page_close(void)
 /* una vez por fotograma: al acabar la celebracion (o al salir de la pantalla) vuelve a su pose */
 static void char_celebrate_tick(void)
 {
-    if (celeb_page_t0 >= 0 && state != GS_CHARS) { celeb_page_t0 = -1; return; }   /* se salio: se vera al volver */
+    int pst = celeb_kind == 1 ? GS_BOARDS : GS_CHARS;
+    if (celeb_page_t0 >= 0 && state != pst) { celeb_page_t0 = -1; celeb_kind = 0; return; }   /* se salio: al volver */
     if (state == GS_CHARS) { celeb_check_themes(); celeb_page_open(); }
+    if (state == GS_BOARDS) celeb_board_open();
+    if (celeb_page_t0 >= 0 && celeb_kind == 1) {
+        /* la tabla sola girando en 3D (un poco inclinada para que se vea por encima), una vuelta cada 4 s */
+        nrt[n_avatar].lrot = qeuler(20, 200 + game_unlock_time() * 90.0f, 0);
+    }
 }
 
 /* textura del personaje i (la de su material de piel; los de la 1.4, la de su material propio) */
@@ -4314,6 +4357,12 @@ static void open_boards(void)
 }
 static void boards_input(unsigned in, int confirm)
 {
+    /* pagina de celebracion de la tabla: solo se puede cerrar (tras un momento) */
+    if (game_unlock_show()) {
+        if (game_unlock_time() > 0.6f && (confirm || (in & (IN_CIRCLE | IN_START | IN_CROSS))))
+            { snd_play(sfx_tap, 1, 1, 0); celeb_page_close(); }
+        return;
+    }
     int r = ginfo.board_sel;
     if (in & IN_LEFT) in |= IN_UP;
     if (in & IN_RIGHT) in |= IN_DOWN;
@@ -4345,8 +4394,7 @@ static void boards_input(unsigned in, int confirm)
             /* regalo: se reclama y queda elegida */
             board_owned |= 1 << r;
             board_sel = r;
-            snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
-            hud_slide(TR("¡Tabla de regalo!", "Free gift board!"), d->name);
+            celeb_queue_board(r);   /* PurchaseSuccessful -> ShowUnlockAnimation: tambien las de regalo */
             game_save_bg();
         } else if (ginfo.total_coins >= d->price) {
             /* HoverboardBuyButton: se paga y queda elegida */
@@ -4354,8 +4402,7 @@ static void boards_input(unsigned in, int confirm)
             missions_did(M_SPENDCOIN, d->price);
             board_owned |= 1 << r;
             board_sel = r;
-            snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
-            hud_slide(TR("Has desbloqueado", "You unlocked"), d->name);
+            celeb_queue_board(r);   /* PurchaseSuccessful -> ShowUnlockAnimation */
             game_save_bg();
         } else {
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
@@ -5243,10 +5290,11 @@ void game_draw(void)
             /* camara del menu acercada al personaje (mirandolo desde donde esta la del menu), para que se vea grande a la
              * derecha, como el modelo de la pantalla de personajes de la 1.4 */
             V3 cp = m34_pos(&nrt[n_mainCam].world);
-            V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));   /* el esqueleto: la animacion lo mueve */
+            int bpage = game_unlock_board();   /* pagina de una tabla: la camara a su altura y mas cerca */
+            V3 chest = v3add(node_pos(n_jroot), v3(0, bpage ? -3.6f : CHARS_CAM_Y, 0));   /* el esqueleto: la animacion lo mueve */
             V3 f = v3norm(v3sub(chest, cp)), rt = v3norm(v3cross(v3(0, 1, 0), f));
             V3 tgt = v3sub(chest, v3scale(rt, game_unlock_show() ? 0.0f : CHARS_CAM_X));   /* la pagina de celebracion lo pone en el centro */
-            r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
+            r_set_camera(v3sub(chest, v3scale(f, bpage ? 20.0f : CHARS_CAM_D)), tgt, 60.0f);   /* 20: girando no se sale de la pantalla */
             scene_draw_subtree(n_character);
             outfit_draw_accessory();
             r_flush_transparent();
@@ -5455,7 +5503,7 @@ static int save_fill(unsigned char *buf)
      * alcanzadas (tablas fijas de cada una) */
     int e3[8] = {tokyo_popup_year,
                  (hunt_items[1][1] & 127) | (hunt_items[1][2] & 127) << 7 | (hunt_items[1][3] & 127) << 14 | (hunt_items[1][4] & 127) << 21,
-                 (hunt_year[1] & 0xff) | hunt_box << 8 | hunt_box_city << 12, updates_reached | 1 << 30, 1 /* misiones de la 1.10 */,
+                 (hunt_year[1] & 0xff) | hunt_box << 8 | hunt_box_city << 12, updates_reached | 1 << 30, 1 /* misiones de la 1.10 */ | ((celeb_pend_board + 1) & 63) << 1 /* tabla por celebrar */,
                  (hunt_items[2][1] & 127) | (hunt_items[2][2] & 127) << 7 | (hunt_items[2][3] & 127) << 14 | (hunt_items[2][4] & 127) << 21,
                  (hunt_year[2] & 0xff) | miami_popup_year << 8,
                  (char_theme_owned[0] & 15) | (char_theme_owned[1] & 15) << 4 | (char_theme_sel[0] & 7) << 8 |
@@ -5575,6 +5623,8 @@ void game_load(void)
             celeb_theme_done[0] = (e3[7] >> 14) & 15; celeb_theme_done[1] = (e3[7] >> 18) & 15;
             int pc = (e3[7] >> 22) & 63;
             celeb_pend_char = pc == 63 ? -1 : pc; celeb_pend_theme = (e3[7] >> 28) & 7;
+            int pb = (e3[4] >> 1) & 63;
+            celeb_pend_board = pb ? pb - 1 : -1;
         }
         updates_reached = e3[3] & 0xff;
     } else {
@@ -5658,6 +5708,9 @@ void game_debug_outfit(void)
 #endif
     dlog("PRUEBA trajes desbloqueados (char %d)", c);
 }
+#ifdef AT_BOARDCEL
+void game_debug_boardcel(void) { celeb_queue_board(AT_BOARDCEL); dlog("PRUEBA tabla %d por celebrar", AT_BOARDCEL); }
+#endif
 void game_debug_huntbox(void)
 {
     hunt_box = 1; hunt_box_city = hunt_city() ? hunt_city() : 1;

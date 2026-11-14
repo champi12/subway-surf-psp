@@ -241,6 +241,11 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    cola donde se consigue (tambien en una caja misteriosa) y aparece al entrar en la pantalla de personajes, esperando a
    que su textura este leida. Lo celebrado y lo pendiente se guardan en e3[7], asi que no se repite. Sin coste: 7-8
    dibujos y CPU 0,5-0,7 ms.
+   Tablas: el original tambien la tiene (HoverboardBuyButton.PurchaseSuccessful -> ShowUnlockAnimation: una recompensa
+   BoardUnlock que abre la pagina de la caja), al comprarla, al reclamar las de regalo y al ganarla (Cherry en la caza de
+   Tokio, Chicky con los huevos). En el port, por decision del usuario y para no gastar, sale SOLO LA TABLA girando en 3D
+   (una vuelta cada 4 s, algo inclinada) sobre el fondo de colores, sin el personaje: 4 dibujos, 449 triangulos, CPU
+   0,5-0,8 ms. La pendiente se guarda en e3[4] (bits 1-6, tabla+1; 0 = ninguna, asi las partidas viejas no traen nada).
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano

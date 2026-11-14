@@ -2507,8 +2507,9 @@ static void draw_unlock_page(void)
     unsigned a1 = e < 0.3f ? (unsigned)(255 * e / 0.3f) : 255;
     float ty = e < 0.4f ? 18 - 40 * (1.0f - e / 0.4f) : 18;
     labc(1, SCR_W * 0.5f, ty, 26, (a1 << 24) | 0xffffffu, 1, 0,
-         game_unlock_theme() > 0 ? TR("¡TRAJE DESBLOQUEADO!", "OUTFIT UNLOCKED!")
-                                 : TR("¡PERSONAJE DESBLOQUEADO!", "CHARACTER UNLOCKED!"));
+         game_unlock_board() ? TR("¡TABLA DESBLOQUEADA!", "HOVERBOARD UNLOCKED!")
+         : game_unlock_theme() > 0 ? TR("¡TRAJE DESBLOQUEADO!", "OUTFIT UNLOCKED!")
+                                   : TR("¡PERSONAJE DESBLOQUEADO!", "CHARACTER UNLOCKED!"));
     if (e >= 0.5f) {
         unsigned a = e < 0.7f ? (unsigned)(255 * (e - 0.5f) / 0.2f) : 255;
         float pul = 1.0f + 0.05f * sinf(ginfo.time * 6.0f);
@@ -2532,7 +2533,7 @@ void hud_draw(void)
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
     case GS_CHARS: if (game_unlock_show()) draw_unlock_page(); else draw_chars(); break;
-    case GS_BOARDS: draw_boards(); break;
+    case GS_BOARDS: if (game_unlock_show()) draw_unlock_page(); else draw_boards(); break;
     case GS_TROPHIES: draw_trophies(); break;
     case GS_GAMEOVER: draw_gameover(); break;
     default:

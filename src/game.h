@@ -102,6 +102,7 @@ int outfits_avail(void);                        /* 1 si ya se jugo en la tempora
 int game_unlock_show(void);          /* 1 si la pagina esta abierta */
 float game_unlock_time(void);        /* segundos desde que se abrio */
 int game_unlock_theme(void);         /* 0: un personaje; 1+: ese traje */
+int game_unlock_board(void);         /* 1 si la pagina abierta es la de una tabla */
 const char *game_unlock_name(void);  /* nombre del personaje o del traje */
 #define CELEB_SECS 3.0f   /* lo que dura la celebracion al desbloquear (fondo de colores y el personaje corriendo) */
 int game_theme_hi(void);
