@@ -181,7 +181,7 @@ static void jet_clouds_update(void)
 static Animator anim_char, anim_guard, anim_dog, anim_cam;
 static int char_posing;              /* pantalla de personajes: quieto en su pose de reposo de la 1.4 */
 static void char_pose(int i);
-static void char_celebrate(int i);   /* celebracion al desbloquear: corre con el fondo de colores */
+static void celeb_queue(int ci, int theme);   /* pone en cola la pagina de celebracion */
 static CharCtrl cc;
 static V3 cc_center0; static float cc_height0;
 static V3 col_center0; static float col_height0, col_height, col_radius = 3.0f; static V3 col_center;
@@ -3858,6 +3858,18 @@ static int outfit_find(int ci, int sel)   /* sel: 0 normal, t+1 traje t */
     for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci && outfits[i].ti == sel - 1) return i;
     return -1;
 }
+/* nombre de cada traje (CharacterThemes de la 1.11: *_THEME_TITLE) */
+static const char *outfit_name(int oi)
+{
+    static const char *const nm[2][2][2] = {   /* [personaje][traje][es, en] */
+        { {"Traje Oscuro", "Dark Outfit"},     {"Traje Estrella", "Star Outfit"} },   /* Jake */
+        { {"Traje Camuflaje", "Camo Outfit"},  {"Traje Corazón", "Heart Outfit"} },   /* Tricky */
+    };
+    if (oi < 0 || oi >= noutfits) return "";
+    int ci = outfits[oi].ci, ti = outfits[oi].ti;
+    if (ci >= 0 && ci < 2 && ti >= 0 && ti < 2) return TR(nm[ci][ti][0], nm[ci][ti][1]);
+    return ci >= 0 && ci < NCHARS ? chars[ci].name : "";
+}
 int char_theme_count(int ci) { int n = 0; for (int i = 0; i < noutfits; i++) if (outfits[i].ci == ci) n++; return n; }
 /* como las tablas de cada actualizacion: aparecen la primera vez que se juega en la temporada de Miami (su fecha) y
  * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
@@ -3987,8 +3999,7 @@ int char_theme_buy(void)
     char_theme_owned[i] |= 1 << (sel - 1);
     char_theme_sel[i] = sel;
     snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
-    hud_slide(TR("¡Traje desbloqueado!", "Outfit unlocked!"), chars[i].name);
-    char_celebrate(i);
+    celeb_queue(i, sel);   /* la pagina de celebracion al volver a la pantalla de personajes */
     char_show_model(i);
     game_save_bg();   /* en el menu: en segundo plano (si no, tiron de 50-100 ms) */
     return 1;
@@ -4056,25 +4067,81 @@ static void char_pose(int i)
     }
 }
 
-/* Celebracion de la 1.11 al desbloquear un personaje o un traje (UIModelController + CelebrationBackgroundHelper): el
- * personaje corre mientras dura el fondo de colores y luego vuelve a su pose. Solo en la pantalla de personajes */
-static float celeb_t0 = -1;
-static void char_celebrate(int i)
+/* --- pagina de celebracion (1.11): al conseguir un personaje o un traje por PRIMERA vez sale una pagina aparte (como
+ * la del premio de las cajas) con el fondo de colores, el personaje corriendo y su nombre. Se pone en cola donde se
+ * consigue (puede ser en una caja misteriosa) y sale al entrar en la pantalla de personajes. Los trajes de regalo
+ * cuentan la primera vez que se tienen. Lo celebrado se guarda, asi que no se repite */
+static int celeb_pend_char = -1, celeb_pend_theme;   /* lo que falta por celebrar (-1: nada) */
+_Static_assert(NCHARS < 63, "el personaje pendiente se guarda en 6 bits (63 = ninguno)");
+static int celeb_theme_done[2];                      /* trajes ya celebrados de Jake y Tricky */
+static float celeb_page_t0 = -1;                     /* game_time al abrir la pagina (-1: cerrada) */
+int game_unlock_show(void) { return celeb_page_t0 >= 0; }
+float game_unlock_time(void) { return celeb_page_t0 < 0 ? 0 : game_time - celeb_page_t0; }
+int game_unlock_char(void) { return celeb_pend_char; }
+int game_unlock_theme(void) { return celeb_pend_theme; }
+const char *game_unlock_name(void)
 {
-    hud_celebrate();   /* el fondo de colores con las rayas */
-    if (i < 0 || !char_posing || anim_find(&anim_char, an.run) < 0) return;
-    anim_stop_all(&anim_char);
-    skeleton_rest(n_avatar);
-    anim_play(&anim_char, an.run);
-    celeb_t0 = game_time;
+    if (celeb_pend_char < 0 || celeb_pend_char >= NCHARS) return "";
+    if (celeb_pend_theme <= 0) return chars[celeb_pend_char].name;
+    int oi = outfit_find(celeb_pend_char, celeb_pend_theme);
+    return oi >= 0 ? outfit_name(oi) : chars[celeb_pend_char].name;
+}
+/* pone en cola la celebracion (theme 0: el personaje; 1+: ese traje suyo) */
+static void celeb_queue(int ci, int theme)
+{
+    if (ci < 0 || ci >= NCHARS || celeb_pend_char >= 0) return;   /* si ya hay una, esa se ve primero */
+    celeb_pend_char = ci; celeb_pend_theme = theme;
+    if (theme > 0 && ci < 2) celeb_theme_done[ci] |= 1 << (theme - 1);
+}
+/* trajes que ya son suyos y no se han celebrado (los de regalo entran por aqui) */
+static void celeb_check_themes(void)
+{
+    if (!outfits_avail()) return;
+    for (int ci = 0; ci < 2 && celeb_pend_char < 0; ci++)
+        for (int t = 1; t <= char_theme_count(ci); t++)
+            if (outfit_owned(ci, t) && !(celeb_theme_done[ci] >> (t - 1) & 1)) { celeb_queue(ci, t); break; }
+}
+/* abre la pagina si hay algo pendiente (solo en la pantalla de personajes) */
+static void celeb_page_open(void)
+{
+    if (celeb_pend_char < 0 || celeb_page_t0 >= 0 || state != GS_CHARS || ginfo.popup) return;
+    /* su textura puede no estar en memoria (p. ej. lo desbloqueo una caja): se lee en segundo plano y se abre al estar */
+    if (!r_tex_request(char_tex(celeb_pend_char))) return;
+    ginfo.char_sel = char_row(celeb_pend_char);
+    theme_hi = celeb_pend_theme;
+    char_show_model(celeb_pend_char);
+    celeb_page_t0 = game_time;
+    if (char_posing || anim_find(&anim_char, an.run) >= 0) {
+        anim_stop_all(&anim_char);
+        skeleton_rest(n_avatar);
+        anim_play(&anim_char, an.run);
+        nrt[n_sprayCan].rend = 0;
+        nrt[n_avatar].lrot = qeuler(0, CHARS_TURN, 0);
+        char_posing = 1;
+    }
+    snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
+    game_save_bg();
+}
+/* X (o O) cierra la pagina y vuelve a la pantalla de personajes con lo conseguido puesto */
+static void celeb_page_close(void)
+{
+    int ci = celeb_pend_char, th = celeb_pend_theme;
+    celeb_page_t0 = -1;
+    celeb_pend_char = -1; celeb_pend_theme = 0;
+    if (ci >= 0) {
+        if (th > 0) char_theme_sel[ci] = th;   /* el traje nuevo queda puesto */
+        if (ch_unlocked(ci)) ginfo.character = ci;
+        theme_hi = th;
+        char_show_model(ci);
+        char_pose(ci);
+    }
+    game_save_bg();
 }
 /* una vez por fotograma: al acabar la celebracion (o al salir de la pantalla) vuelve a su pose */
 static void char_celebrate_tick(void)
 {
-    if (celeb_t0 < 0) return;
-    if (game_time - celeb_t0 < CELEB_SECS && state == GS_CHARS) return;
-    celeb_t0 = -1;
-    if (state == GS_CHARS) char_pose(char_shown);
+    if (celeb_page_t0 >= 0 && state != GS_CHARS) { celeb_page_t0 = -1; return; }   /* se salio: se vera al volver */
+    if (state == GS_CHARS) { celeb_check_themes(); celeb_page_open(); }
 }
 
 /* textura del personaje i (la de su material de piel; los de la 1.4, la de su material propio) */
@@ -4319,6 +4386,12 @@ static void open_chars(void)
 
 static void chars_input(unsigned in, int confirm)
 {
+    /* pagina de celebracion: solo se puede cerrar (tras un momento, para que no se salte sin querer) */
+    if (game_unlock_show()) {
+        if (game_unlock_time() > 0.6f && (confirm || (in & (IN_CIRCLE | IN_START | IN_CROSS))))
+            { snd_play(sfx_tap, 1, 1, 0); celeb_page_close(); }
+        return;
+    }
     int nc = char_count();
     int i0 = char_id(ginfo.char_sel);
     int has_out = outfits_avail() && char_theme_count(i0);
@@ -4383,8 +4456,7 @@ static void chars_input(unsigned in, int confirm)
             else char_tokens[chars[i].token] = chars[i].price;
             ginfo.character = i;
             snd_play(sfx_find("Hr_gui_cash"), 0.8f, 1.0f, 0);
-            hud_slide(TR("Has desbloqueado", "You unlocked"), chars[i].name);
-            char_celebrate(i);   /* 1.11: corre con el fondo de colores con rayas detras */
+            celeb_queue(i, 0);   /* 1.11: la pagina de celebracion con el personaje corriendo */
             game_save_bg();
         } else {
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
@@ -4643,8 +4715,10 @@ static void mystery_open_type(int super)
             tok = amount;
             int have = char_tokens[chars[tc].token];
             char_tokens[chars[tc].token] = have + tok > chars[tc].price ? chars[tc].price : have + tok;
-            if (have < chars[tc].price && char_tokens[chars[tc].token] >= chars[tc].price)
+            if (have < chars[tc].price && char_tokens[chars[tc].token] >= chars[tc].price) {
                 hud_slide(TR("Has desbloqueado", "You unlocked"), chars[tc].name);
+                celeb_queue(tc, 0);   /* la pagina sale al entrar en la pantalla de personajes */
+            }
         }
         break;
     }
@@ -5171,7 +5245,7 @@ void game_draw(void)
             V3 cp = m34_pos(&nrt[n_mainCam].world);
             V3 chest = v3add(node_pos(n_jroot), v3(0, CHARS_CAM_Y, 0));   /* el esqueleto: la animacion lo mueve */
             V3 f = v3norm(v3sub(chest, cp)), rt = v3norm(v3cross(v3(0, 1, 0), f));
-            V3 tgt = v3sub(chest, v3scale(rt, CHARS_CAM_X));
+            V3 tgt = v3sub(chest, v3scale(rt, game_unlock_show() ? 0.0f : CHARS_CAM_X));   /* la pagina de celebracion lo pone en el centro */
             r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
             outfit_draw_accessory();
@@ -5385,7 +5459,11 @@ static int save_fill(unsigned char *buf)
                  (hunt_items[2][1] & 127) | (hunt_items[2][2] & 127) << 7 | (hunt_items[2][3] & 127) << 14 | (hunt_items[2][4] & 127) << 21,
                  (hunt_year[2] & 0xff) | miami_popup_year << 8,
                  (char_theme_owned[0] & 15) | (char_theme_owned[1] & 15) << 4 | (char_theme_sel[0] & 7) << 8 |
-                 (char_theme_sel[1] & 7) << 11 | (int)(1u << 31)};
+                 (char_theme_sel[1] & 7) << 11 |
+                 /* celebracion: trajes ya celebrados y lo que queda pendiente (63: nada) */
+                 (celeb_theme_done[0] & 15) << 14 | (celeb_theme_done[1] & 15) << 18 |
+                 ((celeb_pend_char < 0 ? 63 : celeb_pend_char) & 63) << 22 | (celeb_pend_theme & 7) << 28 |
+                 (int)(1u << 31)};
     memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2), e3, sizeof(e3));
     return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3));
 }
@@ -5494,6 +5572,9 @@ void game_load(void)
         if (ne3 >= 8 && (e3[7] >> 31 & 1)) {
             char_theme_owned[0] = e3[7] & 15; char_theme_owned[1] = (e3[7] >> 4) & 15;
             char_theme_sel[0] = (e3[7] >> 8) & 7; char_theme_sel[1] = (e3[7] >> 11) & 7;
+            celeb_theme_done[0] = (e3[7] >> 14) & 15; celeb_theme_done[1] = (e3[7] >> 18) & 15;
+            int pc = (e3[7] >> 22) & 63;
+            celeb_pend_char = pc == 63 ? -1 : pc; celeb_pend_theme = (e3[7] >> 28) & 7;
         }
         updates_reached = e3[3] & 0xff;
     } else {
@@ -5572,6 +5653,9 @@ void game_debug_outfit(void)
     if (!is14(c) && chars[c].unlock != UL_FREE) char_tokens[chars[c].token] = chars[c].price;   /* desbloquea el personaje */
     theme_hi = 0;
     char_show_model(c);
+#ifdef AT_UNLOCKCH
+    celeb_queue(c, 0);   /* prueba: la pagina de un personaje desbloqueado */
+#endif
     dlog("PRUEBA trajes desbloqueados (char %d)", c);
 }
 void game_debug_huntbox(void)

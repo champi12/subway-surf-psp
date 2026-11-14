@@ -234,8 +234,13 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    (`outfits_gift_free`). El traje puesto se dibuja en la portada (pintando el tren), en la carrera y en el fin de
    partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan (bit propio: el de
    las tablas tambien lo encienden las de la 1.11 vistas o compradas). Guardado en e3[7]. Al desbloquear un traje (o un
-   personaje) sale la celebracion de la 1.11: el fondo de colores con rayas y el personaje CORRIENDO 3 s, y luego vuelve
-   a su pose (`char_celebrate`; UIModelController + CelebrationBackgroundHelper). No cuesta dibujos ni CPU.
+   personaje) sale la **pagina de celebracion** de la 1.11 (UIModelController + CelebrationBackgroundHelper), aparte como
+   la del premio de las cajas: el fondo de colores con rayas (por `r_background_extra`, para que quede debajo), el
+   personaje centrado y CORRIENDO con lo conseguido puesto, el titulo y su nombre, y X para continuar. Sale la primera
+   vez que se consigue cada personaje y cada traje, los de regalo incluidos (la primera vez que son suyos). Se pone en
+   cola donde se consigue (tambien en una caja misteriosa) y aparece al entrar en la pantalla de personajes, esperando a
+   que su textura este leida. Lo celebrado y lo pendiente se guardan en e3[7], asi que no se repite. Sin coste: 7-8
+   dibujos y CPU 0,5-0,7 ms.
    outfits.bin (`SSO2`) con las texturas y mallas en hw_tex/chars14. Coste: 2-3 llamadas de dibujo más, sin bajón.
 4k. Bajones del menu (devlog del 12 nov): al volver de Tablas al menu, las animaciones de la tabla elegida se leian de dos
    en dos en el hilo principal (5-18 tirones seguidos de 83-209 ms). Ahora las lee un hilo en segundo plano

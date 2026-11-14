@@ -680,17 +680,18 @@ static void bg_release(void)
  * que giran desde el centro (CelebrationCircularCloner) durante 3 s, en lugar de la libreta */
 static float celeb_t = -100;
 void hud_celebrate(void) { celeb_t = ginfo.time; }
-static int draw_celebration(void)
+/* CelebrationBackgroundHelper de la 1.11: el fondo de colores y las rayas girando. e: segundos desde que empezo;
+ * fade < 0: no se apaga al final (la pagina de celebracion lo tiene puesto mientras este abierta) */
+static int celeb_bg(float e, float cx, float fade)
 {
-    float e = ginfo.time - celeb_t;
-    if (e < 0 || e > CELEB_SECS || ginfo.state != GS_CHARS) return 0;
     static int tb = -2, ts = -2;
     if (tb == -2) { tb = data_tex_find("ui_celeb_bg"); ts = data_tex_find("ui_celeb_stripe"); }
     if (tb < 0) return 0;
     r_sprite(tb, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE);
     if (ts >= 0) {
-        float cx = SCR_W * 0.68f, cy = SCR_H * 0.5f, len = SCR_W * 0.9f, rot = e * 0.6f;
-        unsigned a = e < 0.3f ? (unsigned)(150 * e / 0.3f) : e > 2.6f ? (unsigned)(150 * (3.0f - e) / 0.4f) : 150;
+        float cy = SCR_H * 0.5f, len = SCR_W * 0.9f, rot = e * 0.6f;
+        unsigned a = e < 0.3f ? (unsigned)(150 * e / 0.3f)
+                   : (fade > 0 && e > fade - 0.4f) ? (unsigned)(150 * (fade - e) / 0.4f) : 150;
         for (int i = 0; i < 16; i++) {
             float ang = rot + i * 6.2831853f / 16.0f;
             r_sprite_rot(ts, cx + cosf(ang) * len * 0.5f, cy + sinf(ang) * len * 0.5f, len, 22, ang, (a << 24) | 0xffffff);
@@ -698,7 +699,18 @@ static int draw_celebration(void)
     }
     return 1;
 }
-static void notebook_bg(void) { if (!draw_celebration()) notebook_panel(); }
+static int draw_celebration(void)
+{
+    float e = ginfo.time - celeb_t;
+    if (e < 0 || e > CELEB_SECS || ginfo.state != GS_CHARS) return 0;
+    return celeb_bg(e, SCR_W * 0.68f, CELEB_SECS);
+}
+static void notebook_bg(void)
+{
+    /* la pagina de celebracion pinta su fondo aqui (antes que el 3D) para que el personaje salga encima */
+    if (game_unlock_show()) { if (celeb_bg(game_unlock_time(), SCR_W * 0.5f, -1)) return; }
+    if (!draw_celebration()) notebook_panel();
+}
 static void bg_fallback(void)
 {
     if (a_nb >= 0 && bg_tex >= 0) return;   /* la libreta ya va con el fondo (notebook_bg) */
@@ -2485,6 +2497,26 @@ static void draw_daily_popup(void)
     labc(0, x + w - 14, y + h - 12, 13, 0xff8a8a8au, 2, 0, TR("O: cerrar", "O: close"));
 }
 
+/* Pagina de celebracion de la 1.11 (UIModelController + CelebrationBackgroundHelper): al conseguir un personaje o un
+ * traje por primera vez, una pagina aparte (como la del premio de las cajas) con el fondo de colores, el personaje
+ * corriendo (lo dibuja el 3D, centrado) y su nombre. El 3D va detras: aqui solo el fondo y los textos */
+static void draw_unlock_page(void)
+{
+    float e = game_unlock_time();   /* el fondo de colores lo pinta notebook_bg, debajo del personaje */
+    /* el titulo baja de arriba y el nombre sale despues, como el premio de las cajas */
+    unsigned a1 = e < 0.3f ? (unsigned)(255 * e / 0.3f) : 255;
+    float ty = e < 0.4f ? 18 - 40 * (1.0f - e / 0.4f) : 18;
+    labc(1, SCR_W * 0.5f, ty, 26, (a1 << 24) | 0xffffffu, 1, 0,
+         game_unlock_theme() > 0 ? TR("¡TRAJE DESBLOQUEADO!", "OUTFIT UNLOCKED!")
+                                 : TR("¡PERSONAJE DESBLOQUEADO!", "CHARACTER UNLOCKED!"));
+    if (e >= 0.5f) {
+        unsigned a = e < 0.7f ? (unsigned)(255 * (e - 0.5f) / 0.2f) : 255;
+        float pul = 1.0f + 0.05f * sinf(ginfo.time * 6.0f);
+        labfit(1, SCR_W * 0.5f, SCR_H - 54, 30 * pul, SCR_W - 40, (a << 24) | 0x00dbffu, 1, 1, game_unlock_name());
+    }
+    if (e >= 0.9f) labc(0, SCR_W * 0.5f, SCR_H - 18, 15, C_WHITE, 1, 1, TR("X continuar", "X continue"));
+}
+
 void hud_draw(void)
 {
     hud_fonts();
@@ -2499,7 +2531,7 @@ void hud_draw(void)
     switch (ginfo.state) {
     case GS_MENU: draw_menu(); break;
     case GS_SHOP: draw_shop(); break;
-    case GS_CHARS: draw_chars(); break;
+    case GS_CHARS: if (game_unlock_show()) draw_unlock_page(); else draw_chars(); break;
     case GS_BOARDS: draw_boards(); break;
     case GS_TROPHIES: draw_trophies(); break;
     case GS_GAMEOVER: draw_gameover(); break;
