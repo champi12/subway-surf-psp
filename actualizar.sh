@@ -114,6 +114,9 @@ if [ -n "$2" ]; then
               /mnt/c/Users/*/OneDrive*/Escritorio 2>/dev/null | sed 's/^/    "/; s/$/"/' || true
         exit 1
     fi
+    # la carpeta del juego del escritorio es solo lo compilado: se borra antes para que no queden archivos de una
+    # compilacion anterior (p. ej. exhandler.prx de la version de pruebas en la publica)
+    rm -rf "$2/PSP/GAME/SUBWAY"
     cp -r dist/PSP "$2/"
     echo "Copiado a: $2/PSP"
 fi

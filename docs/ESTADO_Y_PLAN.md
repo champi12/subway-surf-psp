@@ -136,7 +136,7 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 ## 7. Plan
 
 1. (Hecho) Versión pública con el mapa de la 1.5.2 por defecto y todo lo de la 1.5.2.
-1b. HECHO (en pruebas): **selector de mapas** en los ajustes (START → Mapa). Carrusel como el de personajes con los
+1b. HECHO: **selector de mapas** en los ajustes (START → Mapa). Carrusel como el de personajes con los
    mapas que haya en data/ (Clásico 1.0, Halloween 1.4, Subway Surfers 1.5.2, Navidad 1.5.2, Nueva York, Río, Roma,
    Sídney, Tokio y Miami), su nombre y su versión. Miniatura: el grafiti del vagón de salida (`train_start`, con el
    nombre de la ciudad) de cada APK, en la carpeta de su mapa (`thumb.bin`; Navidad `data/w15/thumb_xmas.bin`; 128x128,
@@ -310,7 +310,7 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
-4j. 1.12 (París, en pruebas): su mapa en data/w112 (`--apk112`, `WORLD112=1` lo deja siempre) del 28 de junio al 25 de
+4j. 1.12 (París): su mapa en data/w112 (`--apk112`, `WORLD112=1` lo deja siempre) del 28 de junio al 25 de
    julio (tras Miami). Análisis previo: mismos 51 tramos y mismas llamadas que Miami, +42 % de triángulos (como los
    mapas de 17-19 mil que ya van a 30 FPS), +36 % de vértices (~0,7 MB de RAM), las mismas texturas; el código de la
    carrera es idéntico al de la 1.11. Por fecha: Coco ("chloe", 95000, "Especial de París") y Rose (50000), el aviso de
