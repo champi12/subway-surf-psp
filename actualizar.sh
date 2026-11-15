@@ -87,6 +87,8 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
+if [ -f data/w112/world.bin ]; then echo "Mapa de la 1.12 (Paris): incluido (del 28 de junio al 25 de julio, con su caza semanal; WORLD112=1 lo deja siempre)"
+elif [ -n "$APK112" ]; then echo "AVISO: hay APK de la 1.12 ($APK112) pero no se genero data/w112"; fi
 if [ -f data/w111/world.bin ]; then echo "Mapa de la 1.11 (Miami): incluido (del 30 de mayo al 27 de junio, con su caza semanal; WORLD111=1 lo deja siempre)"; fi
 if [ -f data/w110/world.bin ]; then echo "Mapa de la 1.10 (Tokio): incluido (del 2 al 29 de mayo, con la caza semanal; WORLD110=1 lo deja siempre)"; fi
 if [ -f data/w19/world.bin ]; then echo "Mapa de la 1.9 (Sidney): incluido (del 4 de abril al 1 de mayo; WORLD19=1 lo deja siempre)"; fi
