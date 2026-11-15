@@ -4095,6 +4095,57 @@ static int outfit_shows(int i, int sel)   /* si se ve ese traje: comprado, o mir
 {
     return sel == 0 || outfit_owned(i, sel) || (state == GS_CHARS && i == char_shown);
 }
+/* CharacterStickerManager de la 1.12 (pegatinas de personajes y trajes) */
+static int theme_seen[NCHARS];   /* bit t-1: traje t mirado en el selector (PlayerInfo.ThemeSeen) */
+static int coco_seen;            /* Coco ya visto en el carrusel (MarkCharacterAsSeen; el personaje nuevo de la 1.12) */
+/* ShouldShowStickersForCharacterThemes: no a un jugador recien empezado (el original pide haber visto el aviso de las
+ * tablas, el de Facebook y el de la primera mision; aqui, el de las tablas) */
+static int sticker_flow(void) { return hb_shown; }
+/* visto: mirado en el selector o ya comprado (partidas de antes de las pegatinas) */
+static int theme_is_seen(int ci, int t) { return ((theme_seen[ci] | char_theme_owned[ci]) >> (t - 1)) & 1; }
+static int outfit_is_new(int oi) { int ci = outfits[oi].ci; return ci == 3 || ci == 11; }   /* isNewInThisUpdate: Spike y Tagbot */
+/* burbuja del boton del traje t (1..) del personaje ci en el selector (UICharacterThemeShifter.SetupButton):
+ * 1 NUEVO (de pago, nuevo en la 1.12 y sin mirar), 2 REGALO (gratis y sin reclamar), 0 ninguna */
+int game_theme_bubble(int ci, int t)
+{
+    int oi = outfit_find(ci, t);
+    if (oi < 0 || !outfit_ci_avail(ci)) return 0;
+    if (!theme_is_seen(ci, t) && sticker_flow() && outfit_is_new(oi) && outfits[oi].price != 0) return 1;
+    if (!outfit_owned(ci, t) && outfits[oi].price == 0) return 2;
+    return 0;
+}
+/* CharactersNotificationHelper (getNumberOfNewCharactersOrThemes): el numero del boton de personajes. Coco sin ver (si
+ * esta disponible) y los trajes nuevos sin mirar */
+int game_chars_new_count(void)
+{
+    int n = 0;
+    if (CH_COCO < NCHARS && char_available(CH_COCO) && !coco_seen && !ch_unlocked(CH_COCO)) n++;
+    if (!sticker_flow()) return n;
+    for (int k = 0; k < noutfits; k++) {
+        int ci = outfits[k].ci;
+        if (ci < NCHARS && outfit_ci_avail(ci) && outfit_is_new(k) && !theme_is_seen(ci, outfits[k].ti + 1)) n++;
+    }
+    return n;
+}
+static void theme_mark_seen(int ci, int t)
+{
+    if (ci < 0 || ci >= NCHARS || t <= 0 || (theme_seen[ci] >> (t - 1) & 1)) return;
+    theme_seen[ci] |= 1 << (t - 1);
+    game_save_bg();
+}
+static void char_mark_seen(int ci)
+{
+    if (ci != CH_COCO || coco_seen) return;
+    coco_seen = 1;
+    game_save_bg();
+}
+/* GiftBreadHoverboards (1.12): queda una tabla de regalo sin reclamar */
+int game_free_board(void)
+{
+    for (int i = 0; i < gd_nboards && i < 32; i++)
+        if (board_is_gift(i) && !(board_owned >> i & 1) && board_avail(i)) return 1;
+    return 0;
+}
 static uint32_t *char_skin_comp(int i)
 {
     if (i == 0) return slick_skin;   /* Jake usa el nodo slick */
@@ -4219,6 +4270,7 @@ void char_theme_shift(int dir)
     if (i < 0 || !outfits_avail() || char_theme_count(i) == 0) return;
     int n = 1 + char_theme_count(i);
     theme_hi = ((theme_hi + dir) % n + n) % n;   /* solo previsualiza (cuando sus texturas esten); la X aplica */
+    theme_mark_seen(i, theme_hi);                 /* SelectTheme -> PlayerInfo.ThemeSeen */
 }
 /* X sobre un traje sin comprar: lo compra con llaves (SendBuyThemeRequest) */
 int char_theme_buy(void)
@@ -4344,10 +4396,17 @@ static void celeb_queue(int ci, int theme)
     if (theme > 0) celeb_theme_done[ci] |= 1 << (theme - 1);
 }
 /* HoverboardBuyButton.ShowUnlockAnimation: la tabla conseguida (comprada, de regalo, de una caza o de una caja) */
+static int flamingo_celebrated;   /* la Flamingo ya tuvo su pagina (comprada, o regalada y elegida una vez) */
+static int flamingo_row(void)
+{
+    for (int k = 0; k < gd_nboards && k < 32; k++) if (!strcmp(gd_boards[k].name, "Flamingo")) return k;
+    return -1;
+}
 static void celeb_queue_board(int r)
 {
     if (r < 0 || r >= gd_nboards || celeb_pend_board >= 0) return;
     celeb_pend_board = r;
+    if (r == flamingo_row()) flamingo_celebrated = 1;
 }
 /* abre la pagina de la tabla (solo en la pantalla de tablas): el personaje subido a ella, como su vista previa */
 static void celeb_board_open(void)
@@ -4703,6 +4762,11 @@ static void boards_input(unsigned in, int confirm)
         if (board_has(r)) {
             board_sel = r;
             snd_play(sfx_find("Hr_gui_coin"), 0.6f, 1.2f, 0);
+            /* la Flamingo que regala la 1.12 llega sin aviso: la primera vez que se elige, su pagina de tabla
+             * desbloqueada, como si se acabara de conseguir */
+            int p112 = 0;   /* solo con los datos de la 1.12 (los que la regalan: traen Rose) */
+            for (int k = 0; k < gd_nboards; k++) if (gd_boards[k].unlock == BOARD_SEASON_PARIS) p112 = 1;
+            if (p112 && r == flamingo_row() && !flamingo_celebrated) celeb_queue_board(r);
             game_save_bg();
         } else if (d->unlock == BOARD_EGGS) {
             /* PurchaseHandler de la 1.8: Chicky no se compra, se gana con los huevos (TryToUnlockEggBoard) */
@@ -4751,6 +4815,7 @@ static void open_chars(void)
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
     theme_hi = theme_shown = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
     theme_for = ginfo.character;
+    char_mark_seen(ginfo.character);
     theme_mode = 0;                               /* se empieza en el carrusel, no dentro del selector */
     char_show_model(ginfo.character);
     char_pose(ginfo.character);
@@ -4811,12 +4876,14 @@ static void chars_input(unsigned in, int confirm)
     if (i != char_shown && char_tex_ready(i)) {
         theme_hi = theme_shown = char_theme_sel[i]; theme_for = i;
         char_show_model(i); char_pose(i);
+        char_mark_seen(i);   /* CharacterOverlayHelper.SelectedInMenu */
     }
     /* X sobre un personaje ya suyo con trajes: entra al selector de trajes (empieza en el que lleva puesto) */
     if (confirm && ch_unlocked(i) && i == i0 && i == char_shown && outfits_avail() && char_theme_count(i)) {
         snd_play(sfx_tap, 1, 1, 0);
         theme_hi = char_theme_sel[i];
         theme_mode = 1;
+        theme_mark_seen(i, theme_hi);
         return;
     }
     if (confirm) {
@@ -5933,7 +6000,8 @@ static int save_fill(unsigned char *buf)
                  (hunt_year[3] & 0xff) | (paris_popup_year & 0xffff) << 8,
                  (char_theme_owned[3] & 15) | (char_theme_owned[11] & 15) << 4 | (char_theme_sel[3] & 7) << 8 |
                  (char_theme_sel[11] & 7) << 11 | (celeb_theme_done[3] & 15) << 14 | (celeb_theme_done[11] & 15) << 18,
-                 0, 0, 0, 0, 1 << 30};
+                 (theme_seen[3] & 15) | (theme_seen[11] & 15) << 4 | (coco_seen & 1) << 8 | 1 << 9 | (flamingo_celebrated & 1) << 10,   /* pegatinas */
+                 0, 0, 0, 1 << 30};
     memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3), e4, sizeof(e4));
     return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4));
 }
@@ -6023,6 +6091,8 @@ void game_load(void)
         char_theme_owned[3] = e4[2] & 15; char_theme_owned[11] = (e4[2] >> 4) & 15;
         char_theme_sel[3] = (e4[2] >> 8) & 7; char_theme_sel[11] = (e4[2] >> 11) & 7;
         celeb_theme_done[3] = (e4[2] >> 14) & 15; celeb_theme_done[11] = (e4[2] >> 18) & 15;
+        if (e4[3] >> 9 & 1) { theme_seen[3] = e4[3] & 15; theme_seen[11] = (e4[3] >> 4) & 15; coco_seen = (e4[3] >> 8) & 1;
+                              flamingo_celebrated = (e4[3] >> 10) & 1; }
     }
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */

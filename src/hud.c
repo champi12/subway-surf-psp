@@ -569,6 +569,15 @@ static void foot_btn_me(float nx, const char *icon, float iw, float ih, const ch
         if (!strcmp(icon, "icon_boards")) ui_sprite_wh(a_nb, icon, cx - U(iw) * 0.5f, cy - U(ih) * 0.5f, U(iw), U(ih), C_WHITE);
         else spr_c(icon, cx, cy, U(iw), U(ih), C_WHITE);
         if (!strcmp(icon, "icon_boards") || !strcmp(icon, "icon_hoverboard")) new_badge(cx + U(28), cy - U(20), board_new_count());
+        if (!strcmp(icon, "icon_characters")) new_badge(cx + U(28), cy - U(20), game_chars_new_count());   /* 1.12 */
+        /* GiftBreadCharacters / GiftBreadHoverboards de la 1.12: "REGALO" en el boton de la otra pantalla */
+        int gift = !strcmp(icon, "icon_characters") ? ginfo.state != GS_CHARS && game_free_outfit()
+                 : (!strcmp(icon, "icon_boards") || !strcmp(icon, "icon_hoverboard")) ? ginfo.state != GS_BOARDS && game_free_board() : 0;
+        if (gift) {
+            float gx = cx - U(26), gy = cy - U(22);
+            spr_c("background_sticker_medium", gx, gy, U(30), U(30), C_ORANGE);
+            labfit(0, gx, gy, 9, U(26), C_WHITE, 1, 1, TR("REGALO", "GIFT"));
+        }
         if (key && !strcmp(key, "[]")) {
             /* la tecla cuadrado: un cuadradito con borde en lugar de "[]" (la letra no tiene ese simbolo) */
             float tw = labw(0, 14, title), x0 = cx - (tw + 14) * 0.5f, ty = cy + U(30);
@@ -1030,9 +1039,10 @@ static void draw_menu(void)
                 ui_sprite_wh(a_nb, fb[i].icon, bx + (bw - iw) * 0.5f, y1 - ih, iw, ih, C_WHITE);
             }
             lab(0, bx + 6, y1 - h + 2, 14, C_WHITE, 0, 1, fb[i].key);
-            if (i == 0) new_badge(bx + bw - 6, y1 - h + 4, board_new_count());   /* tablas nuevas, en ME */
-            if (i == 0 && game_free_outfit()) {
-                /* GiftBradCharacters de la 1.11: la pegatina naranja "FREE GIFT" mientras quede un traje gratis */
+            if (i == 0) new_badge(bx + bw - 6, y1 - h + 4, board_new_count() + game_chars_new_count());   /* novedades, en ME */
+            if (i == 0 && (game_free_outfit() || game_free_board())) {
+                /* GiftBreadCharacters / GiftBreadHoverboards de la 1.12: la pegatina naranja "FREE GIFT" mientras quede un
+                 * traje o una tabla de regalo sin reclamar */
                 float sx = bx + bw - U(16), sy = y1 - h - U(4), sw = U(40) * (1.0f + 0.06f * sinf(ginfo.time * 4.0f));
                 spr_c("background_sticker_medium", sx, sy, sw, sw, C_ORANGE);
                 labc(1, sx, sy - U(6), 12, C_WHITE, 1, 1, TR("¡REGALO", "FREE"));
@@ -1954,6 +1964,13 @@ static void draw_chars(void)
             if (ico >= 0) r_sprite(ico, cx - is * 0.5f, cy - is * 0.5f, is, is, 0, 0, 1, 1, ci);
             else if (t == 0) spr_c("icon_character_owned", cx, cy, U(16), U(16), C_WHITE);
             if (t > 0 && !game_theme_owned(cid, t - 1) && game_theme_price(cid, t - 1) > 0) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
+            /* UICharacterThemeShifter de la 1.12: burbuja NUEVO (traje nuevo sin mirar) o REGALO (gratis sin reclamar) */
+            int bub = t > 0 ? game_theme_bubble(cid, t) : 0;
+            if (bub) {
+                float bxx = cx - sz * 0.5f + U(3), byy = cy - sz * 0.5f + U(2);
+                spr_c("background_sticker_medium", bxx, byy, U(24), U(24), bub == 2 ? C_ORANGE : 0xff2a2ad8u);
+                labfit(0, bxx, byy, 8, U(21), C_WHITE, 1, 1, bub == 2 ? TR("REGALO", "GIFT") : TR("NUEVO", "NEW"));
+            }
         }
     }
     /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos (los trofeos van aqui, no en la portada) */

@@ -321,7 +321,14 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    1.11). Celebraciones como la 1.12: al desbloquear, de pie y de frente (su pose) sobre el fondo que gira; al batir el
    récord (BragCelebration), el fondo quieto con las rayas y el personaje corriendo en su sitio, centrado y de
    costado (carrera normal a media velocidad, nunca la de las Super Sneakers), con "¡Nuevo récord!" (no en el
-   clásico 1.0), despues de las cajas de la carrera como el original. Partida: bloque e4 (caza de París, aviso,
+   clásico 1.0), despues de las cajas de la carrera como el original.
+   Pegatinas de la 1.12 (CharacterStickerManager / HoverboardStickerManager, misma logica que la 1.11 reordenada): en
+   el selector de trajes, burbuja NUEVO en los trajes de pago nuevos de la 1.12 (Spike y Tagbot) sin mirar y REGALO en
+   los gratis sin reclamar; el boton Personajes (y ME en la portada) cuenta Coco sin ver y esos trajes sin mirar
+   (solo tras el aviso de las tablas, ShouldShowStickersForCharacterThemes); la pegatina de regalo sale tambien por
+   las tablas de regalo sin reclamar (GiftBreadHoverboards), en ME y en el boton Tablas. Rose no lleva NUEVO (tiene
+   tiempo limite, como en el original). La Flamingo regalada: la primera vez que se elige, su pagina de tabla
+   desbloqueada. Guardado en e4[3]. Partida: bloque e4 (caza de París, aviso,
    trajes de Spike y Tagbot). apk_kind.py la reconoce (CharacterStickerManager).
 
 ## 7a. Modo clásico (mapa 1.0) — pendiente, aún sin selector de mapa

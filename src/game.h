@@ -70,7 +70,10 @@ int shop_amount(int i);
  * Lucy/Ninja/Frank/King/Frizzy con monedas */
 enum { UL_FREE, UL_TOKENS, UL_COINS };
 int char_count(void);
-int game_char_id(int row);                     /* fila del carrusel -> numero del personaje (para los trajes) */
+int game_char_id(int row);
+int game_theme_bubble(int ci, int t);          /* 1.12: burbuja del boton del traje t: 1 NUEVO, 2 REGALO, 0 nada */
+int game_chars_new_count(void);                /* 1.12: personajes y trajes nuevos sin ver (numero del boton) */
+int game_free_board(void);                     /* 1.12: queda una tabla de regalo sin reclamar */                     /* fila del carrusel -> numero del personaje (para los trajes) */
 /* tablas de la 1.5.2 (fila = orden de la tienda); board_count 0 si no hay boards.bin */
 int board_count(void);
 const char *board_name(int row);
