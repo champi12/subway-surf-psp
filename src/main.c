@@ -344,6 +344,8 @@ int main(int argc, char **argv)
     /* texturas que si no se leerian de la Memory Stick en plena carrera (tiron de 50-130 ms en la consola) */
     r_preload_texture("enemies");
     r_preload_texture("jetpackSmoke");
+    r_preload_texture("coin_glow");   /* brillo de monedas y power-ups (2 KB cada una) */
+    r_preload_texture("fx_spray");    /* spray de revivir (5 KB) */
     hud_loading(0.9f);
     audio_init();
     scene_init();

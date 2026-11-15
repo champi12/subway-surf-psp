@@ -529,11 +529,13 @@ int r_tex_request(int t)
     return gd.tex[t].loaded;
 }
 
-/* carga una textura por nombre antes de empezar a jugar, para que no se lea en plena carrera */
+/* carga una textura por nombre antes de empezar a jugar, para que no se lea en plena carrera. Todas las que se llaman
+ * asi: hay nombres repetidos (coin_glow: el brillo de las monedas y el de los power-ups) y solo se cargaba la primera;
+ * la otra se leia al coger un power-up y, con la Memory Stick ocupada (la musica), tardo 305 ms en Paris */
 void r_preload_texture(const char *name)
 {
     for (int t = 0; t < gd.ntex; t++)
-        if (!strcmp(gd.tex[t].name, name)) { tex_ensure(t); return; }
+        if (!strcmp(gd.tex[t].name, name)) tex_ensure(t);
 }
 
 static int cur_mips, mip_ok = 1;
