@@ -4843,6 +4843,12 @@ static void chars_input(unsigned in, int confirm)
         if (in & IN_RIGHT) { snd_play(sfx_tap, 1, 1, 0); char_theme_shift(1); }
         if (confirm) {
             int sel = theme_hi;
+            if (!ch_unlocked(i0) && (sel == 0 || outfit_owned(i0, sel))) {
+                /* personaje sin comprar: se miran sus trajes, pero no se puede elegir ("UNLOCK ... FIRST") */
+                snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+                hud_slide(TR("Desbloquea el personaje primero", "Unlock the character first"), chars[i0].name);
+                return;
+            }
             if (sel > 0 && !outfit_owned(i0, sel)) {
                 char_theme_buy();                        /* sin llaves: avisa y se queda dentro */
                 if (!outfit_owned(i0, sel)) return;
@@ -4879,7 +4885,10 @@ static void chars_input(unsigned in, int confirm)
         char_mark_seen(i);   /* CharacterOverlayHelper.SelectedInMenu */
     }
     /* X sobre un personaje ya suyo con trajes: entra al selector de trajes (empieza en el que lleva puesto) */
-    if (confirm && ch_unlocked(i) && i == i0 && i == char_shown && outfits_avail() && char_theme_count(i)) {
+    /* y triangulo, en cualquier personaje con trajes, aunque no sea suyo: como en el original se pueden mirar (y asi se
+     * quitan las burbujas NUEVO de los trajes de la 1.12); comprarlos o elegirlos pide tener el personaje */
+    if (((confirm && ch_unlocked(i)) || (in & IN_TRIANGLE)) && i == i0 && i == char_shown && outfits_avail() &&
+        char_theme_count(i)) {
         snd_play(sfx_tap, 1, 1, 0);
         theme_hi = char_theme_sel[i];
         theme_mode = 1;

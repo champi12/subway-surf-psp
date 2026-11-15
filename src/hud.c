@@ -1941,6 +1941,10 @@ static void draw_chars(void)
         };
         int ck = cid == 11 ? 2 : cid == 3 ? 3 : cid;   /* fila de colores del personaje */
         int nth = char_theme_count(cid), hi = game_theme_hi();
+        if (!un && !in_th) {
+            /* personaje sin comprar: triangulo para mirar sus trajes (X es comprar el personaje) */
+            lab(0, bx + U(2) + nth * U(20) + U(26), U(66), 12, C_WHITE, 0, 1, TR("Triángulo: trajes", "Triangle: outfits"));
+        }
         static int tf = -2, tc, tk;
         if (tf == -2) { tf = data_tex_find("ui_sel_fill"); tc = data_tex_find("ui_sel_char"); tk = data_tex_find("ui_sel_skin"); }
         float step = U(40), row_w = nth * step, cx0 = bx + U(2) - row_w * 0.5f, cy = U(66);   /* centrada bajo el nombre */
