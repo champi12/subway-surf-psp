@@ -192,6 +192,7 @@ static int outfit_view(int i);
 static void celeb_queue(int ci, int theme);   /* pone en cola la pagina de celebracion */
 static void celeb_queue_board(int r);          /* ...la de una tabla */
 static void brag_open(int score);              /* celebracion del record (1.12) */
+static int brag_pend;                          /* record por celebrar al acabar de abrir las cajas de la carrera */
 static void brag_tick(void);
 static void brag_close(void);
 static CharCtrl cc;
@@ -3500,8 +3501,13 @@ static void die_tick(float dt)
          * corrutina seguia y volvia a poner "caught" encima de la pose: de espaldas y sacudiendose en la libreta */
         gu.catching = 0; gu.hit_train = 0;
         char_pose(ginfo.character);
-        /* 1.12: la celebracion del record (no en el clasico de la 1.0, que se queda como era) */
-        if (new_record && !classic_10()) brag_open(ginfo.final_score);
+        /* 1.12: la celebracion del record (no en el clasico de la 1.0, que se queda como era). RewardManager.
+         * PutNewHighScoreLast: va la ultima, despues de abrir las cajas de la carrera */
+        brag_pend = 0;
+        if (new_record && !classic_10()) {
+            if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) brag_pend = ginfo.final_score;
+            else brag_open(ginfo.final_score);
+        }
     }
 }
 
@@ -5333,8 +5339,13 @@ void game_input(unsigned in)
         if (confirm || (in & IN_START)) {
             /* X durante la animacion de abrir la salta; despues, sigue con la siguiente caja */
             if (ginfo.reward[0] && game_time - ginfo.reward_t < REWARD_REVEAL) ginfo.reward_t = game_time - REWARD_REVEAL;
-            else if (ginfo.reward[0]) ginfo.reward[0] = 0;
+            else if (ginfo.reward[0]) {
+                ginfo.reward[0] = 0;
+                /* la ultima caja: ahora el record (PutNewHighScoreLast) */
+                if (brag_pend && ginfo.boxes_pending <= 0 && ginfo.sboxes_pending <= 0) { brag_open(brag_pend); brag_pend = 0; }
+            }
             else if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0) mystery_open();
+            else if (brag_pend) { brag_open(brag_pend); brag_pend = 0; }
             else {
                 snd_play(sfx_tap, 1, 1, 0);
 #if DEVLOG
