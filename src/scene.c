@@ -1206,6 +1206,15 @@ void track_remove_obstacles(float maxZ)
             for (int p = o; p >= 0; p = gd.nodes[p].parent) if (nrt[p].hidden) { hid = 1; break; }
             if (hid) coins[i].active = 0;
         }
+    /* y las sueltas (las lineas de monedas que no cuelgan de un obstaculo con SnapObject: en el original se quedaban
+     * en la via al romper la tabla o al revivir). Todas hasta el corte, para que la via quede limpia; no las que ya
+     * vienen hacia el personaje con el iman */
+    {
+        int nloose = 0;
+        for (int i = 0; i < MAX_COINS; i++)
+            if (coins[i].active && !coins[i].pulling && coins[i].pos.z <= maxZ) { coins[i].active = 0; nloose++; }
+        dlog("MONEDAS sueltas quitadas hasta z=%d: %d", (int)maxZ, nloose);
+    }
 #if DEVLOG
     /* diagnostico: monedas que se quedan en la via por delante del corte (hasta 400 mas alla). Para cada una, su linea
      * de monedas, el objeto con SnapObject que la contiene (lo que se esconde o no), su z y su capa */
