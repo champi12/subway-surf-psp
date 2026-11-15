@@ -319,8 +319,9 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    4 Score Boosters). Con la 1.12 la Flamingo es de regalo (UnlockFlamingoBoard). Trajes de Spike (Rock 25, Punk 40) y
    Tagbot (Espacial 15, Juguete 30), tras jugar en la temporada de París, como los de Jake y Tricky (con su cuerpo de la
    1.11). Celebraciones como la 1.12: al desbloquear, de pie y de frente (su pose) sobre el fondo que gira; al batir el
-   récord (BragCelebration), el fondo quieto con las rayas y el personaje llegando corriendo en 3,5 s (curva 2t - t²,
-   carrera del 100 al 45 %), con "¡Nuevo récord!" (no en el clásico 1.0). Partida: bloque e4 (caza de París, aviso,
+   récord (BragCelebration), el fondo quieto con las rayas y el personaje corriendo en su sitio, centrado y de
+   costado (carrera normal a media velocidad, nunca la de las Super Sneakers), con "¡Nuevo récord!" (no en el
+   clásico 1.0), despues de las cajas de la carrera como el original. Partida: bloque e4 (caza de París, aviso,
    trajes de Spike y Tagbot). apk_kind.py la reconoce (CharacterStickerManager).
 
 ## 7a. Modo clásico (mapa 1.0) — pendiente, aún sin selector de mapa
