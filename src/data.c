@@ -623,7 +623,9 @@ int data_theme_init(int need_meshes)
 /* ---- personajes de la 1.4 (chars14.bin): cada malla se lee solo mientras se usa ----
  * La entrada en gd.meshes existe siempre (con el nombre) pero vacia (nparts = nbatches = 0: no se dibuja nada)
  * hasta data_mesh_acquire; data_mesh_release la vacia otra vez y devuelve la memoria (~140 KB cada una). */
-#define MAX_LAZY 48   /* mallas de chars14.bin (personajes y tablas: 35 con la 1.11) */
+/* mallas de chars14.bin (personajes, tablas y trajes: 41 con la 1.11, 50 con la 1.12). Eran 48: con la 1.12 las
+ * ultimas (Elf Tricky, Nick y Coco) se quedaban fuera ("sin malla"). Cada entrada son 16 bytes: sobra sitio */
+#define MAX_LAZY 96
 static FILE *charsfile;
 static char charspath[256] = "data/chars14.bin";
 static int chars_gen;
@@ -640,7 +642,7 @@ static void chars14_init(void)
     uint8_t h[8];
     if (fread(h, 1, 8, charsfile) != 8 || memcmp(h, "SSM3", 4)) { fclose(charsfile); charsfile = NULL; return; }
     int n = rd32(h + 4);
-    if (n > MAX_LAZY) n = MAX_LAZY;
+    if (n > MAX_LAZY) { dlog_error("chars14.bin trae %d mallas y caben %d: faltaran personajes", n, MAX_LAZY); n = MAX_LAZY; }
     uint32_t offs[MAX_LAZY + 1];
     fread(offs, 4, n, charsfile);
     fseek(charsfile, 0, SEEK_END);

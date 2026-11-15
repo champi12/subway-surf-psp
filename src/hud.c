@@ -2199,13 +2199,13 @@ static void draw_gameover(void)
     char buf[64];
     bg_fallback();
     if (game_brag_show()) {
-        /* BragCelebrationHandler (solo, sin amigos): "New High Score!" y el record; a la derecha del personaje */
+        /* BragCelebrationHandler (solo, sin amigos): "New High Score!" y el record arriba; el personaje en el centro */
         float e = game_brag_time(), a = e < 0.3f ? e / 0.3f : 1.0f;
         unsigned al = (unsigned)(255 * a) << 24;
-        labc(1, SCR_W * 0.66f, 70, 30, al | 0x00ffffffu, 1, 1, TR("¡Nuevo récord!", "New High Score!"));
+        labc(1, SCR_W * 0.5f, 24, 28, al | 0x00ffffffu, 1, 1, TR("¡Nuevo récord!", "New High Score!"));
         snprintf(buf, sizeof(buf), "%d", game_brag_score());
-        labc(1, SCR_W * 0.66f, 112, 34, al | 0x003cd2ffu, 1, 1, buf);
-        if (e > 0.5f) labc(0, SCR_W * 0.66f, SCR_H - 24, 15, C_WHITE, 1, 1, TR("X: continuar", "X: continue"));
+        labc(1, SCR_W * 0.5f, 54, 30, al | 0x003cd2ffu, 1, 1, buf);
+        if (e > 0.5f) labc(0, SCR_W * 0.5f, SCR_H - 16, 15, C_WHITE, 1, 1, TR("X: continuar", "X: continue"));
         return;
     }
     /* CountUpCoins: puntos, monedas de la carrera y hucha pasan de "antes" a "despues" */

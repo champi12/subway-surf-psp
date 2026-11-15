@@ -4411,10 +4411,11 @@ static void celeb_page_open(void)
     game_save_bg();
 }
 /* --- celebracion del record (BragCelebration de la 1.12): al acabar una carrera con mas puntos que el record, antes de
- * la pantalla de fin, el fondo de colores (quieto, con las rayas moviendose) y el personaje corriendo: llega desde lejos
- * en 3,5 s (curva 2t - t^2 de la escena) mientras su carrera se frena del 100 % al 45 %. Arriba "Nuevo record" y la
- * puntuacion. Reutiliza el fondo de la pagina de desbloqueo (dos texturas pequenas) y el personaje que ya esta en
- * la memoria: no lee nada mas */
+ * la pantalla de fin, el fondo de colores (quieto, con las rayas moviendose) y el personaje corriendo en su sitio, en el
+ * centro (sobre el destello del fondo) y de costado, a media velocidad, como la pagina de desbloqueo de antes (lo
+ * pidio el usuario: en el original llega desde lejos y no quedaba centrado). Arriba "Nuevo record" y la puntuacion.
+ * Reutiliza el fondo de la pagina de desbloqueo (dos texturas pequenas) y el personaje que ya esta en la memoria */
+#define BRAG_TURN 55.0f   /* grados que se gira de costado respecto a la camara */
 static float brag_t0 = -1;
 static int brag_score;
 int game_brag_show(void) { return brag_t0 >= 0; }
@@ -4429,8 +4430,9 @@ static void brag_open(int score)
     anim_stop_all(&anim_char);
     skeleton_rest(n_avatar);
     anim_play(&anim_char, an.run);
-    celeb_run_speed(1.0f);
+    celeb_run_speed(0.5f);
     nrt[n_sprayCan].rend = 0;
+    nrt[n_avatar].lrot = qeuler(0, CHARS_TURN + BRAG_TURN, 0);
     char_posing = 1;
     dlog("RECORD nuevo: %d (celebracion de la 1.12)", score);
 }
@@ -4438,9 +4440,6 @@ static void brag_tick(void)
 {
     if (brag_t0 < 0) return;
     if (state != GS_GAMEOVER) { brag_t0 = -1; celeb_run_speed(1.0f); return; }
-    float t = game_brag_time() / 3.5f;
-    float v = 1.0f - (t > 1 ? 1 : t);
-    celeb_run_speed(v < 0.45f ? 0.45f : v);   /* Mathf.Clamp(1 - factor, 0.45, 1) */
 }
 static void brag_close(void)
 {
@@ -5687,16 +5686,18 @@ void game_draw(void)
             if (v3len(face) < 1e-4f) face = v3(0, 0, -1);
             face = v3norm(face);
             V3 f = v3scale(face, -1.0f), rt = v3norm(v3cross(v3(0, 1, 0), f));
-            float cd = CHARS_CAM_D, cx = CHARS_CAM_X;
+            float cx = CHARS_CAM_X;
             if (game_brag_show()) {
-                /* celebracion del record: llega corriendo desde lejos y desde la derecha (CHAR_FROM_POS -> CHAR_TO_POS),
-                 * con la camara acercandose a su sitio de la pantalla de fin */
-                float k = game_brag_curve();
-                cd = CHARS_CAM_D * (4.0f - 3.0f * k);
-                cx = -0.55f * CHARS_CAM_D * 4.0f * (1.0f - k) + CHARS_CAM_X * k;
+                /* celebracion del record: la camara donde estaria sin el giro de costado (el personaje lleva BRAG_TURN
+                 * de mas) y el personaje en el centro */
+                float a = -BRAG_TURN * 0.017453293f, ca = cosf(a), sa = sinf(a);
+                V3 fb = v3(face.x * ca + face.z * sa, 0, -face.x * sa + face.z * ca);
+                f = v3scale(fb, -1.0f);
+                rt = v3norm(v3cross(v3(0, 1, 0), f));
+                cx = 0;
             }
             V3 tgt = v3add(chest, v3scale(rt, cx));
-            r_set_camera(v3sub(chest, v3scale(f, cd)), tgt, 60.0f);
+            r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
             scene_draw_subtree(n_character);
             outfit_draw_accessory();
             r_flush_transparent();
