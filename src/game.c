@@ -4053,9 +4053,13 @@ static const char *outfit_name(int oi)
         if (nm[k].ci == ci && ti >= 0 && ti < 2) return TR(nm[k].t[ti][0], nm[k].t[ti][1]);
     return ci >= 0 && ci < NCHARS ? chars[ci].name : "";
 }
-/* los trajes de cada actualizacion: los de Jake y Tricky (1.11) tras jugar en la temporada de Miami; los de Spike y
- * Tagbot (1.12) tras jugar en la de Paris */
-static int outfit_ci_avail(int ci) { return ci <= 1 ? (updates_reached >> 7 & 1) : (updates_reached >> 9 & 1); }
+/* los trajes de cada actualizacion. Los de Jake y Tricky son de la 1.11, pero la 1.12 tambien los trae: salen tras
+ * jugar en la temporada de Miami (bit 7) o en la de Paris (bit 9), aunque se haya saltado la de Miami. Los de Spike y
+ * Tagbot (1.12) tras jugar en la de Paris. Una version futura que los traiga anade su bit a la mascara.
+ * Las tablas no: las de temporada solo salen en su fecha (o regaladas, como la de Paris) */
+#define OUTFITS_JT_BITS (1 << 7 | 1 << 9)
+#define OUTFITS_112_BITS (1 << 9)
+static int outfit_ci_avail(int ci) { return (updates_reached & (ci <= 1 ? OUTFITS_JT_BITS : OUTFITS_112_BITS)) != 0; }
 int char_theme_count(int ci)
 {
     if (!outfit_ci_avail(ci)) return 0;
@@ -4066,7 +4070,7 @@ int char_theme_count(int ci)
 /* como las tablas de cada actualizacion: aparecen la primera vez que se juega en la temporada de Miami (su fecha) y
  * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
  * compradas, y los trajes salian sin haber llegado a la fecha */
-int outfits_avail(void) { return ((updates_reached >> 7) | (updates_reached >> 9)) & 1; }
+int outfits_avail(void) { return (updates_reached & (OUTFITS_JT_BITS | OUTFITS_112_BITS)) != 0; }
 /* PlayerInfo.isAnyCharacterWithFreeTheme (1.11): queda un traje gratis sin reclamar. Los gratis NO se dan solos: el
  * boton ME lleva la pegatina FREE GIFT (GiftBradCharacters) y en la pantalla de personajes se reclaman con X */
 int game_free_outfit(void)
@@ -4390,7 +4394,10 @@ static int outfit_tex_ready(int ci, int sel)
  * la cambia, asi que al cerrar la pagina se devuelve a 1 (si no, en la carrera correria a media velocidad) */
 static void celeb_run_speed(float v)
 {
-    int st = anim_find(&anim_char, an.run);
+    /* la del record va con "run"; al volver a 1 tambien la de la carrera que haya quedado en an.run */
+    int st = anim_find(&anim_char, "run");
+    if (st >= 0) anim_char.st[st].speed = v;
+    st = anim_find(&anim_char, an.run);
     if (st >= 0) anim_char.st[st].speed = v;
 }
 /* el personaje i se puede ensenar ya en el carrusel: su textura y la de su traje leidas (se piden en segundo plano) */
@@ -4436,9 +4443,12 @@ static void brag_open(int score)
     brag_score = score;
     anim_stop_all(&anim_char);
     skeleton_rest(n_avatar);
-    anim_play(&anim_char, an.run);
+    /* la carrera normal: no an.run, que se queda en "superRun" si se muere con las Super Sneakers (estira los pies y
+     * lleva los pasos de las botas) o en la de la tabla */
+    anim_play(&anim_char, "run");
     celeb_run_speed(0.5f);
     nrt[n_sprayCan].rend = 0;
+    set_node_active(n_meshSneakers, 0);
     nrt[n_avatar].lrot = qeuler(0, CHARS_TURN + BRAG_TURN, 0);
     char_posing = 1;
     dlog("RECORD nuevo: %d (celebracion de la 1.12)", score);

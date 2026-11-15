@@ -106,7 +106,8 @@ pantalla de carga. Sin elegir ninguno, el mapa cambia solo según la fecha, como
 | Coco | 95.000, solo en temporada de París | 1.12 |
 
 Los de temporada, una vez comprados, se quedan para siempre. **Trajes:** Jake (Oscuro y Estrella) y Tricky
-(Camuflaje y Corazón), de la 1.11, tras haber jugado en la temporada de Miami; Spike (Rock y Punk) y Tagbot (Espacial y
+(Camuflaje y Corazón), de la 1.11, tras haber jugado en la temporada de Miami o en la de París (la 1.12 también
+los trae, así que salen aunque te hayas saltado la de Miami); Spike (Rock y Punk) y Tagbot (Espacial y
 Juguete), de la 1.12, tras haber jugado en la de París. Con llaves o de regalo.
 
 ### Tablas (24)

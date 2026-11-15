@@ -243,7 +243,8 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
    ni gafas) y encima el accesorio que toque (el Camuflaje cambia a casco y gafas oscuras; el Corazón añade gorra,
    pendientes y el top con corazón); Jake solo cambia textura y añade su accesorio. Los trajes gratis vienen de regalo
    (`outfits_gift_free`). El traje puesto se dibuja en la portada (pintando el tren), en la carrera y en el fin de
-   partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami y se quedan (bit propio: el de
+   partida (mismos huesos del personaje). Disponibles tras jugar en la temporada de Miami o en la de Paris (la 1.12 tambien los trae:
+   `OUTFITS_JT_BITS`; las tablas de temporada no, esas solo en su fecha o regaladas) y se quedan (bit propio: el de
    las tablas tambien lo encienden las de la 1.11 vistas o compradas). Guardado en e3[7]. Al desbloquear un traje (o un
    personaje) sale la **pagina de celebracion** de la 1.11 (UIModelController + CelebrationBackgroundHelper), aparte como
    la del premio de las cajas: el fondo de colores con rayas (por `r_background_extra`, para que quede debajo), el
