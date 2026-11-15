@@ -47,7 +47,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI, POPUP_MAPS };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI, POPUP_MAPS, POPUP_PARIS };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
@@ -102,6 +102,10 @@ int char_theme_count(int ci);                   /* cuantos trajes tiene el perso
 int outfits_avail(void);                        /* 1 si ya se jugo en la temporada de Miami */
 /* pagina de celebracion (1.11): al conseguir un personaje o un traje por primera vez, como la del premio de las cajas */
 int game_unlock_show(void);          /* 1 si la pagina esta abierta */
+int game_brag_show(void);            /* 1.12: celebracion del record al acabar la carrera (abierta) */
+float game_brag_time(void);          /* segundos desde que se abrio */
+int game_brag_score(void);           /* el record nuevo */
+float game_brag_curve(void);         /* 0..1: lo que ha llegado el personaje (curva de la escena) */
 float game_unlock_time(void);        /* segundos desde que se abrio */
 int game_unlock_theme(void);         /* 0: un personaje; 1+: ese traje */
 int game_unlock_board(void);         /* 1 si la pagina abierta es la de una tabla */

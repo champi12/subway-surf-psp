@@ -25,6 +25,7 @@ const MapDef maps_def[] = {
     {"sidney",    "data/w19",  MAP_THEME_NONE,      19,  "Sídney",         "Sydney",         "1.9",   NULL,                  "data/w19/thumb.bin"},
     {"tokio",     "data/w110", MAP_THEME_NONE,      110, "Tokio",          "Tokyo",          "1.10",  NULL,                  "data/w110/thumb.bin"},
     {"miami",     "data/w111", MAP_THEME_NONE,      111, "Miami",          "Miami",          "1.11",  NULL,                  "data/w111/thumb.bin"},
+    {"paris",     "data/w112", MAP_THEME_NONE,      112, "París",          "Paris",          "1.12",  NULL,                  "data/w112/thumb.bin"},
 };
 const int maps_n = sizeof(maps_def) / sizeof(maps_def[0]);
 

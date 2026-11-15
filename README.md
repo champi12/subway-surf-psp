@@ -1,7 +1,7 @@
 # Subway Surfers para PSP
 
 Port nativo para PSP de **Subway Surfers** clásico (Android, Kiloo/SYBO, 2012-2013): la **1.0** con todo el contenido
-hasta la **1.11** integrado (ver [Qué tiene el juego](#qué-tiene-el-juego)). No es un juego "parecido": el código
+hasta la **1.12** integrado (ver [Qué tiene el juego](#qué-tiene-el-juego)). No es un juego "parecido": el código
 del juego original (C# de Unity, `Assembly-CSharp.dll`) se ha decompilado y **traducido a C** clase por clase, y
 los modelos, texturas, animaciones, sonidos y la estructura de los tramos de vía se **extraen del propio APK**.
 
@@ -49,14 +49,14 @@ Los números (velocidad 110→220 en 180 s, cámara a (0, 33, −33), distancia 
 * Las misiones de ganar a amigos necesitan conexión: se dan por completadas.
 * Partículas (chispas de la tabla, polvo del jetpack) y brillos de las calabazas de Halloween: no se portan para
   no perder fotogramas.
-* Las versiones 1.12 en adelante.
+* Las versiones 1.13 en adelante.
 
 ## Qué tiene el juego
 
-Todo el contenido jugable de la **1.0 a la 1.11** (lo que no necesita internet). Los mapas, personajes y tablas de
+Todo el contenido jugable de la **1.0 a la 1.12** (lo que no necesita internet). Los mapas, personajes y tablas de
 cada versión salen solo si se extrajo su APK.
 
-### Mapas (10)
+### Mapas (11)
 
 Se pueden jugar todos en cualquier fecha con el **selector de mapas** (START → Mapa): un carrusel con la miniatura de
 cada mapa (el grafiti de su vagón de salida), su nombre y su versión. Al elegir uno, el juego se reinicia con su
@@ -74,8 +74,9 @@ pantalla de carga. Sin elegir ninguno, el mapa cambia solo según la fecha, como
 | Sídney | 1.9 | 4 abr – 1 may |
 | Tokio | 1.10 | 2 – 29 may |
 | Miami | 1.11 | 30 may – 27 jun |
+| París | 1.12 | 28 jun – 25 jul |
 
-### Personajes (23)
+### Personajes (24)
 
 | Personaje | Cómo se consigue | Versión |
 |---|---|---|
@@ -102,11 +103,13 @@ pantalla de carga. Sin elegir ninguno, el mapa cambia solo según la fecha, como
 | Kim | 95.000, solo en temporada de Sídney | 1.9 |
 | Harumi | 95.000, solo en temporada de Tokio | 1.10 |
 | Nick | 95.000, solo en temporada de Miami | 1.11 |
+| Coco | 95.000, solo en temporada de París | 1.12 |
 
-Los de temporada, una vez comprados, se quedan para siempre. **Trajes (1.11):** Jake (Oscuro y Estrella) y Tricky
-(Camuflaje y Corazón), con llaves o de regalo, tras haber jugado en la temporada de Miami.
+Los de temporada, una vez comprados, se quedan para siempre. **Trajes:** Jake (Oscuro y Estrella) y Tricky
+(Camuflaje y Corazón), de la 1.11, tras haber jugado en la temporada de Miami; Spike (Rock y Punk) y Tagbot (Espacial y
+Juguete), de la 1.12, tras haber jugado en la de París. Con llaves o de regalo.
 
-### Tablas (23)
+### Tablas (24)
 
 | Tabla | Precio / cómo se consigue | Efecto | Versión |
 |---|---|---|---|
@@ -132,7 +135,8 @@ Los de temporada, una vez comprados, se quedan para siempre. **Trajes (1.11):** 
 | Kitty | 50.000, solo en temporada de Tokio | — | 1.10 |
 | Cherry | 60 muñecas (caza semanal de Tokio) | — | 1.10 |
 | Hotrod | 280.000 | Velocidad | 1.11 |
-| Flamingo | 50.000, solo en temporada de Miami | — | 1.11 |
+| Flamingo | 50.000, solo en temporada de Miami (con la 1.12, de regalo para todos) | — | 1.11 |
+| Rose | 50.000, solo en temporada de París | — | 1.12 |
 
 ### Power-ups y objetos
 
@@ -149,7 +153,7 @@ Los de temporada, una vez comprados, se quedan para siempre. **Trajes (1.11):** 
 | Llaves (Save Me) | Revivir; cada vez cuesta el doble | 1.9 |
 | Letras de la palabra del día | Completar la palabra da una caja | 1.0 |
 | Huevos de Pascua | Con 100 se gana Chicky (temporada de Roma) | 1.8 |
-| Objetos de la caza semanal | Muñecas en Tokio y el objeto de Miami | 1.10 / 1.11 |
+| Objetos de la caza semanal | Muñecas en Tokio, el objeto de Miami y la torre Eiffel en París | 1.10 / 1.11 / 1.12 |
 
 En la tienda se mejora la duración de los power-ups, como en el original.
 
@@ -159,17 +163,21 @@ En la tienda se mejora la duración de los power-ups, como en el original.
   * **Halloween:** su mapa con su tema, el inspector zombi y Zombie Jake.
   * **Navidad:** el mapa de la 1.5.2 con vías, trenes y cielo navideños, el inspector Papá Noel, nieve en la portada
     y Elf Tricky.
-  * **Nueva York, Río, Roma, Sídney, Tokio y Miami:** cada uno con su mapa, su inspector y su perro, el aviso de
+  * **Nueva York, Río, Roma, Sídney, Tokio, Miami y París:** cada uno con su mapa, su inspector y su perro, el aviso de
     "¡Bienvenido a…!", su personaje y su tabla especial.
   * **Búsqueda de huevos de Pascua** (temporada de Roma): el premio es Chicky.
   * **Caza semanal de Tokio:** 4 semanas recogiendo muñecas; premios: hoverboards, llaves y la tabla Cherry.
   * **Caza semanal de Miami:** 4 semanas; premios: Score Boosters, Mega Headstarts y llaves.
+  * **Caza semanal de París** (torres Eiffel): 4 semanas; premios: 20 hoverboards, 4 llaves, 12 Mega Headstarts y
+    4 Score Boosters.
 * **Siempre:**
   * **Misiones:** los 29 grupos del original; cada grupo sube el multiplicador, hasta ×30.
   * **Palabra del día / reto diario:** con racha de 5 días; el 5.º día da súper caja.
   * **Trofeos:** los 8 de las cajas misteriosas.
   * **Save Me con llaves:** en todos los mapas menos el Clásico 1.0, con llaves en las vías.
   * **Tutorial:** en la primera partida.
+  * **Celebraciones:** al conseguir un personaje, un traje o una tabla, su página con el fondo de colores; y, desde la
+    1.12, al batir el récord, el personaje llega corriendo con "¡Nuevo récord!" (menos en el Clásico 1.0).
 
 ## Cómo generar los datos
 

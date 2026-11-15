@@ -691,14 +691,27 @@ static float celeb_t = -100;
 void hud_celebrate(void) { celeb_t = ginfo.time; }
 /* CelebrationBackgroundHelper de la 1.11: el fondo de colores y las rayas girando. e: segundos desde que empezo;
  * fade < 0: no se apaga al final (la pagina de celebracion lo tiene puesto mientras este abierta) */
-static int celeb_bg(float e, float cx, float fade)
+static int celeb_bg_mode(float e, float cx, float fade, int still)
 {
     static int tb = -2, ts = -2;
     if (tb == -2) { tb = data_tex_find("ui_celeb_bg"); ts = data_tex_find("ui_celeb_stripe"); }
     if (tb < 0) return 0;
     r_sprite(tb, 0, 0, SCR_W, SCR_H, 0, 0, 1, 1, C_WHITE);
+    if (ts >= 0 && still) {
+        /* BragCelebration (1.12): el fondo no gira; las rayas (celebrationCloner) salen del centro hacia fuera */
+        float cy = SCR_H * 0.5f, len = SCR_W * 0.9f;
+        unsigned a0 = e < 0.3f ? (unsigned)(150 * e / 0.3f) : 150;
+        for (int i = 0; i < 16; i++) {
+            float ang = i * 6.2831853f / 16.0f, ph = fmodf(e * 0.6f + (i & 1) * 0.5f, 1.0f);
+            float l = len * (0.3f + 0.7f * ph), d = len * 0.15f + l * 0.5f;
+            unsigned a = (unsigned)(a0 * (1.0f - ph));
+            r_sprite_rot(ts, cx + cosf(ang) * d, cy + sinf(ang) * d, l, 22, ang, (a << 24) | 0xffffff);
+        }
+        return 1;
+    }
     if (ts >= 0) {
-        float cy = SCR_H * 0.5f, len = SCR_W * 0.9f, rot = e * 0.6f;
+        /* MysteryBoxCharacter: el fondo gira 45 grados por segundo (CelebrationBackgroundHelper) */
+        float cy = SCR_H * 0.5f, len = SCR_W * 0.9f, rot = e * 0.7854f;
         unsigned a = e < 0.3f ? (unsigned)(150 * e / 0.3f)
                    : (fade > 0 && e > fade - 0.4f) ? (unsigned)(150 * (fade - e) / 0.4f) : 150;
         for (int i = 0; i < 16; i++) {
@@ -708,6 +721,7 @@ static int celeb_bg(float e, float cx, float fade)
     }
     return 1;
 }
+static int celeb_bg(float e, float cx, float fade) { return celeb_bg_mode(e, cx, fade, 0); }
 static int draw_celebration(void)
 {
     float e = ginfo.time - celeb_t;
@@ -718,6 +732,7 @@ static void notebook_bg(void)
 {
     /* la pagina de celebracion pinta su fondo aqui (antes que el 3D) para que el personaje salga encima */
     if (game_unlock_show()) { if (celeb_bg(game_unlock_time(), SCR_W * 0.5f, -1)) return; }
+    if (game_brag_show()) { if (celeb_bg_mode(game_brag_time(), SCR_W * 0.5f, -1, 1)) return; }
     if (!draw_celebration()) notebook_panel();
 }
 static void bg_fallback(void)
@@ -948,6 +963,7 @@ static void draw_sydney_popup(void);
 static void draw_tokyo_popup(void);
 static void draw_hunt_popup(void);
 static void draw_miami_popup(void);
+static void draw_paris_popup(void);
 static void draw_hunt_button(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
@@ -1034,6 +1050,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
         if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
         if (ginfo.popup == POPUP_MIAMI) draw_miami_popup();
+        if (ginfo.popup == POPUP_PARIS) draw_paris_popup();
         if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
         return;
     }
@@ -1059,6 +1076,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_TOKYO) draw_tokyo_popup();
     if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
     if (ginfo.popup == POPUP_MIAMI) draw_miami_popup();
+    if (ginfo.popup == POPUP_PARIS) draw_paris_popup();
     if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
 }
 
@@ -1321,14 +1339,49 @@ static void draw_miami_popup(void)
     labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
 }
 
+/* aviso de la temporada de Paris (1.12, POPUP_WELCOME: "The World Tour goes to Europe"): Coco, la caza de la torre
+ * Eiffel y los trajes de Spike y Tagbot. Misma disposicion que los demas, con el azul de Paris */
+static void draw_paris_popup(void)
+{
+    char buf[64], bw[40];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_PAR = 0xffc77217u;   /* azul de Paris (WEEKLYHUNT_COLOR_SPLASH de la 1.12) */
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_PAR);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_PAR);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a París!", "to Paris!"));
+    int wk = game_hunt_week();
+    snprintf(bw, sizeof(bw), TR("Caza semanal %d de 4", "Weekly Hunt %d of 4"), wk);
+    if (wk && game_hunt_items(wk) >= game_hunt_goal(wk)) snprintf(buf, sizeof(buf), "%s", TR("¡Completada! Vuelve la próxima semana", "Complete! Come back next week"));
+    else snprintf(buf, sizeof(buf), TR("Busca torres Eiffel: %d de %d", "Look for tiny Eiffel Towers: %d of %d"), game_hunt_items(wk), game_hunt_goal(wk));
+    const char *lines[3][4] = {
+        {"La vuelta al mundo llega a Europa", "The World Tour goes to Europe", "Visita Francia y conoce a Coco, la mimo", "Visit France and meet Coco, the mime"},
+        {"Trajes nuevos en la tienda", "New stylish outfits in the Shop", "Para Spike y Tagbot", "Give Spike and Tagbot a personal touch"},
+        {bw, bw, buf, buf},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
 /* la muneca de la caza semanal (ui_doll, 25x35) centrada en (cx, cy) con alto h */
 static void doll_icon(float cx, float cy, float h, unsigned int col)
 {
-    static int td = -2, tm = -2;
-    if (td == -2) { td = data_tex_find("ui_doll"); tm = data_tex_find("ui_hunt111"); }
-    if (game_hunt_city() == 2) {
-        /* el objeto de la caza de Miami (1.11): icono cuadrado */
-        if (tm >= 0) r_sprite(tm, cx - h * 0.5f, cy - h * 0.5f, h, h, 0, 0, 1, 1, col);
+    static int td = -2, tm = -2, tp = -2;
+    if (td == -2) { td = data_tex_find("ui_doll"); tm = data_tex_find("ui_hunt111"); tp = data_tex_find("ui_hunt112"); }
+    if (game_hunt_city() >= 2) {
+        /* el objeto de la caza de Miami (1.11) o la torre Eiffel de Paris (1.12): icono cuadrado */
+        int t = game_hunt_city() == 3 ? tp : tm;
+        if (t >= 0) r_sprite(t, cx - h * 0.5f, cy - h * 0.5f, h, h, 0, 0, 1, 1, col);
         return;
     }
     float w = h * 25.0f / 35.0f;
@@ -1351,8 +1404,9 @@ static void draw_hunt_button(void)
      *   1.8 Roma  (FrontScreen.eggButton):        verde (91,170,28)   y el huevo
      *   1.10 Tokio (GuidelineButton itemHunt):    rosa  (244,46,183)  y la muneca
      *   1.11 Miami (GuidelineButton itemHunt):    verde (19,211,149)  y el flamenco
+     *   1.12 Paris:                               azul  (23,114,199)  y la torre Eiffel (WEEKLYHUNT_COLOR_SPLASH)
      * (antes: Roma en rojo, Miami en azul y el borde descolocado: asomaba el color por la derecha y por abajo) */
-    unsigned fill = kind == 1 ? 0xff1caa5bu : kind == 3 ? 0xff95d313u : 0xffb72ef4u;
+    unsigned fill = kind == 1 ? 0xff1caa5bu : kind == 3 ? 0xff95d313u : kind == 4 ? 0xffc77217u : 0xffb72ef4u;
     float x0 = cx - sz * 0.5f, y0 = cy - sz * 0.5f, m = U(3);
     ui_sliced(a_ui, "button_generic_1", x0, y0, sz, sz, UIS, fill);
     ui_sliced(a_ui, "button_generic_2_outline", x0 - m, y0 - m, sz + 2 * m, sz + 2 * m, UIS, 0xffd6d6d6u);
@@ -1403,11 +1457,12 @@ static void draw_hunt_popup(void)
     float w = 400, h = 252, x = (SCR_W - w) * 0.5f, y = 10;
     panel(x, y, w, h);
     labc(1, SCR_W * 0.5f, y + 18, 26, C_NAVY, 1, 1, TR("Caza semanal", "Weekly Hunt"));
-    int hc = game_hunt_city() == 2 ? 1 : 0;
-    labc(0, SCR_W * 0.5f, y + 38, 15, 0xffb07a1eu, 1, 1, hc ? "Miami" : TR("Tokio", "Tokyo"));
-    static const char *const prizes[2][5][2] = {
+    int hc = game_hunt_city() == 3 ? 2 : game_hunt_city() == 2 ? 1 : 0;   /* 0 Tokio, 1 Miami, 2 Paris */
+    labc(0, SCR_W * 0.5f, y + 38, 15, 0xffb07a1eu, 1, 1, hc == 2 ? TR("París", "Paris") : hc ? "Miami" : TR("Tokio", "Tokyo"));
+    static const char *const prizes[3][5][2] = {
         {{"", ""}, {"10 hoverboards", "10 Hoverboards"}, {"7 llaves", "7 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Cherry", "Cherry Board"}},
         {{"", ""}, {"6 Score Boosters", "6 Score Boosters"}, {"5 Headstart 1000", "5 Mega Headstarts"}, {"10 llaves", "10 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}},
+        {{"", ""}, {"20 hoverboards", "20 Hoverboards"}, {"4 llaves", "4 Keys"}, {"12 Headstart 1000", "12 Mega Headstarts"}, {"4 Score Boosters", "4 Score Boosters"}},
     };
     const char *const (*prize)[2] = prizes[hc];
     int wk = game_hunt_week();
@@ -1420,7 +1475,8 @@ static void draw_hunt_popup(void)
         labc(1, tx, ry + 11, 17, cur ? 0xff7ff0ffu : C_WHITE, 2, 1, buf);
         if (i > wk) {
             labfit(0, tx, ry + 27, 15, w - 120, C_WHITE, 2, 1, TR("Aún no ha empezado", "Not started yet"));
-            snprintf(buf, sizeof(buf), hc ? TR("Busca %d objetos", "Find %d items") : TR("Busca %d muñecas", "Find %d dolls"), goal);
+            snprintf(buf, sizeof(buf), hc == 2 ? TR("Busca %d torres Eiffel", "Find %d Eiffel Towers")
+                                     : hc ? TR("Busca %d objetos", "Find %d items") : TR("Busca %d muñecas", "Find %d dolls"), goal);
             labc(0, tx, ry + 39, 13, C_HUNT, 2, 1, buf);
         } else {
             labfit(0, tx, ry + 27, 15, w - 120, C_WHITE, 2, 1, TR(prize[i][0], prize[i][1]));
@@ -1673,7 +1729,8 @@ static void draw_boards(void)
                                                                      : TR("Va agachado", "Stays Low"));
     else if (board_is_season(i)) {
         int bs = board_is_season(i);
-        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 8 ? TR("Especial de Miami", "Miami Special")
+        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 9 ? TR("Especial de París", "Paris Special")
+                                           : bs == 8 ? TR("Especial de Miami", "Miami Special")
                                            : bs == 7 ? TR("Especial Caza semanal", "Weekly Hunt Special")
                                            : bs == 6 ? TR("Especial de Tokio", "Tokyo Special")
                                            : bs == 5 ? TR("Especial de Sídney", "Sydney Special")
@@ -1775,7 +1832,8 @@ static void draw_chars(void)
     /* dentro del selector de trajes, el nombre del traje marcado (CharacterThemes *_THEME_TITLE); si no, el del personaje */
     int tho = outfits_avail() && char_theme_count(i) && game_theme_mode() ? game_theme_hi() : 0;
     float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, tho > 0 ? game_theme_name(i, tho) : char_name(i));
-    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 8 ? TR("Especial de Miami", "Miami Special")
+    if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 9 ? TR("Especial de París", "Paris Special")
+                                                   : limited == 8 ? TR("Especial de Miami", "Miami Special")
                                                    : limited == 7 ? TR("Especial de Tokio", "Tokyo Special")
                                                    : limited == 6 ? TR("Especial de Sídney", "Sydney Special")
                                                    : limited == 5 ? TR("Especial de Roma", "Rome Special")
@@ -1865,10 +1923,13 @@ static void draw_chars(void)
     if (outfits_avail() && char_theme_count(i)) {
         /* colores de cada boton (GlobalColors.CHARACTERS_CUSTOMIZATION_*): {relleno, icono} en 0xAABBGGRR */
         static const unsigned base_fill = 0xffbe8936u, base_ic = 0xff50360eu;   /* azul base */
-        static const unsigned col[2][2][2] = {
+        static const unsigned col[4][2][2] = {
             { {0xff6b4538u, 0xff92a6afu}, {0xff0016dbu, 0xff00cef5u} },   /* Jake: Oscuro, Estrella */
             { {0xff85c1ddu, 0xff029191u}, {0xffbc3b97u, 0xff5f34f7u} },   /* Tricky: Camuflaje, Corazon */
+            { {0xff99b6c9u, 0xff9c4b10u}, {0xff31a77au, 0xff0707b5u} },   /* Tagbot (1.12): Espacial (R2D2), Juguete (rojo) */
+            { {0xff7b502eu, 0xff101014u}, {0xff101014u, 0xff1321b5u} },   /* Spike (1.12): Rock, Punk */
         };
+        int ck = i == 11 ? 2 : i == 3 ? 3 : i;   /* fila de colores del personaje */
         int nth = char_theme_count(i), hi = game_theme_hi();
         static int tf = -2, tc, tk;
         if (tf == -2) { tf = data_tex_find("ui_sel_fill"); tc = data_tex_find("ui_sel_char"); tk = data_tex_find("ui_sel_skin"); }
@@ -1876,8 +1937,8 @@ static void draw_chars(void)
         for (int t = 0; t <= nth; t++) {
             float cx = cx0 + t * step, sel = (t == hi);
             float sz = sel ? U(34) : U(28);
-            unsigned cf = t == 0 ? base_fill : (i < 2 && t <= 2 ? col[i][t - 1][0] : 0xff808080u);
-            unsigned ci = t == 0 ? base_ic   : (i < 2 && t <= 2 ? col[i][t - 1][1] : 0xffffffffu);
+            unsigned cf = t == 0 ? base_fill : (ck < 4 && t <= 2 ? col[ck][t - 1][0] : 0xff808080u);
+            unsigned ci = t == 0 ? base_ic   : (ck < 4 && t <= 2 ? col[ck][t - 1][1] : 0xffffffffu);
             if (sel && in_th) {
                 /* cursor del traje marcado: contorno azul oscuro (el _selectedMarker del original, color navy
                  * CHARACTERS_CUSTOMIZATION_BASE_SKIN_ICON). Solo dentro del selector, para saber si las flechas mueven
@@ -2137,6 +2198,16 @@ static void draw_gameover(void)
 {
     char buf[64];
     bg_fallback();
+    if (game_brag_show()) {
+        /* BragCelebrationHandler (solo, sin amigos): "New High Score!" y el record; a la derecha del personaje */
+        float e = game_brag_time(), a = e < 0.3f ? e / 0.3f : 1.0f;
+        unsigned al = (unsigned)(255 * a) << 24;
+        labc(1, SCR_W * 0.66f, 70, 30, al | 0x00ffffffu, 1, 1, TR("¡Nuevo récord!", "New High Score!"));
+        snprintf(buf, sizeof(buf), "%d", game_brag_score());
+        labc(1, SCR_W * 0.66f, 112, 34, al | 0x003cd2ffu, 1, 1, buf);
+        if (e > 0.5f) labc(0, SCR_W * 0.66f, SCR_H - 24, 15, C_WHITE, 1, 1, TR("X: continuar", "X: continue"));
+        return;
+    }
     /* CountUpCoins: puntos, monedas de la carrera y hucha pasan de "antes" a "despues" */
     float cf = gameover_count();
     int c0 = ginfo.gameover_coins;

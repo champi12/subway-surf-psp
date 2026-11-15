@@ -310,6 +310,18 @@ mitad y el techo de cámara de la 1.5.2 en los túneles.
 5. Pendientes antiguos: partículas (humo de colores de la tabla, brillos de power-ups), menús con la libreta y cajas
    misteriosas como el original (casi hechos), texturas por paquetes.
 
+4j. 1.12 (París, en pruebas): su mapa en data/w112 (`--apk112`, `WORLD112=1` lo deja siempre) del 28 de junio al 25 de
+   julio (tras Miami). Análisis previo: mismos 51 tramos y mismas llamadas que Miami, +42 % de triángulos (como los
+   mapas de 17-19 mil que ya van a 30 FPS), +36 % de vértices (~0,7 MB de RAM), las mismas texturas; el código de la
+   carrera es idéntico al de la 1.11. Por fecha: Coco ("chloe", 95000, "Especial de París") y Rose (50000), el aviso de
+   bienvenida y la caza semanal de la torre Eiffel (30/25/40/30: 20 hoverboards, 4 llaves, 12 Mega Headstarts,
+   4 Score Boosters). Con la 1.12 la Flamingo es de regalo (UnlockFlamingoBoard). Trajes de Spike (Rock 25, Punk 40) y
+   Tagbot (Espacial 15, Juguete 30), tras jugar en la temporada de París, como los de Jake y Tricky (con su cuerpo de la
+   1.11). Celebraciones como la 1.12: al desbloquear, de pie y de frente (su pose) sobre el fondo que gira; al batir el
+   récord (BragCelebration), el fondo quieto con las rayas y el personaje llegando corriendo en 3,5 s (curva 2t - t²,
+   carrera del 100 al 45 %), con "¡Nuevo récord!" (no en el clásico 1.0). Partida: bloque e4 (caza de París, aviso,
+   trajes de Spike y Tagbot). apk_kind.py la reconoce (CharacterStickerManager).
+
 ## 7a. Modo clásico (mapa 1.0) — pendiente, aún sin selector de mapa
 - El mapa 1.0 (data/, sin Halloween) será el juego como al principio del port, sin mejoras: sin Save Me, sin llaves
   en las vías, sin eventos (cazas, avisos de temporada, Navidad), sin Score Booster y sin el cambio de headstarts de
