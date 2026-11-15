@@ -3899,6 +3899,7 @@ static void char_rows_build(void)
         if (char_order[k] < NCHARS && char_available(char_order[k])) char_rows[char_nrows++] = char_order[k];
 }
 static int char_id(int row) { char_rows_build(); return row >= 0 && row < char_nrows ? char_rows[row] : 0; }
+int game_char_id(int row) { return char_id(row); }
 static int char_row(int id) { char_rows_build(); for (int r = 0; r < char_nrows; r++) if (char_rows[r] == id) return r; return 0; }
 
 int char_count(void) { char_rows_build(); return char_nrows; }

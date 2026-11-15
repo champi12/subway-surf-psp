@@ -70,6 +70,7 @@ int shop_amount(int i);
  * Lucy/Ninja/Frank/King/Frizzy con monedas */
 enum { UL_FREE, UL_TOKENS, UL_COINS };
 int char_count(void);
+int game_char_id(int row);                     /* fila del carrusel -> numero del personaje (para los trajes) */
 /* tablas de la 1.5.2 (fila = orden de la tienda); board_count 0 si no hay boards.bin */
 int board_count(void);
 const char *board_name(int row);

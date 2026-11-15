@@ -1826,12 +1826,12 @@ static void draw_chars(void)
     char buf[48];
     bg_fallback();
     coin_box(SCR_W - 8, 15);
-    int i = ginfo.char_sel, nc = char_count(), un = char_unlocked(i);
+    int i = ginfo.char_sel, nc = char_count(), un = char_unlocked(i), cid = game_char_id(i);   /* cid: el personaje (los trajes van por personaje, no por fila) */
     int limited = char_is_event(i), secs = season_seconds_left();
     /* nombre y "Halloween Special" arriba a la izquierda */
     /* dentro del selector de trajes, el nombre del traje marcado (CharacterThemes *_THEME_TITLE); si no, el del personaje */
-    int tho = outfits_avail() && char_theme_count(i) && game_theme_mode() ? game_theme_hi() : 0;
-    float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, tho > 0 ? game_theme_name(i, tho) : char_name(i));
+    int tho = outfits_avail() && char_theme_count(cid) && game_theme_mode() ? game_theme_hi() : 0;
+    float nw = lab(0, 14, 8, 30, C_NAME, 0, 0, tho > 0 ? game_theme_name(cid, tho) : char_name(i));
     if (limited) lab(0, 16, 40, 15, C_LIMITED, 0, 0, limited == 9 ? TR("Especial de París", "Paris Special")
                                                    : limited == 8 ? TR("Especial de Miami", "Miami Special")
                                                    : limited == 7 ? TR("Especial de Tokio", "Tokyo Special")
@@ -1856,21 +1856,21 @@ static void draw_chars(void)
     /* boton de comprar / elegir (UICharacterBuyButton / UICharacterSelectButton). Al pasar por el selector de trajes,
      * este mismo panel muestra el estado del traje marcado (su precio en llaves, o ELEGIDO), como en el original */
     float bx = U(100), by = 112;
-    int has_th = outfits_avail() && char_theme_count(i), in_th = has_th && game_theme_mode();
+    int has_th = outfits_avail() && char_theme_count(cid), in_th = has_th && game_theme_mode();
     int ho = in_th ? game_theme_hi() : 0;   /* dentro del selector: el traje marcado (0 = aspecto normal) */
     ui_sliced(a_ui, "background_character_buy", bx - U(77), by - U(26), U(154), U(52), UIS, C_WHITE);
     ui_sliced(a_ui, "button_generic_2_outline", bx - U(81), by - U(30), U(166), U(64), UIS, C_OUTLINE);
     /* esta mirando un traje disponible (el normal, o uno comprado) -> SELECCIONADO si es justo el que lleva puesto,
      * o SELECCIONAR (X) para ponerselo. Mirando un traje sin comprar -> su precio en llaves (X para comprarlo) */
-    int look_owned = ho == 0 || game_theme_owned(i, ho - 1);
-    int look_active = un && char_is_selected(i) && game_theme_sel(i) == ho;
-    if (ho > 0 && !look_owned && game_theme_price(i, ho - 1) == 0) {
+    int look_owned = ho == 0 || game_theme_owned(cid, ho - 1);
+    int look_active = un && char_is_selected(i) && game_theme_sel(cid) == ho;
+    if (ho > 0 && !look_owned && game_theme_price(cid, ho - 1) == 0) {
         /* traje gratis sin reclamar: "FREE GIFT" (BOARD_SCREEN_FREE / GIFT) y X para reclamarlo */
         labc(0, bx, by - U(6), 20, C_WHITE, 1, 1, TR("¡REGALO!", "FREE GIFT"));
         labc(0, bx, by + U(14), 13, C_WHITE, 1, 1, char_unlocked(i) ? TR("Reclamar (X)", "Claim (X)")
                                                                      : TR("Desbloquea al personaje", "Unlock character first"));
     } else if (ho > 0 && !look_owned) {
-        int price = game_theme_price(i, ho - 1);
+        int price = game_theme_price(cid, ho - 1);
         snprintf(buf, sizeof(buf), "%d", price);
         float pw = labw(0, 20, buf), px = bx + U(10) - pw * 0.5f;
         key_icon(px - U(16), by - U(4), U(26));
@@ -1920,7 +1920,7 @@ static void draw_chars(void)
     /* UICharacterThemeShifter de la 1.11: la fila de botones de trajes bajo el nombre, como en el original. El primero es
      * el aspecto normal (icono de personaje, azul); los demas, cada traje (una camiseta con su color). Se mueven con la
      * cruceta (arriba/abajo); el marcado lleva un aro. El precio va en el panel central. Solo tras jugar en Miami */
-    if (outfits_avail() && char_theme_count(i)) {
+    if (outfits_avail() && char_theme_count(cid)) {
         /* colores de cada boton (GlobalColors.CHARACTERS_CUSTOMIZATION_*): {relleno, icono} en 0xAABBGGRR */
         static const unsigned base_fill = 0xffbe8936u, base_ic = 0xff50360eu;   /* azul base */
         static const unsigned col[4][2][2] = {
@@ -1929,8 +1929,8 @@ static void draw_chars(void)
             { {0xff99b6c9u, 0xff9c4b10u}, {0xff31a77au, 0xff0707b5u} },   /* Tagbot (1.12): Espacial (R2D2), Juguete (rojo) */
             { {0xff7b502eu, 0xff101014u}, {0xff101014u, 0xff1321b5u} },   /* Spike (1.12): Rock, Punk */
         };
-        int ck = i == 11 ? 2 : i == 3 ? 3 : i;   /* fila de colores del personaje */
-        int nth = char_theme_count(i), hi = game_theme_hi();
+        int ck = cid == 11 ? 2 : cid == 3 ? 3 : cid;   /* fila de colores del personaje */
+        int nth = char_theme_count(cid), hi = game_theme_hi();
         static int tf = -2, tc, tk;
         if (tf == -2) { tf = data_tex_find("ui_sel_fill"); tc = data_tex_find("ui_sel_char"); tk = data_tex_find("ui_sel_skin"); }
         float step = U(40), row_w = nth * step, cx0 = bx + U(2) - row_w * 0.5f, cy = U(66);   /* centrada bajo el nombre */
@@ -1953,7 +1953,7 @@ static void draw_chars(void)
             int ico = t == 0 ? tc : tk; float is = t == 0 ? U(18) : U(16);
             if (ico >= 0) r_sprite(ico, cx - is * 0.5f, cy - is * 0.5f, is, is, 0, 0, 1, 1, ci);
             else if (t == 0) spr_c("icon_character_owned", cx, cy, U(16), U(16), C_WHITE);
-            if (t > 0 && !game_theme_owned(i, t - 1) && game_theme_price(i, t - 1) > 0) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
+            if (t > 0 && !game_theme_owned(cid, t - 1) && game_theme_price(cid, t - 1) > 0) key_icon(cx + sz * 0.5f - U(4), cy - sz * 0.5f + U(4), U(13));   /* candado: por comprar */
         }
     }
     /* pie de la seccion ME de la 1.5.2: Menu / Personajes / Tablas / Trofeos (los trofeos van aqui, no en la portada) */
