@@ -3980,6 +3980,9 @@ static int char_theme_sel[NCHARS];     /* 0 normal, t+1 el traje t puesto */
 static int theme_hi;                   /* en la pantalla de personajes: el traje que se esta mirando */
 static int theme_shown;                /* ...y el que lleva el modelo: cambia cuando sus texturas ya estan leidas (como
                                         * el resto de personajes en el carrusel; antes se leian de golpe al pasar) */
+static int theme_for = -1;             /* de que personaje es theme_shown: al salir de la pantalla con otro personaje
+                                        * mirado (R a Tablas), Jake se quedaba con el "sin traje" de ese otro en el cuerpo
+                                        * (y con las gafas del suyo, que van por char_theme_sel) */
 static int theme_mode;                 /* 1: dentro del selector de trajes (X para entrar, O para salir) */
 static const char *const OUTFIT_JOINTS[18] = {
     "jRoot", "jLeg_L", "jKnee_L", "jFoot_L", "jToes_L", "jLeg_R", "jKnee_R", "jFoot_R", "jToes_R",
@@ -4084,7 +4087,7 @@ int game_free_outfit(void)
 }
 static int outfit_view(int i)
 {
-    if (state == GS_CHARS && i == char_shown) return theme_shown;
+    if (state == GS_CHARS && i == char_shown && theme_for == i) return theme_shown;
     return char_theme_sel[i];
 }
 static int outfit_owned(int i, int sel) { return sel > 0 && (char_theme_owned[i] >> (sel - 1) & 1); }
@@ -4414,6 +4417,7 @@ static void celeb_page_open(void)
     if (!outfit_tex_ready(celeb_pend_char, celeb_pend_theme)) return;
     ginfo.char_sel = char_row(celeb_pend_char);
     theme_hi = theme_shown = celeb_pend_theme;   /* sus texturas ya estan (outfit_tex_ready) */
+    theme_for = celeb_pend_char;
     char_show_model(celeb_pend_char);
     celeb_kind = 0;
     celeb_page_t0 = game_time;
@@ -4485,7 +4489,7 @@ static void celeb_page_close(void)
     if (ci >= 0) {
         if (th > 0) char_theme_sel[ci] = th;   /* el traje nuevo queda puesto */
         if (ch_unlocked(ci)) ginfo.character = ci;
-        theme_hi = theme_shown = th;
+        theme_hi = theme_shown = th; theme_for = ci;
         char_show_model(ci);
         char_pose(ci);
     }
@@ -4499,7 +4503,7 @@ static void char_celebrate_tick(void)
     if (state == GS_CHARS) { celeb_check_themes(); celeb_page_open(); }
     if (state == GS_CHARS && celeb_page_t0 < 0 && char_shown >= 0 && theme_shown != theme_hi &&
         outfit_tex_ready(char_shown, theme_hi)) {
-        theme_shown = theme_hi;
+        theme_shown = theme_hi; theme_for = char_shown;
         char_show_model(char_shown);
     }
     if (state == GS_BOARDS) celeb_board_open();
@@ -4746,6 +4750,7 @@ static void open_chars(void)
 {
     ginfo.char_sel = char_row(ginfo.character);   /* fila de la lista */
     theme_hi = theme_shown = char_theme_sel[ginfo.character];   /* empieza mirando el traje que lleva puesto */
+    theme_for = ginfo.character;
     theme_mode = 0;                               /* se empieza en el carrusel, no dentro del selector */
     char_show_model(ginfo.character);
     char_pose(ginfo.character);
@@ -4804,7 +4809,7 @@ static void chars_input(unsigned in, int confirm)
     /* el modelo cambia cuando su textura ya esta en memoria (se lee en segundo plano): mientras tanto se sigue viendo
      * el anterior. Antes cada personaje nuevo paraba el juego 83-100 ms leyendo de la Memory Stick */
     if (i != char_shown && char_tex_ready(i)) {
-        theme_hi = theme_shown = char_theme_sel[i];
+        theme_hi = theme_shown = char_theme_sel[i]; theme_for = i;
         char_show_model(i); char_pose(i);
     }
     /* X sobre un personaje ya suyo con trajes: entra al selector de trajes (empieza en el que lleva puesto) */
@@ -6127,7 +6132,7 @@ void game_debug_outfit(void)
     int c = AT_OUTFIT_CH;
     ginfo.character = c;
     if (!is14(c) && chars[c].unlock != UL_FREE) char_tokens[chars[c].token] = chars[c].price;   /* desbloquea el personaje */
-    theme_hi = theme_shown = 0;
+    theme_hi = theme_shown = 0; theme_for = c;
     char_show_model(c);
 #ifdef AT_UNLOCKCH
     celeb_queue(c, 0);   /* prueba: la pagina de un personaje desbloqueado */
