@@ -285,11 +285,17 @@ static int tex_gen;
 /* vuelve a abrir los archivos de texturas (tras el modo reposo los cierra la consola) */
 static void tex_files_reopen(void)
 {
-    if (texfile) { fclose(texfile); texfile = texpath[0] ? fopen(texpath, "rb") : NULL; }
-    if (hwtexfile) { fclose(hwtexfile); hwtexfile = hwtexpath[0] ? fopen(hwtexpath, "rb") : NULL; }
-    if (xmtexfile) { fclose(xmtexfile); xmtexfile = xmtexpath[0] ? fopen(xmtexpath, "rb") : NULL; }
+    /* por su ruta, no por si seguia abierto: justo al volver del reposo la Memory Stick tarda en estar lista y el
+     * primer fopen puede fallar. Antes el archivo se quedaba cerrado (NULL) para siempre y todas las texturas que se
+     * leian despues salian con basura (ruido de colores en la tienda, la llave, el Score Booster) */
+    if (texfile) fclose(texfile);
+    texfile = texpath[0] ? fopen(texpath, "rb") : NULL;
+    if (hwtexfile) fclose(hwtexfile);
+    hwtexfile = hwtexpath[0] ? fopen(hwtexpath, "rb") : NULL;
+    if (xmtexfile) fclose(xmtexfile);
+    xmtexfile = xmtexpath[0] ? fopen(xmtexpath, "rb") : NULL;
     tex_gen = io_resume_gen;
-    dlog("REPOSO: archivos de texturas abiertos de nuevo");
+    dlog("REPOSO: archivos de texturas abiertos de nuevo (%s)", texpath[0] && !texfile ? "aun no, la tarjeta no esta lista" : "bien");
 }
 
 /* directorio de un archivo SST1: llama a cb con la cabecera de cada textura */
@@ -370,7 +376,7 @@ int data_tex_read(int i, void *pal, void *data)
     }
     for (int tries = 0; tries < 2; tries++) {
         FILE *f = t->src == 2 ? xmtexfile : t->src ? hwtexfile : texfile;
-        if (!f) return -1;
+        if (!f) { tex_files_reopen(); continue; }
         if (fseek(f, t->file_off, SEEK_SET) == 0 && (!t->palbytes || fread(pal, 1, t->palbytes, f) == t->palbytes) &&
             fread(data, 1, t->databytes, f) == t->databytes)
             return 0;
@@ -389,8 +395,15 @@ int data_tex_load(int i)
         if (!t->pal) return -1;
     }
     t->data = memalign(64, t->databytes);
-    if (!t->data) return -1;
-    if (data_tex_read(i, t->pal, t->data) < 0) dlog_error("Error leyendo la textura %s", t->name);
+    if (!t->data) { free(t->pal); t->pal = NULL; return -1; }
+    if (data_tex_read(i, t->pal, t->data) < 0) {
+        /* no se da por cargada con lo que hubiera en esa memoria (eso era el ruido tras el reposo): fuera, y se vuelve a
+         * probar en un momento */
+        dlog_error("Error leyendo la textura %s: se probara otra vez", t->name);
+        free(t->data); t->data = NULL;
+        free(t->pal); t->pal = NULL;
+        return -2;
+    }
     t->loaded = 1;
     return 0;
 }

@@ -364,11 +364,20 @@ static int tex_ensure(int t)
     while (ld_tex == t && ld_state == 1) sceKernelDelayThread(1000);
     if (ld_tex == t) { r_tex_async_poll(); if (tx->loaded) return 0; }
     if (tex_failed && tex_failed[t]) return -1;
+    /* tras un error de lectura (la Memory Stick aun no lista al volver del reposo) no se insiste cada fotograma */
+    static unsigned int io_wait_until;
+    if (io_wait_until && (int)(sceKernelGetSystemTimeLow() - io_wait_until) < 0) return -1;
+    io_wait_until = 0;
     unsigned int t0 = sceKernelGetSystemTimeLow();
     volatile const char *ph = dbg_phase_main;
     DBG_PHASE(main, "leyendo una textura de la Memory Stick");
     int lr = data_tex_load(t);
     dbg_phase_main = ph;
+    if (lr == -2) {   /* error de lectura: sin dibujarla de momento, y otra vez dentro de 0,3 s */
+        io_wait_until = sceKernelGetSystemTimeLow() + 300000;
+        if (!io_wait_until) io_wait_until = 1;
+        return -1;
+    }
     if (lr < 0) {
         dlog_error("Sin memoria para la textura %s (%d KB)", tx->name, (int)((tx->databytes + tx->palbytes) / 1024));
         if (tex_failed) tex_failed[t] = 1;

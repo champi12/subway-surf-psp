@@ -2432,13 +2432,15 @@ OUTFIT_PRICE = {'slick': [0, 30], 'tricky': [25, 40], 'tag': [15, 30], 'spike': 
 OUTFIT_CHAR = {'slick': 0, 'tricky': 1, 'tag': 11, 'spike': 3}   # 1.12: Tagbot=11 y Spike=3
 
 
-def export_outfits(scx, boards, outdir):
+def export_outfits(scx, boards, outdir, write=True):
     """Trajes de la 1.11 (CharacterCustomization). Por personaje:
       - si su aspecto normal lleva un accesorio aparte (el gorro y las gafas de Tricky), se usa el CUERPO de la 1.11
         (sin esos accesorios) como base y se dibuja el accesorio que toque (normal, o el del traje); asi el traje
         militar cambia el gorro por el casco y quita las gafas, como el original.
       - si no (Jake), el traje solo tine la textura y anade su accesorio encima del cuerpo de siempre.
-    Escribe outfits.bin. Las texturas y mallas van con los personajes (hw_tex/chars14)."""
+    Escribe outfits.bin. Las texturas y mallas van con los personajes (hw_tex/chars14).
+    write=False: solo anade texturas y mallas (el mapa de Halloween, data/whw, lleva su propio hw_tex.bin y chars14.bin
+    reducidos; el juego lee siempre data/outfits.bin)."""
     cc = None
     for o in scx.env.objects:
         if o.type.name != 'MonoBehaviour':
@@ -2564,6 +2566,9 @@ def export_outfits(scx, boards, outdir):
         out += struct.pack('<BBBBI', ci, ti, ha, 0, price)
         for nm in (bt, am, at):
             out += nm.encode()[:31].ljust(32, b'\0')
+    if not write:
+        print('  trajes en los archivos de los personajes de esta carpeta: %d' % len(rows))
+        return
     with open(os.path.join(outdir, 'outfits.bin'), 'wb') as f:
         f.write(bytes(out))
     print('  outfits.bin: %d personajes, %d trajes%s' % (len(chdr), len(rows),
@@ -3407,8 +3412,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         if sc112 is not None:
             extra_chars.append((sc112, 'chloe', 'avatar_chloe', '1.12'))
         # los trajes: de la 1.12 si esta (trae los de la 1.11 y los de Spike y Tagbot)
-        if (sc112 is not None or sc111 is not None) and boards is not None and classic and shared:
-            export_outfits(sc112 or sc111, boards, outdir)
+        # tambien en el mapa de Halloween (data/whw, shared=False): su hw_tex.bin y chars14.bin se escriben aparte y
+        # sin esto no llevaban los trajes ni los cuerpos de la 1.11 (Tricky, Spike, Tagbot... transparentes alli)
+        if (sc112 is not None or sc111 is not None) and boards is not None and classic:
+            export_outfits(sc112 or sc111, boards, outdir, write=shared)
         for scx, mname, tname, ver in (extra_chars if boards is not None else []):
             for o in scx.env.objects:
                 if o.type.name != 'SkinnedMeshRenderer':
