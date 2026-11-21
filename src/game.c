@@ -299,6 +299,13 @@ static float shake_t = -1, shake_amp_t; static V3 shake_diff;
 static float sm_x, sm_xv, sm_y, sm_yv, sm_y_target, aim, aim_v;
 static V3 cam_off, cam_off_v;
 static int from_jetpack; float from_jet_t; V3 from_jet_pos, from_jet_tgt;
+/* Running.Begin de la 1.13: al volver a correr por encima de 100 (el pogo acaba a 160) transitionFromPogostick: la camara
+ * baja pegada al personaje mientras cae y la transicion dura transitionTimeMax, mas deprisa al tocar suelo */
+static int from_pogo;
+#define POGO_LAND_Y 100.0f            /* por encima: viene del pogo (entre 70 y 100 es el jetpack) */
+#define POGO_LAND_Y_SMOOTH 0.01f      /* ySmoothDurationPogostick de la escena (la normal es 0.1) */
+#define POGO_LAND_TRANSITION 1.0f     /* transitionTimeMax */
+#define POGO_LAND_SPEEDUP 5.0f        /* speedupTransitionTime: con los pies en el suelo */
 static int tunnel_on; float tunnel_start, tunnel_len;
 
 /* guardia */
@@ -502,7 +509,7 @@ static int board_avail(int i)
     if (u == BOARD_SEASON_PARIS) return paris_season();
     if (u == BOARD_SEASON_BEIJING) return beijing_season();
     if (u == BOARD_HUNT) return hunt_week_now() == 4 && tokyo_season();   /* Cherry: la cuarta semana de Tokio (IsBoardActive) */
-    if (u == BOARD_HUNT_BEIJING) return hunt_week_now() == 4 && beijing_season();   /* Panda: la cuarta semana de Pekin */
+    if (u == BOARD_HUNT_BEIJING) return hunt_week_now() == 4 && beijing_season();   /* Dragon: la cuarta semana de Pekin */
     int up = board_update(i);
     return up == 0 || (updates_reached >> up & 1);
 }
@@ -665,7 +672,7 @@ static void hunt_picked(void)
             {{"", ""}, {"10 hoverboards", "10 Hoverboards"}, {"7 llaves", "7 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Cherry", "Cherry board"}},
             {{"", ""}, {"6 Score Boosters", "6 Score Boosters"}, {"5 Headstart 1000", "5 Mega Headstarts"}, {"10 llaves", "10 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}},
             {{"", ""}, {"20 hoverboards", "20 Hoverboards"}, {"4 llaves", "4 Keys"}, {"12 Headstart 1000", "12 Mega Headstarts"}, {"4 Score Boosters", "4 Score Boosters"}},
-            {{"", ""}, {"8 hoverboards", "8 Hoverboards"}, {"6 llaves", "6 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Panda", "Panda board"}},
+            {{"", ""}, {"8 hoverboards", "8 Hoverboards"}, {"6 llaves", "6 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Dragon", "Dragon board"}},
         };
         hud_slide(TR("¡Caza semanal completada!", "Weekly Hunt complete!"), TR(pz[hc][w][0], pz[hc][w][1]));
     }
@@ -3011,6 +3018,7 @@ static void running_begin(void)
 {
     in_left = in_right = in_up = in_down = in_board = 0;
     from_jetpack = cc.pos.y > 70.0f;
+    from_pogo = cc.pos.y > POGO_LAND_Y;
     nrt[n_colChar].active = 1;
     cam_follow = 1;
     cam_off = v3(0, CAM_OFFSET_Y, CAM_OFFSET_Z); cam_off_v = v3(0, 0, 0);
@@ -3129,10 +3137,13 @@ static void calculate_score(void)
 static void follow_camera(float dt)
 {
     V3 position = cc.pos;
-    if (mods[MOD_SNEAKERS].active) sm_y_target = 0.5f * (ch.lastGroundedY + position.y);
+    /* tras el pogo, mientras cae, la camara va a su altura (asi se ve donde va a caer); manda sobre las zapatillas,
+     * que la dejarian a medio camino entre los 160 del salto y el personaje */
+    if (from_pogo && !cc.grounded) sm_y_target = position.y;
+    else if (mods[MOD_SNEAKERS].active) sm_y_target = 0.5f * (ch.lastGroundedY + position.y);
     else if (cc.grounded) sm_y_target = ch.lastGroundedY;
     else if (position.y < ch.lastGroundedY) sm_y_target = position.y;
-    sm_y = smoothdamp(sm_y, sm_y_target, &sm_yv, CAM_Y_SMOOTH, dt);
+    sm_y = smoothdamp(sm_y, sm_y_target, &sm_yv, from_pogo ? POGO_LAND_Y_SMOOTH : CAM_Y_SMOOTH, dt);
     cam_off.x = smoothdamp(cam_off.x, 0, &cam_off_v.x, 0.7f, dt);
     cam_off.y = smoothdamp(cam_off.y, CAM_OFFSET_Y, &cam_off_v.y, 0.7f, dt);
     cam_off.z = smoothdamp(cam_off.z, CAM_OFFSET_Z, &cam_off_v.z, 0.7f, dt);
@@ -3163,12 +3174,14 @@ static void follow_camera(float dt)
         if (pe.y > maxy) { pe.y = maxy; te = v3add(pe, off); }
     }
     if (from_jetpack) {
-        float r = clamp01(from_jet_t / 2.0f);
+        /* tras el pogo: transitionTimeMax, y al tocar suelo la transicion corre speedupTransitionTime veces mas deprisa;
+         * tras el jetpack, la de siempre del port */
+        float r = clamp01(from_jet_t / (from_pogo ? POGO_LAND_TRANSITION : 2.0f));
         float w = curve_eval(transitionFromJetpackCurve, 3, r);
         cam_pos = v3lerp(from_jet_pos, pe, w);
         cam_target = v3lerp(from_jet_tgt, te, w);
-        if (r >= 1) from_jetpack = 0;
-        from_jet_t += dt;
+        if (r >= 1) from_jetpack = from_pogo = 0;
+        from_jet_t += dt * (from_pogo && cc.grounded ? POGO_LAND_SPEEDUP : 1.0f);
     } else { cam_pos = pe; cam_target = te; }
 }
 
@@ -4971,7 +4984,7 @@ static void boards_input(unsigned in, int confirm)
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
             hud_slide(TR("Búscalas corriendo", "Find them while running"), b);
         } else if (d->unlock == BOARD_HUNT_BEIJING) {
-            /* 1.13: Panda tampoco se compra, es el premio de la cuarta semana de la caza de Pekin */
+            /* 1.13: Dragon tampoco se compra, es el premio de la cuarta semana de la caza de Pekin */
             char b[40];
             snprintf(b, sizeof(b), TR("Dragones: %d/%d", "Dragons: %d/%d"), game_hunt_items(4), game_hunt_goal(4));
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
@@ -5866,6 +5879,10 @@ void game_update(float dt)
         scene_pickup_diag(v3add(cc.pos, col_center), diag_overlaps);
 #endif
         DBG_PHASE(main, "game_update: coins_tick (monedas e iman)");
+        coins_tick(dt);
+    } else if (state == GS_POGO) {
+        /* PogoStick: detectCollisions = false (ningun obstaculo le da en el salto), pero las monedas del arco y las de
+         * las lineas altas si se recogen: coins_tick no depende de phys_build ni de check_triggers */
         coins_tick(dt);
     }
     DBG_PHASE(main, "game_update: calculate_score");

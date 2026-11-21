@@ -1597,7 +1597,11 @@ def render_char_thumbs(prev):
     W, H = THUMB_W * THUMB_SS, THUMB_H * THUMB_SS
     scale0 = (H - 2 * THUMB_SS) / hmax
     cols = 256 // THUMB_W
-    sheet = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+    # 6x4 = 24 caben en 256x256 (hasta la 1.12 iban justas); con mas, la hoja crece a 512 de alto. Antes el 25 (MonkeyKing,
+    # 1.13) caia en y=256, fuera de la hoja, y al repetirse la textura salia la casilla de arriba (Brody). Solo se carga en
+    # la pantalla de personajes (hud.c la descarga al salir), asi que no ocupa nada en la carrera
+    rows_ = -(-len(shots) // cols)
+    sheet = Image.new('RGBA', (256, 256 if rows_ * THUMB_H <= 256 else 512), (0, 0, 0, 0))
     sprites = []
     for n, (name, S, UV, tris, tex) in enumerate(shots):
         # de frente: el personaje mira hacia +z; la camara esta delante mirando hacia -z (x al reves)
@@ -1962,7 +1966,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                         print('  miniatura y pose de la %s: %s' % (ver, c['name']))
         th = render_char_thumbs(prev) if prev else None
         if th:
-            atlases.append({'name': 'CharThumbs', 'tex': len(ex.textures), 'w': 256, 'h': 256, 'pixel': 1.0,
+            atlases.append({'name': 'CharThumbs', 'tex': len(ex.textures), 'w': 256, 'h': th[0].size[1], 'pixel': 1.0,
                             'sprites': th[1], 'key': ('gen', 'CharThumbs')})
             ex.textures.append(('generada', 'ui_chars', th[0], True))
             print('  miniaturas de %d personajes' % len(th[1]))
@@ -2387,9 +2391,10 @@ BOARDS_111 = BOARDS_110 + [(21, 'Hotrod', 280000, 2, 4), (22, 'Flamingo', 50000,
 # la 1.12: Rose (23, "Paris Special": 50000, unlock 11, solo en la temporada de Paris). Flamingo pasa a ser de regalo
 # (HouseKeeper.UnlockFlamingoBoard: se la da a todos al abrir el juego; lo hace el juego, no la lista)
 BOARDS_112 = BOARDS_111 + [(23, 'Rose', 50000, 11, 0)]
-# la 1.13: Dragon (24, "Beijing Special": 50000, unlock 12, solo en la temporada de Pekin) y Panda (25, "Item Hunt":
-# unlock 13, premio de la cuarta semana de la caza semanal de Pekin; "price" son los objetos de esa semana)
-BOARDS_113 = BOARDS_112 + [(24, 'Dragon', 50000, 12, 0), (25, 'Panda', 60, 13, 0)]
+# la 1.13 (Hoverboards..cctor de su DLL): Panda (24, 50000, unlock 12: "Beijing Special", solo en la temporada de Pekin)
+# y Dragon (25, unlock 13: premio de la cuarta semana de la caza semanal de Pekin, la de los dragones; "price" son los
+# 60 dragones de esa semana, su icono es icon_hunt_item_big). Ojo: BoardType.panda es 24 y dragon 25
+BOARDS_113 = BOARDS_112 + [(24, 'Panda', 50000, 12, 0), (25, 'Dragon', 60, 13, 0)]
 BOARD_ACTIONS = ('runAnimations', 'landAnimations', 'jumpAnimations', 'hangtimeAnimations', 'rollAnimations',
                  'dodgeLeftAnimations', 'dodgeRightAnimations', 'grindAnimations', 'grindLandAnimations',
                  'getOnBoardAnimations')
@@ -2661,10 +2666,15 @@ def export_boards(sc15, ex, clip_names10, table=None):
         gen.append(('gen', 'board_props', tex_rgba(props).resize((256, 256), Image.LANCZOS), True))
         # miniaturas para la pantalla de tablas (como las de personajes): de pie e inclinadas, 64x64 cada una
         texa = np.asarray(tex_rgba(props).convert('RGBA'))
-        sheet = Image.new('RGBA', (256, 128 if len(thumb_src) <= 8 else 256), (0, 0, 0, 0))   # 4 por fila
         # con mas de 16 (la 1.8 trae 17) van a 51x51, 5 por fila: la misma hoja de 256x256 (el juego las escala a 64)
         cell = 64 if len(thumb_src) <= 16 else 51
         cols = 256 // cell
+        # 5x5 = 25 caben en 256x256; con mas (la 1.13 trae 26) la hoja crece a 512 de alto. Antes la 26 caia en y=255,
+        # fuera de la hoja, y al repetirse la textura salia la casilla de arriba (Freestyler). Solo se carga en la
+        # pantalla de tablas (hud.c la descarga al salir), asi que no ocupa nada en la carrera
+        rows_ = -(-len(thumb_src) // cols)
+        sheet = Image.new('RGBA', (256, 128 if len(thumb_src) <= 8 else 256 if rows_ * cell <= 256 else 512),
+                          (0, 0, 0, 0))
         sprites = []
         rot = np.eye(4)
         rot[:3, :3] = quat_mat(np.array(euler_quat(-25.0, 0.0, 62.0)))

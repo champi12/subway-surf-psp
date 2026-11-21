@@ -1803,14 +1803,14 @@ static void draw_boards(void)
     } else if (board_is_gift(i)) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, TR("GRATIS (X)", "FREE (X)"));
     } else if (board_is_season(i) == 7 || board_is_season(i) == 11) {
-        /* Cherry (1.10) y Panda (1.13): no se compran, se ganan con los objetos de la cuarta semana de su caza. El
+        /* Cherry (1.10) y Dragon (1.13): no se compran, se ganan con los objetos de la cuarta semana de su caza. El
          * icono es el de la caza de esa tabla, no el de la temporada de hoy (se mira fuera de fecha) */
         static int t_doll = -2, t_bei = -2;
         if (t_doll == -2) { t_doll = data_tex_find("ui_doll"); t_bei = data_tex_find("ui_hunt113"); }
-        int pan = board_is_season(i) == 11, t = pan ? t_bei : t_doll;
+        int drg = board_is_season(i) == 11, t = drg ? t_bei : t_doll;
         snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(4), game_hunt_goal(4));
         float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
-        if (t >= 0) r_sprite(t, px - U(26), by - U(14), pan ? U(28) : U(20), U(28), 0, 0, 1, 1, C_WHITE);
+        if (t >= 0) r_sprite(t, px - U(26), by - U(14), drg ? U(28) : U(20), U(28), 0, 0, 1, 1, C_WHITE);
         labc(0, px, by, 20, C_WHITE, 0, 1, buf);
     } else if (board_is_season(i) == 4) {
         /* Chicky (HoverboardBuyButton de la 1.8): no se compra; los huevos que se llevan de los que hacen falta */
