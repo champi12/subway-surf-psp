@@ -46,6 +46,12 @@ static float curve_eval(const Key *k, int n, float t)
 static const Key superSneakersJumpCurve[] = {{0, 0, 1, 6.312727f}, {0.1369736f, 0.538523f, 1.658518f, 1.658518f}, {1, 1, 0, 0}};
 static const Key transitionFromJetpackCurve[] = {{0, 0, 19.99203f, 19.99203f}, {0.04928456f, 0.50026f, 1.818718f, 1.818718f}, {1, 1, 0, 0}};
 static const Key flyAheadCameraCurve[] = {{0, 0, 12.01637f, 12.01637f}, {0.07373233f, 0.5023816f, 1.880047f, 1.880047f}, {1, 1, 0, 0}};
+/* PogoStick de la 1.13 (sacadas de su componente en la escena): el perfil de subida del salto y las dos de la camara */
+static const Key pogoJumpCurve[] = {{0.00376293f, 0.000396861f, 3.00962f, 3.00962f},
+                                    {0.314551f, 0.684751f, 1.20346f, 1.20346f}, {1, 1, 0, 0}};
+static const Key pogoCameraCurve[] = {{0, 0, 0, 0}, {0.0883903f, 0.332443f, 3.95056f, 3.95056f},
+                                      {0.371369f, 0.799387f, 0.438478f, 0.438478f}, {1, 0.9f, 0, 0}};
+static const Key pogoAimFollowCurve[] = {{0, 0, 0, 0}, {0.42067f, 0.699708f, 1.44124f, 1.44124f}, {1, 1, 0, 0}};
 
 /* ------------------------------------------------------------ constantes de la escena */
 #define GRAVITY 200.0f
@@ -81,6 +87,21 @@ static const Key flyAheadCameraCurve[] = {{0, 0, 12.01637f, 12.01637f}, {0.07373
 #define JET_STOP_BEFORE_LANDING 50.0f
 #define JET_CHANGE_TRACK_LENGTH 60.0f
 #define JET_CAM_AIM 15.0f
+/* PogoStick de la 1.13: un salto largo (no una serie de botes). Valores de su componente en la escena */
+#define POGO_JUMP_HEIGHT 160.0f       /* jumpHeight: altura en lo alto del salto */
+#define POGO_JUMP_DISTANCE 300.0f     /* jumpDistance: lo que avanza el salto entero */
+#define POGO_ROWS 18                  /* rows: filas en que se reparten las monedas */
+#define POGO_ROW_START 3              /* startRowPosition: la primera fila con monedas */
+#define POGO_ROW_END 18               /* endRowPosition */
+#define POGO_FADE_IN 0.1f             /* fadeInPosition: el primer 10% sube suave desde el suelo */
+#define POGO_HANGTIME 0.5f            /* hangtimePosition: a la mitad, la animacion del aire */
+#define POGO_FINAL_JUMP 0.1f          /* finalJumpSpeed: el empujoncito hacia arriba al acabar */
+#define POGO_CAM_AIM 10.0f            /* cameraAimOffset */
+#define POGO_CAM_SMOOTH_X 0.05f       /* smoothCameraXDuration */
+#define POGO_CHANGE_TRACK_LENGTH 60.0f /* characterChangeTrackLength */
+#define POGO_CAM_OFF_Y 33.0f          /* cameraOffset = (0, 33, -33) */
+#define POGO_CAM_OFF_Z (-33.0f)
+#define POGO_CAM_X_FACTOR 0.75f       /* la camara sigue la x del personaje a 3/4 */
 #define HB_COOLDOWN_DIST 116.0f
 #define HB_SLOWMO_DIST 90.0f
 #define HB_REMOVE_DIST 250.0f
@@ -155,6 +176,7 @@ static void sounds_init(void)
 /* ------------------------------------------------------------ nodos usados */
 static int n_character, n_charModel, n_avatar, n_colChar, n_colMagnet, n_colSneakers, n_shadow, n_sprayCan;
 static int n_jroot = -1, n_meshSneakers, n_meshHoverboard, n_meshMagnet, n_meshJetpack, n_spine, n_shoulder;
+static int n_meshPogo = -1;     /* avatar_prefab/powerups/pogostick (malla rocketPogo de la 1.13) */
 static int n_enemies, n_guard, n_dog, n_camRig, n_mainCam, n_sky, n_intro_env, n_efx, n_jetParticles, n_ssRing;
 static V3 enemy_start[2];
 static int n_cloud[2] = {-1, -1}, n_cloud_tgt[2] = {-1, -1}, cloud_mat[2] = {-1, -1};
@@ -315,6 +337,15 @@ static struct {
     float headStartDistance;
 } jp;
 
+/* pogo saltador (PogoStick de la 1.13, solo en el mapa de Pekin) */
+static struct {
+    int hangtime;                  /* reachedHangtime (el "isActive" del original es state == GS_POGO) */
+    float speed, startZ, endZ, startY;
+    V3 cam_off0, cam_pos0;         /* startCameraOffset y cameraPositionStart */
+    V3 tgt_off0;                   /* CameraTargetStartOffset: posicion - objetivo al empezar */
+    float smx, smxv;               /* smoothCameraX (smoothdamp) */
+} pg;
+
 /* puntuacion (GameStats) */
 static float meters_last;
 static int score, coins_run, meters;
@@ -330,12 +361,12 @@ static int powerup_active_no_board(void);
 static int booster_on;   /* Score Booster activo (definido mas abajo) */
 int game_run_seconds(void)
 {
-    return (state == GS_RUNNING || state == GS_JETPACK || state == GS_INTRO) ? (int)(game_time - start_time) : 0;
+    return (state == GS_RUNNING || state == GS_JETPACK || state == GS_POGO || state == GS_INTRO) ? (int)(game_time - start_time) : 0;
 }
 /* MissionPopup.oneOfEach de la 1.10: de los cuatro power-ups (2x, iman, zapatillas, jetpack), cuantos faltan */
 int game_oneofeach_left(void)
 {
-    if (!(state == GS_RUNNING || state == GS_JETPACK)) return 4;
+    if (!(state == GS_RUNNING || state == GS_JETPACK || state == GS_POGO)) return 4;
     return 4 - (run_pk[0] > 0) - (run_pk[1] > 0) - (run_pk[2] > 0) - (run_pk[3] > 0);
 }
 static void score_missions(int num, int from_meters)
@@ -353,7 +384,7 @@ static float pw_flash_t = -100;
 int game_powerup_flash(V3 *p, float *age)
 {
     float e = game_time - pw_flash_t;
-    if (e < 0 || e > 0.35f || (state != GS_RUNNING && state != GS_JETPACK)) return 0;
+    if (e < 0 || e > 0.35f || (state != GS_RUNNING && state != GS_JETPACK && state != GS_POGO)) return 0;
     *p = v3add(cc.pos, v3(0, 9.0f, 1.2f));
     *age = e / 0.35f;
     return 1;
@@ -1215,7 +1246,7 @@ static void update_powerup_times(float dt)
 {
     for (int i = 0; i < PT_COUNT; i++) {
         if (!pw_on[i]) continue;
-        if (state == GS_JETPACK && (i == PT_HOVERBOARD || i == PT_SNEAKERS)) continue;
+        if ((state == GS_JETPACK || state == GS_POGO) && (i == PT_HOVERBOARD || i == PT_SNEAKERS)) continue;
         pw_left[i] -= dt;
         if (pw_left[i] >= 0 || (state == GS_JETPACK && i == PT_JETPACK)) continue;
         if (i == PT_HOVERBOARD && pw_left[i] > -(HB_PARTICLE_DELAY + HB_COOLDOWN)) continue;
@@ -1307,7 +1338,7 @@ static void change_track_start(int move, float duration)
     if (!ch.jumping) anim_crossfade_queued(&anim_char, an.run, mods[MOD_HOVERBOARD].active ? 0.4f : 0.02f);
     if (newIdx < 0 || newIdx >= 3) {
         notify_stumble(&snd_stumbleSide, "side");
-        if (!mods[MOD_HOVERBOARD].active && state != GS_JETPACK)
+        if (!mods[MOD_HOVERBOARD].active && state != GS_JETPACK && state != GS_POGO)
             anim_crossfade(&anim_char, dir < 0 ? "stumbleOffLeft" : "stumbleOffRight", 0.2f);
         if (!ch.jumping) anim_crossfade_queued(&anim_char, an.run, mods[MOD_HOVERBOARD].active ? 0.4f : 0.02f);
         /* la corrutina termina aqui: el movimiento sigue marcado */
@@ -1595,7 +1626,7 @@ static void stumble_death_check(void);
 static void notify_stumble(const ClipInfo *snd, const char *name)
 {
     (void)name;
-    if (state == GS_JETPACK) return;
+    if (state == GS_JETPACK || state == GS_POGO) return;
     play_ci(snd);
     if (track_running_tutorial) return;
     dlog("TROPIEZO contra %s a %d m, carril %d%s", name, ginfo.meters, ch.trackIndex,
@@ -1884,7 +1915,7 @@ static void coins_tick(float dt)
     float half = col_height * 0.5f - col_radius;
     if (half < 0) half = 0;
     V3 a = v3sub(c, v3(0, half, 0)), b = v3add(c, v3(0, half, 0));
-    int magnet = mods[MOD_MAGNET].active && !mods[MOD_MAGNET].paused && state != GS_JETPACK;
+    int magnet = mods[MOD_MAGNET].active && !mods[MOD_MAGNET].paused && state != GS_JETPACK && state != GS_POGO;
     int sneak = mods[MOD_SNEAKERS].active && !mods[MOD_SNEAKERS].paused;
     V3 magc = v3add(cc.pos, v3(0, 5.7f + 5.0f, 10.0f));
     if (magnet && !ch.stopColliding) {
@@ -2154,12 +2185,11 @@ static void notify_pickup(int node)
         save_pending = 1;
         break;
     case PK_POGO:
-        /* PogoStickPickup de la 1.13 (solo en el mapa de Pekin): StartPogostick salta mas alto mientras dura, como las
-         * super zapatillas (mismo MOD_SNEAKERS: el salto del pogo no tiene su propia animacion en el port) */
-        mod_add(MOD_SNEAKERS);
-        play_ci(&snd_powerup);
-        powerup_picked(1);
-        dlog("POGO saltador cogido (mapa de Pekin)");
+        /* PogoStickPickup.OnPickup de la 1.13 (solo en el mapa de Pekin): no se puede coger volando con el jetpack
+         * (IsInJetpackMode) */
+        if (state == GS_JETPACK || state == GS_POGO) break;
+        powerup_picked(-1);
+        start_pogo();
         break;
     case PK_EGG:
         /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp (la 1.10: WeeklyHuntManager.ItemPickedUp, la muneca) y
@@ -3330,6 +3360,95 @@ static void jetpack_tick(float dt)
     }
 }
 
+/* ---- pogo saltador (PogoStick.Begin de la 1.13) ----
+ * Un salto largo, no una serie de botes: el personaje sube siguiendo pogoJumpCurve hasta POGO_JUMP_HEIGHT mientras
+ * avanza POGO_JUMP_DISTANCE, y al llegar vuelve a correr con un empujoncito hacia arriba. Durante el salto solo se
+ * puede cambiar de carril (HandleSwipe del original: arriba y abajo no hacen nada, y el salto no se puede cancelar).
+ * La malla del pogo va donde la tabla (su CopyTransform copia el nodo hoverBoard) */
+static void start_pogo(void)
+{
+    if (state == GS_POGO) return;
+    change_state(GS_POGO);
+    ginfo.state = GS_POGO;
+    pg.hangtime = 0;
+    pg.speed = currentSpeed;              /* a la velocidad de la carrera (el jetpack si acelera, el pogo no) */
+    pg.startZ = ch.z;
+    pg.endZ = ch.z + POGO_JUMP_DISTANCE;
+    pg.startY = cc.pos.y;
+    mods_pause_jetpack();                 /* PauseInJetpackMode: los modificadores se pausan igual que con el jetpack */
+    stumble_set(0);                       /* si venia tropezando, StopStumble */
+    ch.shadow_on = 0;                     /* meshBlobShadow.enabled = false */
+    ch.inAirJump = 0;
+    ch.verticalSpeed = 0;
+    cc.detect = 0;
+    nrt[n_colChar].active = 0;            /* detectCollisions = false */
+    set_node_active(n_meshPogo, 1);
+    pg.cam_off0 = v3sub(cam_pos, cc.pos);         /* startCameraOffset */
+    pg.cam_pos0 = cam_pos;                        /* cameraPositionStart */
+    pg.tgt_off0 = v3sub(cam_pos, cam_target);     /* CameraTargetStartOffset */
+    pg.smx = cam_pos.x; pg.smxv = 0;
+    /* PogostickCoinsManager.placeRow: por cada paso del salto, una fila de 3 monedas (una por carril) a la altura que
+     * marca la curva en ese punto, asi que las monedas dibujan el arco del salto */
+    float rowz = POGO_JUMP_DISTANCE / (float)POGO_ROWS;
+    for (int i = 0; i < POGO_ROW_END; i++) {
+        if (i <= POGO_ROW_START) continue;
+        float y = curve_eval(pogoJumpCurve, 3, (float)i / (float)POGO_ROWS) * POGO_JUMP_HEIGHT;
+        float z = ch.z + i * rowz;
+        for (int tr = 0; tr < 3; tr++)
+            coin_spawn(v3add(track_pos(track_get_x(tr), z), v3(0, y, 0)), -2);
+    }
+    an.run = "pogostick_SpinMove"; an.dodgeLeft = "pogostick_changeLane_left"; an.dodgeRight = "pogostick_changeLane_right";
+    if (anim_find(&anim_char, an.run) < 0) { an.run = "run"; an.dodgeLeft = an.run; an.dodgeRight = an.run; }
+    anim_crossfade(&anim_char, an.run, 0.2f);
+    play_ci(&snd_powerup);
+    dlog("POGO inicio: %.0f de salto, %.0f de alto (mapa de Pekin)", (double)POGO_JUMP_DISTANCE, (double)POGO_JUMP_HEIGHT);
+}
+
+static void pogo_tick(float dt)
+{
+    /* HandleSwipe: solo izquierda y derecha */
+    float dur = POGO_CHANGE_TRACK_LENGTH / (pg.speed > 1 ? pg.speed : 1);
+    if (in_left || in_right) lane_time_flush();
+    if (in_left) change_track(-1, dur);
+    if (in_right) change_track(1, dur);
+    in_left = in_right = in_up = in_down = in_board = 0;
+    ch.z += pg.speed * dt;
+    float np = (ch.z - pg.startZ) / POGO_JUMP_DISTANCE;
+    V3 pivot = v3add(track_pos(ch.x, ch.z), v3(0, curve_eval(pogoJumpCurve, 3, np) * POGO_JUMP_HEIGHT, 0));
+    /* fadeInPosition: el arranque sube desde donde estaba, para que no salte de golpe */
+    if (np <= POGO_FADE_IN) pivot.y = lerpf(pg.startY, pivot.y, np / POGO_FADE_IN);
+    if (np > POGO_HANGTIME && !pg.hangtime) {
+        pg.hangtime = 1;                  /* NotifyHangtime: la animacion del aire */
+        if (anim_find(&anim_char, "pogostick_Hangtime_flying") >= 0)
+            anim_crossfade(&anim_char, "pogostick_Hangtime_flying", 0.2f);
+    }
+    char_set_pos(pivot);
+    /* camara: sigue la x del personaje a 3/4 suavizada, y pasa del sitio de la carrera al del salto */
+    pg.smx = smoothdamp(pg.smx, cc.pos.x * POGO_CAM_X_FACTOR, &pg.smxv, POGO_CAM_SMOOTH_X, dt);
+    float warped = curve_eval(pogoCameraCurve, 4, np);
+    V3 off = v3lerp(pg.cam_off0, v3(0, POGO_CAM_OFF_Y, POGO_CAM_OFF_Z), smoothstepf(0, 1, np));
+    V3 cend = v3add(v3(pg.smx, pivot.y, ch.z), off);
+    V3 cnew = v3(pg.smx, lerpf(pg.cam_pos0.y, cend.y, warped), cend.z);
+    V3 tnew = v3lerp(v3sub(cnew, pg.tgt_off0), v3add(cc.pos, v3(0, POGO_CAM_AIM, 0)),
+                     curve_eval(pogoAimFollowCurve, 3, np));
+    tnew.x = pg.smx;
+    cam_pos = cnew; cam_target = tnew;
+    update_meters();
+    track_lay_chunks(ch.z, track_ahead_distance(), 0);
+    if (ch.z < pg.endZ) return;
+    /* fin del salto: a correr con el empujon final (CalculateJumpVerticalSpeed(finalJumpSpeed)) */
+    pg.hangtime = 0;
+    cc.detect = 1;
+    set_node_active(n_meshPogo, 0);
+    coins_release_inair();
+    mods_resume();
+    running_begin();
+    ch.verticalSpeed = jump_vs(POGO_FINAL_JUMP);
+    ChangeAnimations();
+    play_ci(&snd_powerdown);
+    dlog("POGO fin a %d m", ginfo.meters);
+}
+
 /* ---- muerte ---- */
 static void notify_critical_hit(void)
 {
@@ -3724,6 +3843,8 @@ void game_init(void)
     n_meshJetpack = node_find_path(n_spine, "sprayCanBooster");
     n_meshHoverboard = find("Character/Character Model/avatar_prefab/powerups/hoverBoard");
     n_meshSneakers = find("Character/Character Model/avatar_prefab/powerups/jumpBooster");
+    /* la 1.13: el pogo va donde la tabla (su CopyTransform copia el nodo hoverBoard), asi que se dibuja ahi */
+    n_meshPogo = find("Character/Character Model/avatar_prefab/powerups/pogostick");
     n_enemies = find("Enemies");
     n_guard = find("Enemies/guard_prefab");
     n_dog = find("Enemies/dog_prefab");
@@ -5168,7 +5289,7 @@ static void box_sound_prefetch(void)
 {
     /* tampoco al morir: se leia en la caida (302 KB) a la vez que el de revivir y las texturas de la pantalla de fin
      * (el pico de RAM de la partida). Se lee ya en la pantalla de fin o en el menu, antes de abrir la caja */
-    int run = state == GS_INTRO || state == GS_RUNNING || state == GS_JETPACK || state == GS_CHECKPOINT ||
+    int run = state == GS_INTRO || state == GS_RUNNING || state == GS_JETPACK || state == GS_POGO || state == GS_CHECKPOINT ||
               state == GS_DIEFALL || state == GS_DIE;
     if (run || box_from_shop) return;
     if (ginfo.boxes_pending > 0 || ginfo.sboxes_pending > 0 || (ginfo.reward_t > 0 && game_time - ginfo.reward_t < 1.0f)) {
@@ -5366,7 +5487,7 @@ static void use_headstart(int big)
 void game_input(unsigned in)
 {
     int confirm = (in & IN_CROSS) != 0;
-    if ((in & IN_START) && (state == GS_RUNNING || state == GS_JETPACK || state == GS_INTRO)) {
+    if ((in & IN_START) && (state == GS_RUNNING || state == GS_JETPACK || state == GS_POGO || state == GS_INTRO)) {
         if (!ginfo.paused) {
             ginfo.paused = 1;
             snd_pause_all(1);
@@ -5571,7 +5692,7 @@ void game_update(float dt)
     /* prueba: a los 5 s de carrera te atrapa el inspector (para ver el fin de partida despues) */
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
-    if (state != GS_RUNNING && state != GS_JETPACK && state != GS_INTRO) board_full_step(2);
+    if (state != GS_RUNNING && state != GS_JETPACK && state != GS_POGO && state != GS_INTRO) board_full_step(2);
     if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); tokyo_popup_check(); miami_popup_check(); paris_popup_check(); beijing_popup_check(); keys_popup_check();
                             updates_reached_check(); }
     if (ginfo.paused) {
@@ -5601,6 +5722,7 @@ void game_update(float dt)
     case GS_INTRO: intro_tick(); break;
     case GS_RUNNING: running_tick(dt); break;
     case GS_JETPACK: jetpack_tick(dt); break;
+    case GS_POGO: pogo_tick(dt); break;
     case GS_DIEFALL: case GS_DIE: die_tick(dt); break;
     case GS_CHECKPOINT: checkpoint_tick(dt); break;
     case GS_GAMEOVER: {
@@ -5641,12 +5763,12 @@ void game_update(float dt)
         }
     }
     DBG_PHASE(main, "game_update: power-ups");
-    if (state == GS_RUNNING || state == GS_JETPACK) { mods_update(dt); hunt_elapsed += dt; }
+    if (state == GS_RUNNING || state == GS_JETPACK || state == GS_POGO) { mods_update(dt); hunt_elapsed += dt; }
     char_celebrate_tick();
     brag_tick();
     box_sound_prefetch();
     sfx_big_tick();   /* los efectos largos: termina de leerlos y suelta los que ya no se piden */
-    if (fade_t0 >= 0 && fade_run && state != GS_RUNNING && state != GS_JETPACK) fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
+    if (fade_t0 >= 0 && fade_run && state != GS_RUNNING && state != GS_JETPACK && state != GS_POGO) fade_t0 = -1;   /* fin de carrera: el menu pone su volumen */
     if (fade_t0 >= 0) {
         /* MusicFader: baja en 0,5 s (fadeDownTime), calla fade_pause y sube en fade_up hasta el volumen de antes */
         float e = game_time - fade_t0, v;

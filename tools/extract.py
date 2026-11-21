@@ -3208,6 +3208,28 @@ def add_jetpack_clips(ex, scx):
     print('  animaciones del jetpack de la 1.8: %s' % (', '.join(n for n in want if n in found) or 'no encontradas'))
 
 
+def add_pogo_clips(ex, scx):
+    """CharacterRendering.pogostickClips de la 1.13: con el pogo el personaje bota (pogostick_SpinMove), en lo alto del
+    salto hace la del aire (pogostick_Hangtime_flying) y al cambiar de carril se inclina (pogostick_changeLane_*).
+    Mismo esqueleto: se anaden al Animation del personaje (avatar_prefab). Solo con el APK de la 1.13 (su mapa)."""
+    want = ['pogostick_SpinMove', 'pogostick_kicking', 'pogostick_Hangtime_flying',
+            'pogostick_Hangtime_front_flip1', 'pogostick_changeLane_left', 'pogostick_changeLane_right']
+    found = {}
+    for o in scx.env.objects:
+        if o.type.name != 'AnimationClip':
+            continue
+        try:
+            n = o.read(check_read=False).m_Name
+        except Exception:
+            continue
+        if n in want and n not in found:
+            found[n] = o
+    ids = [ex.clip_id(found[n]) for n in want if n in found]
+    if ids:
+        ex.extra_anim['avatar_prefab'] = ex.extra_anim.get('avatar_prefab', []) + ids
+    print('  animaciones del pogo de la 1.13: %s' % (', '.join(n for n in want if n in found) or 'no encontradas'))
+
+
 def swap_guard16(ex, sc16):
     """Mapa de la 1.6: el inspector y el perro de Nueva York (policia de azul con placa y perro marron). Sus mallas
     (normal_polySurface9 / normal_dog) tienen los mismos huesos en el mismo orden que las de la 1.0, asi que se cambian
@@ -3315,6 +3337,10 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     # y las del jetpack de la 1.8 (giro y cambio de carril), tambien en todos los mapas
     if sc18 is not None or sc19 is not None or sc110 is not None:
         add_jetpack_clips(ex, sc18 or sc19 or sc110)
+    # el pogo de la 1.13 solo en su mapa: es el unico que trae el tramo pogoStickStart con su pickup, asi que sus
+    # animaciones no ocupan sitio en los demas
+    if sc113 is not None and level_sc is sc113:
+        add_pogo_clips(ex, sc113)
     # busqueda de huevos de la 1.8 (por fecha, en todos los mapas): el de Roma ya trae sus SpawnPointEgg
     # (la 1.8, la 1.9 y la 1.10 traen sus propios puntos; a los demas mapas se les anaden en los de power-ups)
     # (no en el clasico de la 1.0: sin eventos, como al principio del port; Halloween y los demas mapas si)

@@ -4,7 +4,7 @@
 #include "vmath.h"
 
 enum { GS_MENU, GS_INTRO, GS_RUNNING, GS_JETPACK, GS_DIEFALL, GS_DIE, GS_GAMEOVER, GS_CHECKPOINT, GS_SHOP, GS_CHARS, GS_TROPHIES,
-       GS_BOARDS };
+       GS_BOARDS, GS_POGO };
 
 /* botones (ya filtrados: solo los recien pulsados) */
 enum { IN_LEFT = 1, IN_RIGHT = 2, IN_UP = 4, IN_DOWN = 8, IN_BOARD = 16, IN_START = 32, IN_CROSS = 64, IN_CIRCLE = 128,
