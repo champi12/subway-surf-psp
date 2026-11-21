@@ -1,4 +1,5 @@
 """Dice que APK de Subway Surfers es, mirando dentro (no el nombre del archivo):
+  113 -> la 1.13 (Pekin: trae el pogo saltador, PogoStickPickup)
   112 -> la 1.12 (Paris: trae las pegatinas de personajes, CharacterStickerManager)
   111 -> la 1.11 (Miami: trae los trajes de los personajes, CharacterThemes)
   110 -> la 1.10 (Tokio: trae la caza semanal, WeeklyHuntManager)
@@ -17,7 +18,7 @@ import zipfile
 try:
     with zipfile.ZipFile(sys.argv[1]) as z:
         dll = z.read('assets/bin/Data/Managed/Assembly-CSharp.dll')
-    print('112' if b'CharacterStickerManager' in dll else '111' if b'CharacterThemes' in dll else '110' if b'WeeklyHuntManager' in dll else '19' if b'SaveMeManager' in dll else '18' if b'EggHuntManager' in dll else '17' if b'speedboard' in dll else '16' if b'CharacterExpirationDate' in dll else '15' if b'HoverboardManager' in dll else '14' if b'ThemeAssets' in dll else
+    print('113' if b'PogoStickPickup' in dll else '112' if b'CharacterStickerManager' in dll else '111' if b'CharacterThemes' in dll else '110' if b'WeeklyHuntManager' in dll else '19' if b'SaveMeManager' in dll else '18' if b'EggHuntManager' in dll else '17' if b'speedboard' in dll else '16' if b'CharacterExpirationDate' in dll else '15' if b'HoverboardManager' in dll else '14' if b'ThemeAssets' in dll else
           '10' if b'CharacterModels' in dll else '?')
 except Exception:
     print('?')

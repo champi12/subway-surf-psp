@@ -56,8 +56,9 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
     int nw = 0;
     const uint32_t *c = node_comp(node, C_SPAWNEGG, &nw);
     if (!c) return;
-    /* [huevo, muneca, Miami, Paris] */
-    int ge = (int)c[0], gd2 = nw >= 2 ? (int)c[1] : -1, gd3 = nw >= 3 ? (int)c[2] : -1, gd4 = nw >= 4 ? (int)c[3] : -1;
+    /* [huevo, muneca, Miami, Paris, Pekin] */
+    int ge = (int)c[0], gd2 = nw >= 2 ? (int)c[1] : -1, gd3 = nw >= 3 ? (int)c[2] : -1, gd4 = nw >= 4 ? (int)c[3] : -1,
+        gd5 = nw >= 5 ? (int)c[4] : -1;
     int kind = game_hunt_kind();
     int put_egg = 0, put_doll = 0;
     if (kind == 1 && ge >= 0) {
@@ -78,9 +79,9 @@ void spawn_egg_selection(int node, int chosen, int *visit, int *nv, int max)
 #endif
         }
     }
-    /* caza semanal: la muneca de Tokio (1.10), el objeto de Miami (1.11) o la torre Eiffel de Paris (1.12), con la misma
-     * regla */
-    int gdl = kind == 4 ? gd4 : kind == 3 ? gd3 : gd2;
+    /* caza semanal: la muneca de Tokio (1.10), el objeto de Miami (1.11), la torre Eiffel de Paris (1.12) o el dragon
+     * de Pekin (1.13), con la misma regla */
+    int gdl = kind == 5 ? gd5 : kind == 4 ? gd4 : kind == 3 ? gd3 : gd2;
     if (kind >= 2 && gdl >= 0 && chosen < 0) {
         /* SpawnPointEgg.PerformSelection de la 1.10: nunca antes de 5 s desde la anterior, seguro pasados 240 s y si no
          * un 4 % en cada punto */

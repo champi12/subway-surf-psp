@@ -35,6 +35,7 @@ for f in *.apk; do
         110) [ -z "$APK110" ] && APK110="$f" ;;
         111) [ -z "$APK111" ] && APK111="$f" ;;
         112) [ -z "$APK112" ] && APK112="$f" ;;
+        113) [ -z "$APK113" ] && APK113="$f" ;;
         15) [ -z "$APK15" ] && APK15="$f" ;;
         14) [ -z "$APK14" ] && APK14="$f" ;;
         10) [ -z "$APK10" ] && APK10="$f" ;;
@@ -48,7 +49,7 @@ fi
 if [ -n "$APK15" ]; then echo "APK de la 1.5.2: $APK15 (mundo nuevo, Navidad y tablas)"; fi
 if [ -n "$APK14" ]; then echo "APK de la 1.4 clasica: $APK14"
 else echo "AVISO: no hay APK de la 1.4 clasica (1.4.0, la de Halloween de 2012): sin Halloween ni contenido de la 1.4"; fi
-VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15 w15:${WORLD15:-1} apk16:$APK16 apk17:$APK17 apk18:$APK18 apk19:$APK19 apk110:$APK110 apk111:$APK111 apk112:$APK112") | sha1sum | cut -c1-16)
+VER=$( (cat tools/extract.py tools/unityscene.py; echo "apk14:$APK14 apk15:$APK15 w15:${WORLD15:-1} apk16:$APK16 apk17:$APK17 apk18:$APK18 apk19:$APK19 apk110:$APK110 apk111:$APK111 apk112:$APK112 apk113:$APK113") | sha1sum | cut -c1-16)
 if [ -f data/.version ] && [ "$(cat data/.version)" = "$VER" ]; then
     echo "data/ esta al dia (el extractor no ha cambiado)"
 else
@@ -77,6 +78,8 @@ else
     if [ -n "$APK111" ] && [ -f "$APK111" ]; then echo "Con la 1.11 de $APK111"; OPTS+=(--apk111 "$APK111"); fi
     # la 1.12: Paris (Coco, Rose, la caza de la torre Eiffel, trajes de Spike y Tagbot) y su mapa en data/w112
     if [ -n "$APK112" ] && [ -f "$APK112" ]; then echo "Con la 1.12 de $APK112"; OPTS+=(--apk112 "$APK112"); fi
+    # la 1.13: Pekin (MonkeyKing, Dragon, Panda, la caza del dragon y el pogo saltador) y su mapa en data/w113
+    if [ -n "$APK113" ] && [ -f "$APK113" ]; then echo "Con la 1.13 de $APK113"; OPTS+=(--apk113 "$APK113"); fi
     export WORLD15=${WORLD15:-1}
     python3 tools/extract.py "$APK" data/ "${OPTS[@]}"
     echo "$VER" > data/.version
@@ -87,6 +90,8 @@ echo "== 3/3 Compilando =="
 ./build_dist.sh
 echo
 if [ -f data/w15/world.bin ]; then echo "Mapa de la 1.5.2: incluido (el principal; en Halloween se juega el clasico)"; fi
+if [ -f data/w113/world.bin ]; then echo "Mapa de la 1.13 (Pekin): incluido (del 26 de julio al 22 de agosto, con su caza semanal y el pogo saltador; WORLD113=1 lo deja siempre)"
+elif [ -n "$APK113" ]; then echo "AVISO: hay APK de la 1.13 ($APK113) pero no se genero data/w113"; fi
 if [ -f data/w112/world.bin ]; then echo "Mapa de la 1.12 (Paris): incluido (del 28 de junio al 25 de julio, con su caza semanal; WORLD112=1 lo deja siempre)"
 elif [ -n "$APK112" ]; then echo "AVISO: hay APK de la 1.12 ($APK112) pero no se genero data/w112"; fi
 if [ -f data/w111/world.bin ]; then echo "Mapa de la 1.11 (Miami): incluido (del 30 de mayo al 27 de junio, con su caza semanal; WORLD111=1 lo deja siempre)"; fi

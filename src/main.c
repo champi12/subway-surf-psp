@@ -292,6 +292,20 @@ int main(int argc, char **argv)
                 if (!(halloween_season() && has_hw)) wdir = "data/w112";
             }
         }
+        /* el mapa de la 1.13 (Pekin, data/w113) en su temporada (26 de julio - 22 de agosto, tras Paris); make
+         * WORLD113=1 lo deja siempre, para probarlo */
+        {
+            extern int beijing_season(void);
+#if defined(WORLD113) && WORLD113
+            int bei = 1;
+#else
+            int bei = beijing_season();
+#endif
+            if (bei && (f = sceIoOpen("data/w113/world.bin", PSP_O_RDONLY, 0)) >= 0) {
+                sceIoClose(f);
+                if (!(halloween_season() && has_hw)) wdir = "data/w113";
+            }
+        }
         /* Halloween: su propio mapa (data/whw: el clasico con sus llaves de Save Me). El de la 1.0 (data/) se queda como
          * el juego del principio, sin Save Me ni llaves. Sin data/whw (datos sin volver a extraer), el clasico */
         if (halloween_season() && has_hw && !strcmp(wdir, "data") && (f = sceIoOpen("data/whw/world.bin", PSP_O_RDONLY, 0)) >= 0) {
@@ -315,8 +329,8 @@ int main(int argc, char **argv)
         /* ningun mapa con texturas reducidas (mipmaps), como el original: con ellas las paredes cambiaban de color a lo
          * lejos y salian lineas, y costaban ~0,5 MB de RAM (main, props, environment, trenes, personaje...) */
         { extern int r_nomips; r_nomips = 1; }
-        { extern int game_world; game_world = !strcmp(wdir, "data/w112") ? 112 : !strcmp(wdir, "data/w111") ? 111 : !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : !strcmp(wdir, "data/whw") ? 4 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
-        dlog("Mundo: %s", !strcmp(wdir, "data/w112") ? "1.12 Paris (data/w112)" : !strcmp(wdir, "data/w111") ? "1.11 Miami (data/w111)" : !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : !strcmp(wdir, "data/whw") ? "Halloween (data/whw)" : "clasico (data/)");
+        { extern int game_world; game_world = !strcmp(wdir, "data/w113") ? 113 : !strcmp(wdir, "data/w112") ? 112 : !strcmp(wdir, "data/w111") ? 111 : !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : !strcmp(wdir, "data/whw") ? 4 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        dlog("Mundo: %s", !strcmp(wdir, "data/w113") ? "1.13 Pekin (data/w113)" : !strcmp(wdir, "data/w112") ? "1.12 Paris (data/w112)" : !strcmp(wdir, "data/w111") ? "1.11 Miami (data/w111)" : !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : !strcmp(wdir, "data/whw") ? "Halloween (data/whw)" : "clasico (data/)");
     }
 #endif
     /* primero el directorio de texturas y la interfaz: con eso ya se puede dibujar la pantalla de carga */

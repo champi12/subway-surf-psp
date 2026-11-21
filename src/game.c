@@ -446,6 +446,7 @@ int rome_season(void);
 int sydney_season(void);
 int tokyo_season(void);
 int paris_season(void);
+int beijing_season(void);
 /* actualizacion de cada tabla (filas de boards.bin): 0 la 1.5.2, 1 la 1.6, 2 la 1.7, 3 la 1.8, 4 la 1.9, 5 la 1.10 */
 static int board_update(int row)
 {
@@ -468,7 +469,9 @@ static int board_avail(int i)
     if (u == BOARD_SEASON_TOKYO) return tokyo_season();
     if (u == BOARD_SEASON_MIAMI) return miami_season();
     if (u == BOARD_SEASON_PARIS) return paris_season();
+    if (u == BOARD_SEASON_BEIJING) return beijing_season();
     if (u == BOARD_HUNT) return hunt_week_now() == 4 && tokyo_season();   /* Cherry: la cuarta semana de Tokio (IsBoardActive) */
+    if (u == BOARD_HUNT_BEIJING) return hunt_week_now() == 4 && beijing_season();   /* Panda: la cuarta semana de Pekin */
     int up = board_update(i);
     return up == 0 || (updates_reached >> up & 1);
 }
@@ -482,6 +485,7 @@ static void updates_reached_check(void)
     if (tokyo_season()) r |= 1 << 5;
     if (miami_season()) r |= 1 << 6 | 1 << 7;   /* bit 7: los trajes (solo con la fecha, no por las tablas vistas) */
     if (paris_season()) r |= 1 << 8 | 1 << 9;   /* 1.12: sus tablas fijas y (bit 9) los trajes de Spike y Tagbot */
+    if (beijing_season()) r |= 1 << 10;         /* 1.13: las tablas fijas de Pekin */
     if (r != updates_reached) {
         updates_reached = r;
         dlog("ACTUALIZACIONES alcanzadas: 0x%02x (sus tablas fijas ya salen)", r);
@@ -533,8 +537,9 @@ static int save_pending;
  * cero. hc: 1 Tokio, 2 Miami, 3 Paris */
 int miami_season(void);
 int paris_season(void);
-static const int hunt_goal[4][5] = {{0}, {0, 25, 40, 30, 60}, {0, 40, 25, 60, 30}, {0, 30, 25, 40, 30}};
-static int hunt_items[4][5], hunt_year[4];
+static const int hunt_goal[5][5] = {{0}, {0, 25, 40, 30, 60}, {0, 40, 25, 60, 30}, {0, 30, 25, 40, 30},
+                                    {0, 35, 30, 45, 60}};
+static int hunt_items[5][5], hunt_year[5];
 static int hunt_box, hunt_box_city;              /* semana y ciudad cuyo premio esta por abrir */
 static int hunt_run;                             /* IsAnyPeriodActive al empezar la carrera */
 static float hunt_elapsed;                       /* Game.ElapsedGameTime: segundos de carrera (no se reinicia) */
@@ -542,9 +547,10 @@ static float hunt_elapsed;                       /* Game.ElapsedGameTime: segund
  * APK de la 1.11 salia la caza de Miami en su fecha sin nada que coger (y lo mismo la de Tokio sin la 1.10) */
 static int hunt_data(int hc)
 {
-    static int have[4] = {-2, -2, -2, -2};
-    if (hc < 1 || hc > 3) return 0;
-    if (have[hc] == -2) have[hc] = data_tex_find(hc == 1 ? "ui_doll" : hc == 2 ? "ui_hunt111" : "ui_hunt112") >= 0;
+    static int have[5] = {-2, -2, -2, -2, -2};
+    if (hc < 1 || hc > 4) return 0;
+    if (have[hc] == -2) have[hc] = data_tex_find(hc == 1 ? "ui_doll" : hc == 2 ? "ui_hunt111" :
+                                                 hc == 3 ? "ui_hunt112" : "ui_hunt113") >= 0;
     return have[hc];
 }
 static int hunt_city(void)
@@ -553,8 +559,10 @@ static int hunt_city(void)
     return 2;
 #elif defined(AT_PARIS)
     return 3;
+#elif defined(AT_BEIJING)
+    return 4;
 #else
-    int hc = tokyo_season() ? 1 : miami_season() ? 2 : paris_season() ? 3 : 0;
+    int hc = tokyo_season() ? 1 : miami_season() ? 2 : paris_season() ? 3 : beijing_season() ? 4 : 0;
     return hunt_data(hc) ? hc : 0;
 #endif
 }
@@ -607,7 +615,7 @@ static void hunt_picked(void)
     int w = hunt_week_now(), hc = hunt_city();
     if (!w || !hc || hunt_items[hc][w] >= hunt_goal[hc][w]) return;
     hunt_items[hc][w]++;
-    dlog("CAZA semanal (%s) %d/%d (semana %d)", hc == 1 ? "Tokio" : hc == 2 ? "Miami" : "Paris", hunt_items[hc][w], hunt_goal[hc][w], w);
+    dlog("CAZA semanal (%s) %d/%d (semana %d)", hc == 1 ? "Tokio" : hc == 2 ? "Miami" : hc == 3 ? "Paris" : "Pekin", hunt_items[hc][w], hunt_goal[hc][w], w);
     if (hunt_items[hc][w] >= hunt_goal[hc][w]) {
         ginfo.sboxes_pending++;
         hunt_box = w;   /* Tokio 3 y Miami 4: una super caja normal, pero con el fondo de la caza */
@@ -616,12 +624,17 @@ static void hunt_picked(void)
             for (int i = 0; i < gd_nboards; i++)
                 if (gd_boards[i].unlock == BOARD_HUNT) { board_owned |= 1 << i; celeb_queue_board(i); }
         }
+        if (hc == 4 && w == 4) {
+            for (int i = 0; i < gd_nboards; i++)
+                if (gd_boards[i].unlock == BOARD_HUNT_BEIJING) { board_owned |= 1 << i; celeb_queue_board(i); }
+        }
         hunt_run = 0;
-        static const char *const pz[4][5][2] = {
+        static const char *const pz[5][5][2] = {
             {{0}},
             {{"", ""}, {"10 hoverboards", "10 Hoverboards"}, {"7 llaves", "7 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Cherry", "Cherry board"}},
             {{"", ""}, {"6 Score Boosters", "6 Score Boosters"}, {"5 Headstart 1000", "5 Mega Headstarts"}, {"10 llaves", "10 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}},
             {{"", ""}, {"20 hoverboards", "20 Hoverboards"}, {"4 llaves", "4 Keys"}, {"12 Headstart 1000", "12 Mega Headstarts"}, {"4 Score Boosters", "4 Score Boosters"}},
+            {{"", ""}, {"8 hoverboards", "8 Hoverboards"}, {"6 llaves", "6 Keys"}, {"Súper caja misteriosa", "Super Mystery Box"}, {"Tabla Panda", "Panda board"}},
         };
         hud_slide(TR("¡Caza semanal completada!", "Weekly Hunt complete!"), TR(pz[hc][w][0], pz[hc][w][1]));
     }
@@ -2140,6 +2153,14 @@ static void notify_pickup(int node)
         dlog("LLAVE cogida (%d)", keys);
         save_pending = 1;
         break;
+    case PK_POGO:
+        /* PogoStickPickup de la 1.13 (solo en el mapa de Pekin): StartPogostick salta mas alto mientras dura, como las
+         * super zapatillas (mismo MOD_SNEAKERS: el salto del pogo no tiene su propia animacion en el port) */
+        mod_add(MOD_SNEAKERS);
+        play_ci(&snd_powerup);
+        powerup_picked(1);
+        dlog("POGO saltador cogido (mapa de Pekin)");
+        break;
     case PK_EGG:
         /* EasterEggPickup.OnPickup: EggHuntManager.EggPickedUp (la 1.10: WeeklyHuntManager.ItemPickedUp, la muneca) y
          * las particulas de los power-ups */
@@ -2501,6 +2522,8 @@ static int hunt_week_now(void)
     if (miami_season()) return t.month == 5 || t.day <= 5 ? 1 : t.day <= 12 ? 2 : t.day <= 19 ? 3 : 4;
     /* Paris: 28 de junio - 4 de julio, 5-11, 12-18 y 19-25 (en el original del 30 de mayo al 24 de julio de 2013) */
     if (paris_season()) return t.month == 6 || t.day <= 4 ? 1 : t.day <= 11 ? 2 : t.day <= 18 ? 3 : 4;
+    /* Pekin: 26 de julio - 1 de agosto, 2-8, 9-15 y 16-22 */
+    if (beijing_season()) return t.month == 7 || t.day <= 1 ? 1 : t.day <= 8 ? 2 : t.day <= 15 ? 3 : 4;
     return 0;
 #endif
 }
@@ -2536,6 +2559,21 @@ int paris_season(void)
 #endif
 }
 
+/* Pekin de la 1.13 (MonkeyKing, las tablas Dragon y Panda, la caza semanal, el pogo saltador y su mapa): del 26 de
+ * julio al 22 de agosto, despues de Paris */
+int beijing_season(void)
+{
+#if defined(AT_BEIJING)
+    return 1;
+#elif defined(AUTOTEST)
+    return 0;
+#else
+    ScePspDateTime t;
+    if (console_date(&t) < 0) return 0;
+    return (t.month == 7 && t.day >= 26) || (t.month == 8 && t.day <= 22);
+#endif
+}
+
 /* Nueva York de la 1.6 (Tony, la tabla Liberty y su mapa de ciudad): la temporada de la actualizacion 1.6, del 3 al 29
  * de enero (Tony y Liberty se vendian del 2 de diciembre al 1 de febrero a las 00:00: Characters.cs / Hoverboards.cs);
  * despues viene Rio. El 2 de enero, tras la Navidad, el mapa normal */
@@ -2557,7 +2595,7 @@ int ny_season(void)
 int season_seconds_left(void)
 {
 #ifdef AUTOTEST
-    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() || sydney_season() || tokyo_season() || miami_season() || paris_season() ?
+    return halloween_season() || xmas_season() || ny_season() || rio_season() || rome_season() || sydney_season() || tokyo_season() || miami_season() || paris_season() || beijing_season() ?
            10 * 86400 + 3 * 3600 + 12 * 60 + 34 : 0;
 #else
     ScePspDateTime t;
@@ -2575,6 +2613,7 @@ int season_seconds_left(void)
     else if (tokyo_season()) days = 29 - t.day;                                    /* hasta el 29 de mayo */
     else if (miami_season()) days = t.month == 5 ? 31 - t.day + 27 : 27 - t.day;  /* hasta el 27 de junio */
     else if (paris_season()) days = t.month == 6 ? 30 - t.day + 25 : 25 - t.day;  /* hasta el 25 de julio */
+    else if (beijing_season()) days = t.month == 7 ? 31 - t.day + 22 : 22 - t.day;  /* hasta el 22 de agosto */
     else return 0;
     return days * 86400 + 86400 - (t.hour * 3600 + t.minute * 60 + t.second);
 #endif
@@ -2636,8 +2675,8 @@ static void xmas_popup_check(void)
  * abria esa version. Aqui, como el de Navidad, la primera vez que se abre el menu en cada temporada de Nueva York, si
  * esta el contenido de la 1.6 (Tony) */
 static int ny_popup_year, rio_popup_year, rome_popup_year, sydney_popup_year, tokyo_popup_year, miami_popup_year;
-static int paris_popup_year;
-int game_world;   /* mapa cargado (main.c): 0 clasico (1.0), 4 Halloween (data/whw), 15, 16, 17, 18, 19, 110 o 111 */
+static int paris_popup_year, beijing_popup_year;
+int game_world;   /* mapa cargado (main.c): 0 clasico (1.0), 4 Halloween (data/whw), 15, 16, 17, 18, 19, 110, 111, 112 o 113 */
 static int tony_ready(void);
 /* WelcomePopup de la 1.7 (con Carmen): la primera vez que se abre el menu en cada temporada de Rio, en su mapa */
 static int carmen_ready(void);
@@ -2713,6 +2752,17 @@ static void paris_popup_check(void)
     if (paris_popup_year == y) return;
     paris_popup_year = y;
     ginfo.popup = POPUP_PARIS;
+    game_save_bg();
+}
+/* aviso de la temporada de Pekin (1.13: MonkeyKing, las tablas Dragon y Panda, su caza semanal y el pogo saltador) */
+static int monkeyking_ready(void);
+static void beijing_popup_check(void)
+{
+    if (!beijing_season() || ginfo.popup || !monkeyking_ready()) return;
+    int y = season_year();
+    if (beijing_popup_year == y) return;
+    beijing_popup_year = y;
+    ginfo.popup = POPUP_BEIJING;
     game_save_bg();
 }
 /* ShowKeysPopup de la 1.9: la primera vez en el mapa de Sidney se explican las llaves; desde entonces Save Me va */
@@ -3830,12 +3880,14 @@ static const CharDef chars[] = {
     {"slick", "Nick", UL_COINS, TK_JAKE, 95000, "", "", NULL, 8, "nick", "avatar_nick"},
     /* 1.12: Coco, la mimo, "Paris Special" (event 9, temporada de Paris); comprada se queda. Su malla es chloe */
     {"slick", "Coco", UL_COINS, TK_JAKE, 95000, "", "", NULL, 9, "chloe", "avatar_chloe"},
+    /* 1.13: MonkeyKing, "Beijing Special" (event 10, temporada de Pekin); comprado se queda */
+    {"slick", "MonkeyKing", UL_COINS, TK_JAKE, 95000, "", "", NULL, 10, "monkeyKing", "avatar_monkeyking"},
 };
 #define NCHARS ((int)(sizeof(chars) / sizeof(chars[0])))
 #define CH_ZOMBIE 10
 #define CH_FIRST14 10
 /* orden de la lista: Jake, los de fichas y los de monedas por precio; Zombie Jake al final */
-static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 10};
+static const int char_order[] = {0, 1, 2, 3, 4, 5, 11, 6, 12, 7, 8, 13, 9, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 10};
 _Static_assert(sizeof(char_order) / sizeof(char_order[0]) == sizeof(chars) / sizeof(chars[0]), "char_order: todos los personajes");
 static int char_tokens[TK_COUNT];
 static int owned14;                  /* bit (i - CH_FIRST14): personaje de la 1.4 comprado (Zombie Jake se queda) */
@@ -3862,6 +3914,8 @@ static int harumi_ready(void) { return CH_HARUMI < NCHARS && ext_ready(CH_HARUMI
 static int nick_ready(void) { return CH_NICK < NCHARS && ext_ready(CH_NICK); }
 #define CH_COCO 23
 static int coco_ready(void) { return CH_COCO < NCHARS && ext_ready(CH_COCO); }
+#define CH_MONKEYKING 24
+static int monkeyking_ready(void) { return CH_MONKEYKING < NCHARS && ext_ready(CH_MONKEYKING); }
 
 /* sin el APK que los trae no salen; los de temporada (Zombie Jake, Elf Tricky, Tony) solo en sus fechas, en
  * cualquier mapa, o si ya son tuyos: si no se compran desaparecen hasta la temporada siguiente */
@@ -3880,6 +3934,7 @@ static int char_available(int i)
     case 7: return tokyo_season();
     case 8: return miami_season();
     case 9: return paris_season();
+    case 10: return beijing_season();
     }
     return 0;
 }
@@ -4492,7 +4547,8 @@ static void celeb_page_open(void)
  * centro (sobre el destello del fondo) y de costado, a media velocidad, como la pagina de desbloqueo de antes (lo
  * pidio el usuario: en el original llega desde lejos y no quedaba centrado). Arriba "Nuevo record" y la puntuacion.
  * Reutiliza el fondo de la pagina de desbloqueo (dos texturas pequenas) y el personaje que ya esta en la memoria */
-#define BRAG_TURN 55.0f   /* grados que se gira de costado respecto a la camara */
+#define BRAG_TURN 55.0f       /* grados que se gira de costado respecto a la camara (al final del acercamiento) */
+#define BRAG_CAM_FAR 120.0f   /* distancia de la camara al empezar: el personaje se ve pequeno al fondo */
 static float brag_t0 = -1;
 static int brag_score;
 int game_brag_show(void) { return brag_t0 >= 0; }
@@ -4509,7 +4565,7 @@ static void brag_open(int score)
     /* la carrera normal: no an.run, que se queda en "superRun" si se muere con las Super Sneakers (estira los pies y
      * lleva los pasos de las botas) o en la de la tabla */
     anim_play(&anim_char, "run");
-    celeb_run_speed(0.5f);
+    celeb_run_speed(1.0f);   /* llega corriendo de verdad: a media velocidad, quieto en el sitio, se veia mal */
     nrt[n_sprayCan].rend = 0;
     set_node_active(n_meshSneakers, 0);
     nrt[n_avatar].lrot = qeuler(0, CHARS_TURN + BRAG_TURN, 0);
@@ -4616,7 +4672,7 @@ static void zombie_init(int slick_node)
         n += ext_mat[i] >= 0;
     }
     if (n) r_init_materials();   /* que tengan mipmaps como los demas */
-    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : sydney_season() ? " (Sidney: Kim a la venta)" : tokyo_season() ? " (Tokio: Harumi a la venta)" : miami_season() ? " (Miami: Nick a la venta)" : "");
+    if (n) dlog("Personajes de la 1.4 disponibles: %d%s", n, halloween_season() ? " (Halloween: Zombie Jake a la venta)" : xmas_season() ? " (Navidad: Elf Tricky a la venta)" : ny_season() ? " (Nueva York: Tony a la venta)" : rio_season() ? " (Rio: Carmen a la venta)" : rome_season() ? " (Roma: Roberto a la venta)" : sydney_season() ? " (Sidney: Kim a la venta)" : tokyo_season() ? " (Tokio: Harumi a la venta)" : miami_season() ? " (Miami: Nick a la venta)" : paris_season() ? " (Paris: Coco a la venta)" : beijing_season() ? " (Pekin: MonkeyKing a la venta)" : "");
 }
 
 /* MysteryBox.Roll: ficha de un personaje que aun la necesite; -1 si ya no queda ninguno */
@@ -4649,7 +4705,8 @@ int board_is_season(int row)
     int u = gd_boards[row].unlock;
     return u == BOARD_SEASON ? 1 : u == BOARD_SEASON_RIO ? 2 : u == BOARD_SEASON_ROME ? 3 : u == BOARD_EGGS ? 4 :
            u == BOARD_SEASON_SYDNEY ? 5 : u == BOARD_SEASON_TOKYO ? 6 : u == BOARD_HUNT ? 7 :
-           u == BOARD_SEASON_MIAMI ? 8 : u == BOARD_SEASON_PARIS ? 9 : 0;
+           u == BOARD_SEASON_MIAMI ? 8 : u == BOARD_SEASON_PARIS ? 9 : u == BOARD_SEASON_BEIJING ? 10 :
+           u == BOARD_HUNT_BEIJING ? 11 : 0;
 }
 int board_is_new(int row)
 {
@@ -4780,6 +4837,12 @@ static void boards_input(unsigned in, int confirm)
             snprintf(b, sizeof(b), TR("Muñecas: %d/%d", "Dolls: %d/%d"), game_hunt_items(4), game_hunt_goal(4));
             snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
             hud_slide(TR("Búscalas corriendo", "Find them while running"), b);
+        } else if (d->unlock == BOARD_HUNT_BEIJING) {
+            /* 1.13: Panda tampoco se compra, es el premio de la cuarta semana de la caza de Pekin */
+            char b[40];
+            snprintf(b, sizeof(b), TR("Dragones: %d/%d", "Dragons: %d/%d"), game_hunt_items(4), game_hunt_goal(4));
+            snd_play(sfx_find("Hr_stumble_side"), 0.5f, 1.2f, 0);
+            hud_slide(TR("Búscalos corriendo", "Find them while running"), b);
         } else if (d->unlock == BOARD_FREE) {
             /* regalo: se reclama y queda elegida */
             board_owned |= 1 << r;
@@ -5509,7 +5572,7 @@ void game_update(float dt)
     { static int done; if (state == GS_RUNNING && game_time - start_time > 5.0f && !done) { done = 1; guard_show(1); game_die(); } }
 #endif
     if (state != GS_RUNNING && state != GS_JETPACK && state != GS_INTRO) board_full_step(2);
-    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); tokyo_popup_check(); miami_popup_check(); paris_popup_check(); keys_popup_check();
+    if (state == GS_MENU) { halloween_popup_check(); xmas_popup_check(); ny_popup_check(); rio_popup_check(); rome_popup_check(); sydney_popup_check(); tokyo_popup_check(); miami_popup_check(); paris_popup_check(); beijing_popup_check(); keys_popup_check();
                             updates_reached_check(); }
     if (ginfo.paused) {
         if (ginfo.countdown > 0) {
@@ -5789,18 +5852,21 @@ void game_draw(void)
             if (v3len(face) < 1e-4f) face = v3(0, 0, -1);
             face = v3norm(face);
             V3 f = v3scale(face, -1.0f), rt = v3norm(v3cross(v3(0, 1, 0), f));
-            float cx = CHARS_CAM_X;
+            float cx = CHARS_CAM_X, cd = CHARS_CAM_D;
             if (game_brag_show()) {
-                /* celebracion del record: la camara donde estaria sin el giro de costado (el personaje lleva BRAG_TURN
-                 * de mas) y el personaje en el centro */
-                float a = -BRAG_TURN * 0.017453293f, ca = cosf(a), sa = sinf(a);
+                /* celebracion del record (BragCelebration): el personaje en el centro y llegando desde lejos, como el
+                 * original. La curva va de 0 (al fondo, de frente, corriendo hacia la camara) a 1 (cerca y de costado):
+                 * se acerca la camara y se gira hasta la pose final */
+                float k = game_brag_curve();
+                float a = -BRAG_TURN * k * 0.017453293f, ca = cosf(a), sa = sinf(a);
                 V3 fb = v3(face.x * ca + face.z * sa, 0, -face.x * sa + face.z * ca);
                 f = v3scale(fb, -1.0f);
                 rt = v3norm(v3cross(v3(0, 1, 0), f));
                 cx = 0;
+                cd = BRAG_CAM_FAR + (CHARS_CAM_D - BRAG_CAM_FAR) * k;
             }
             V3 tgt = v3add(chest, v3scale(rt, cx));
-            r_set_camera(v3sub(chest, v3scale(f, CHARS_CAM_D)), tgt, 60.0f);
+            r_set_camera(v3sub(chest, v3scale(f, cd)), tgt, 60.0f);
             scene_draw_subtree(n_character);
             outfit_draw_accessory();
             r_flush_transparent();
@@ -6012,7 +6078,12 @@ static int save_fill(unsigned char *buf)
                  (theme_seen[3] & 15) | (theme_seen[11] & 15) << 4 | (coco_seen & 1) << 8 | 1 << 9 | (flamingo_celebrated & 1) << 10,   /* pegatinas */
                  0, 0, 0, 1 << 30};
     memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3), e4, sizeof(e4));
-    return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4));
+    /* de la 1.13: los dragones de cada semana de la caza de Pekin, su ano y el aviso de la temporada */
+    int e5[8] = {(hunt_items[4][1] & 127) | (hunt_items[4][2] & 127) << 7 | (hunt_items[4][3] & 127) << 14 | (hunt_items[4][4] & 127) << 21,
+                 (hunt_year[4] & 0xff) | (beijing_popup_year & 0xffff) << 8,
+                 0, 0, 0, 0, 0, 1 << 30};
+    memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4), e5, sizeof(e5));
+    return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4) + sizeof(e5));
 }
 
 static void save_write(const unsigned char *buf, int n)
@@ -6026,7 +6097,7 @@ static void save_write(const unsigned char *buf, int n)
 /* Guardar en segundo plano (mapa de la 1.5.2, al acabar la carrera): escribir save.dat en la Memory Stick son ~50 ms
  * y se hacia justo al aparecer la pantalla de fin (un tiron). Los datos se copian al momento y los escribe otro hilo;
  * game_save() espera a que termine antes de escribir, asi nunca se escriben dos a la vez */
-static unsigned char save_bg_buf[320];
+static unsigned char save_bg_buf[352];
 static int save_bg_len;
 static volatile int save_bg_busy;
 static SceUID save_bg_sema = -1;
@@ -6051,7 +6122,7 @@ void game_save(void)
 {
     save_pending = 0;
     save_bg_wait();
-    unsigned char buf[320];
+    unsigned char buf[352];
     int n = save_fill(buf);
     save_write(buf, n);
 }
@@ -6093,6 +6164,9 @@ void game_load(void)
     int e4[8];
     memset(e4, 0, sizeof(e4));
     int ne4 = ne3 == 8 ? (int)fread(e4, 4, 8, f) : 0;
+    int e5[8];
+    memset(e5, 0, sizeof(e5));
+    int ne5 = ne4 == 8 ? (int)fread(e5, 4, 8, f) : 0;
     fclose(f);
     if (ne4 == 8 && (e4[7] >> 30 & 1)) {
         for (int w = 1; w <= 4; w++) hunt_items[3][w] = (e4[0] >> (7 * (w - 1))) & 127;
@@ -6102,6 +6176,10 @@ void game_load(void)
         celeb_theme_done[3] = (e4[2] >> 14) & 15; celeb_theme_done[11] = (e4[2] >> 18) & 15;
         if (e4[3] >> 9 & 1) { theme_seen[3] = e4[3] & 15; theme_seen[11] = (e4[3] >> 4) & 15; coco_seen = (e4[3] >> 8) & 1;
                               flamingo_celebrated = (e4[3] >> 10) & 1; }
+    }
+    if (ne5 == 8 && (e5[7] >> 30 & 1)) {
+        for (int w = 1; w <= 4; w++) hunt_items[4][w] = (e5[0] >> (7 * (w - 1))) & 127;
+        hunt_year[4] = e5[1] & 0xff; beijing_popup_year = (e5[1] >> 8) & 0xffff;
     }
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */

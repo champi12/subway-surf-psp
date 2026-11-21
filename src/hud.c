@@ -973,6 +973,7 @@ static void draw_tokyo_popup(void);
 static void draw_hunt_popup(void);
 static void draw_miami_popup(void);
 static void draw_paris_popup(void);
+static void draw_beijing_popup(void);
 static void draw_hunt_button(void);
 
 /* SnowEffect de la 1.5.2: nieve cayendo en la portada mientras dura la Navidad. 40 copos (sprites 2D del brillo
@@ -1061,6 +1062,7 @@ static void draw_menu(void)
         if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
         if (ginfo.popup == POPUP_MIAMI) draw_miami_popup();
         if (ginfo.popup == POPUP_PARIS) draw_paris_popup();
+        if (ginfo.popup == POPUP_BEIJING) draw_beijing_popup();
         if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
         return;
     }
@@ -1087,6 +1089,7 @@ static void draw_menu(void)
     if (ginfo.popup == POPUP_HUNT) draw_hunt_popup();
     if (ginfo.popup == POPUP_MIAMI) draw_miami_popup();
     if (ginfo.popup == POPUP_PARIS) draw_paris_popup();
+    if (ginfo.popup == POPUP_BEIJING) draw_beijing_popup();
     if (ginfo.popup == POPUP_KEYS) draw_keys_popup();
 }
 
@@ -1383,14 +1386,47 @@ static void draw_paris_popup(void)
     labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
 }
 
+static void draw_beijing_popup(void)
+{
+    char buf[64], bw[40];
+    r_rect(0, 0, SCR_W, SCR_H, 0x82000000);
+    float w = 444, h = 214, x = (SCR_W - w) * 0.5f, y = 18;
+    panel(x, y, w, h);
+    const unsigned C_BEI = 0xff2020c4u;   /* rojo de Pekin */
+    float bx = x + 82, by = y + 64;
+    ui_sliced(a_ui, "backgroud_callout_square", bx - U(80), by - U(62), U(160), U(124), UIS, C_BEI);
+    spr_c("background_callout_triangle", bx + U(84), by + U(4), U(20), U(20), C_BEI);
+    labc(1, bx, by - U(28), 26, C_WHITE, 1, 1, TR("¡Bienvenido", "Welcome"));
+    labfit(1, bx, by + U(8), 26, U(150), 0xff3cd2ffu, 1, 1, TR("a Pekín!", "to Beijing!"));
+    int wk = game_hunt_week();
+    snprintf(bw, sizeof(bw), TR("Caza semanal %d de 4", "Weekly Hunt %d of 4"), wk);
+    if (wk && game_hunt_items(wk) >= game_hunt_goal(wk)) snprintf(buf, sizeof(buf), "%s", TR("¡Completada! Vuelve la próxima semana", "Complete! Come back next week"));
+    else snprintf(buf, sizeof(buf), TR("Busca dragones: %d de %d", "Look for dragons: %d of %d"), game_hunt_items(wk), game_hunt_goal(wk));
+    const char *lines[3][4] = {
+        {"La vuelta al mundo llega a Asia", "The World Tour goes to Asia", "Visita China y conoce al Rey Mono", "Visit China and meet the Monkey King"},
+        {"Nuevo power-up: el pogo saltador", "New power-up: the Pogo Stick", "Solo en el mapa de Pekín", "Only on the Beijing map"},
+        {bw, bw, buf, buf},
+    };
+    float lx = x + 178, ly = y + 22;
+    for (int i = 0; i < 3; i++) {
+        labfit(0, lx, ly + i * 46, 17, x + w - lx - 10, C_NAVY, 0, 0, TR(lines[i][0], lines[i][1]));
+        labfit(0, lx + 10, ly + i * 46 + 18, 14, x + w - lx - 20, 0xffba9e5cu, 0, 0, TR(lines[i][2], lines[i][3]));
+    }
+    float cx = SCR_W * 0.5f, cy = y + h - 30;
+    ui_sliced(a_ui, "button_green_buy", cx - U(118), cy - U(21), U(236), U(42), UIS, C_WHITE);
+    ui_sliced(a_ui, "button_generic_3_outline", cx - U(121), cy - U(23), U(246), U(52), UIS, C_WHITE);
+    labc(0, cx, cy, 20, C_WHITE, 1, 1, "OK (X)");
+}
+
 /* la muneca de la caza semanal (ui_doll, 25x35) centrada en (cx, cy) con alto h */
 static void doll_icon(float cx, float cy, float h, unsigned int col)
 {
-    static int td = -2, tm = -2, tp = -2;
-    if (td == -2) { td = data_tex_find("ui_doll"); tm = data_tex_find("ui_hunt111"); tp = data_tex_find("ui_hunt112"); }
+    static int td = -2, tm = -2, tp = -2, tb = -2;
+    if (td == -2) { td = data_tex_find("ui_doll"); tm = data_tex_find("ui_hunt111"); tp = data_tex_find("ui_hunt112");
+                    tb = data_tex_find("ui_hunt113"); }
     if (game_hunt_city() >= 2) {
-        /* el objeto de la caza de Miami (1.11) o la torre Eiffel de Paris (1.12): icono cuadrado */
-        int t = game_hunt_city() == 3 ? tp : tm;
+        /* el objeto de Miami (1.11), la torre Eiffel de Paris (1.12) o el dragon de Pekin (1.13): icono cuadrado */
+        int t = game_hunt_city() == 4 ? tb : game_hunt_city() == 3 ? tp : tm;
         if (t >= 0) r_sprite(t, cx - h * 0.5f, cy - h * 0.5f, h, h, 0, 0, 1, 1, col);
         return;
     }
@@ -1739,7 +1775,9 @@ static void draw_boards(void)
                                                                      : TR("Va agachado", "Stays Low"));
     else if (board_is_season(i)) {
         int bs = board_is_season(i);
-        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 9 ? TR("Especial de París", "Paris Special")
+        lab(0, 16, 40, 15, C_LIMITED, 0, 0, bs == 11 ? TR("Especial Caza semanal", "Weekly Hunt Special")
+                                           : bs == 10 ? TR("Especial de Pekín", "Beijing Special")
+                                           : bs == 9 ? TR("Especial de París", "Paris Special")
                                            : bs == 8 ? TR("Especial de Miami", "Miami Special")
                                            : bs == 7 ? TR("Especial Caza semanal", "Weekly Hunt Special")
                                            : bs == 6 ? TR("Especial de Tokio", "Tokyo Special")
@@ -1764,13 +1802,15 @@ static void draw_boards(void)
         labc(0, bx, by, 20, C_WHITE, 1, 1, board_is_selected(i) ? TR("ELEGIDA", "SELECTED") : TR("ELEGIR (X)", "SELECT (X)"));
     } else if (board_is_gift(i)) {
         labc(0, bx, by, 20, C_WHITE, 1, 1, TR("GRATIS (X)", "FREE (X)"));
-    } else if (board_is_season(i) == 7) {
-        /* Cherry (1.10): se gana con las munecas de la cuarta semana de la caza */
-        static int t_doll = -2;
-        if (t_doll == -2) t_doll = data_tex_find("ui_doll");
+    } else if (board_is_season(i) == 7 || board_is_season(i) == 11) {
+        /* Cherry (1.10) y Panda (1.13): no se compran, se ganan con los objetos de la cuarta semana de su caza. El
+         * icono es el de la caza de esa tabla, no el de la temporada de hoy (se mira fuera de fecha) */
+        static int t_doll = -2, t_bei = -2;
+        if (t_doll == -2) { t_doll = data_tex_find("ui_doll"); t_bei = data_tex_find("ui_hunt113"); }
+        int pan = board_is_season(i) == 11, t = pan ? t_bei : t_doll;
         snprintf(buf, sizeof(buf), "%d/%d", game_hunt_items(4), game_hunt_goal(4));
         float pw = labw(0, 20, buf), px = bx + U(12) - pw * 0.5f;
-        if (t_doll >= 0) r_sprite(t_doll, px - U(26), by - U(14), U(20), U(28), 0, 0, 1, 1, C_WHITE);
+        if (t >= 0) r_sprite(t, px - U(26), by - U(14), pan ? U(28) : U(20), U(28), 0, 0, 1, 1, C_WHITE);
         labc(0, px, by, 20, C_WHITE, 0, 1, buf);
     } else if (board_is_season(i) == 4) {
         /* Chicky (HoverboardBuyButton de la 1.8): no se compra; los huevos que se llevan de los que hacen falta */

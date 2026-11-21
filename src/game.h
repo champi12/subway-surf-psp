@@ -47,7 +47,7 @@ typedef struct {
     const char *reward_icon;      /* sprite del objeto del premio (ficha, trofeo, monedas...) */
 #define REWARD_REVEAL 2.26f       /* hasta el texto: la tapa a la mitad (0,46 s) + 0,5 + 1,3 s (MysteryBoxPopup) */
 } GameInfo;
-enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI, POPUP_MAPS, POPUP_PARIS };
+enum { POPUP_NONE, POPUP_HALLOWEEN, POPUP_XMAS, POPUP_SETTINGS, POPUP_PRIZES, POPUP_DAILY, POPUP_BOARDS, POPUP_NY, POPUP_RIO, POPUP_ROME, POPUP_SYDNEY, POPUP_KEYS, POPUP_TOKYO, POPUP_HUNT, POPUP_MIAMI, POPUP_MAPS, POPUP_PARIS, POPUP_BEIJING };
 /* TutorialHoverboardPopup ("Out of Boards?"): aviso en el boton de tablas del menu y cuantas se han usado (0: la
  * version "Need Help?") */
 int game_board_guideline(void);
@@ -97,7 +97,7 @@ int game_hunt_goal(int w);
 int game_hunt_button(void);                     /* 0 nada, 1 huevos (Roma), 2 munecas (Tokio) */
 int game_hunt_box_next(void);
 int game_hunt_box_city(void);                   /* 1 Tokio, 2 Miami */
-int game_hunt_city(void);                       /* caza de ahora: 0 ninguna, 1 Tokio, 2 Miami */
+int game_hunt_city(void);                       /* caza de ahora: 0 ninguna, 1 Tokio, 2 Miami, 3 Paris, 4 Pekin */
 int miami_season(void);
 void outfit_draw_accessory(void);               /* 1.11: el accesorio del traje, con los huesos del personaje */
 void char_theme_shift(int dir);                 /* ver el traje siguiente (+1) o anterior (-1) */
