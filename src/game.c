@@ -2005,6 +2005,7 @@ static void coins_tick(float dt)
 /* ---- power-ups recogidos ---- */
 static void mod_add(int m);
 static void start_jetpack(int headstart, float hs_dist);
+static void start_pogo(void);   /* 1.13: el pogo saltador (solo en el mapa de Pekin) */
 
 /* ------------------------------------------------------------ palabra del dia (PlayerInfo.dailyWord)
  * En el original la palabra la mandaba el servidor cada dia: las letras salen en la via (SpawnPointManager, un
