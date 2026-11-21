@@ -1922,10 +1922,13 @@ static void coins_tick(float dt)
     float half = col_height * 0.5f - col_radius;
     if (half < 0) half = 0;
     V3 a = v3sub(c, v3(0, half, 0)), b = v3add(c, v3(0, half, 0));
-    int magnet = mods[MOD_MAGNET].active && !mods[MOD_MAGNET].paused && state != GS_JETPACK && state != GS_POGO;
+    /* el pogo no pausa el iman (su ShouldPauseInJetpack es falso: PauseInJetpackMode solo pausa zapatillas y tabla) */
+    int magnet = mods[MOD_MAGNET].active && !mods[MOD_MAGNET].paused && state != GS_JETPACK;
     int sneak = mods[MOD_SNEAKERS].active && !mods[MOD_SNEAKERS].paused;
     V3 magc = v3add(cc.pos, v3(0, 5.7f + 5.0f, 10.0f));
-    if (magnet && !ch.stopColliding) {
+    /* en el pogo no: cols no se rehace (phys_build no corre en el salto) y esas monedas van en los trenes, por debajo de
+     * los 70 a los que el iman de la 1.13 deja de atraer las de abajo */
+    if (magnet && !ch.stopColliding && state != GS_POGO) {
         /* el iman tambien atrae las monedas sueltas de la escena (las de los trenes en marcha): CoinMagnet.CoinHit.
          * La moneda del tren se oculta y en su sitio sale una del pool (sin dueno, -3) que vuela hasta Jake */
         for (int i = 0; i < ncols; i++) {
@@ -1988,8 +1991,14 @@ static void coins_tick(float dt)
             V3 mc = magnet ? magc : v3add(cc.pos, v3(0, -21.0f, 3.0f));
             float r = magnet ? 60.0f : 2.0f;
             int hit;
-            if (magnet) hit = v3len(v3sub(sp, mc)) < r + 4.5f;
-            else {
+            if (magnet) {
+                hit = v3len(v3sub(sp, mc)) < r + 4.5f;
+                /* CoinMagnet.CoinHit de la 1.13: solo atrae las monedas del mismo lado de los 70 que el personaje. En el
+                 * suelo, no las de las lineas altas; en el pogo, las de arriba (arco y lineas altas) y no las del suelo.
+                 * La 1.12 no lo hacia, asi que solo en Pekin (donde scene_coin_toplevel_y vale esos 70) */
+                if (hit && scene_coin_toplevel_y >= 0 &&
+                    (cc.pos.y >= scene_coin_toplevel_y) != (k->pos.y >= scene_coin_toplevel_y)) hit = 0;
+            } else {
                 /* capsula de las zapatillas: r=2, h=60, centro (0,-21,3) */
                 V3 sa = v3add(cc.pos, v3(0, -21.0f - 28.0f, 3.0f)), sb = v3add(cc.pos, v3(0, -21.0f + 28.0f, 3.0f));
                 V3 sab = v3sub(sb, sa);
