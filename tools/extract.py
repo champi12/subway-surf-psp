@@ -1947,7 +1947,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
         for scx, ver in ((sc15, '1.5.2'), (getattr(ex, 'sc16', None), '1.6'), (getattr(ex, 'sc17', None), '1.7'),
                          (getattr(ex, 'sc18', None), '1.8'), (getattr(ex, 'sc19', None), '1.9'),
                          (getattr(ex, 'sc110', None), '1.10'), (getattr(ex, 'sc111', None), '1.11'),
-                         (getattr(ex, 'sc112', None), '1.12')):
+                         (getattr(ex, 'sc112', None), '1.12'), (getattr(ex, 'sc113', None), '1.13')):
             if not prev or scx is None:
                 continue
             # los que trae de mas (Elf Tricky en la 1.5.2, Tony en la 1.6): con el nombre de su malla, que es como
@@ -2020,8 +2020,8 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 print('  icono del Score Booster para la tienda, con el fondo de rayos')
         # la llave de la 1.9 (Save Me y precio de los trajes): su icono de la hoja normal. Se usa en varias pantallas
         # (contador de llaves, trajes), asi que se saca de cualquier APK de la 1.9+ que haya, no solo del mundo principal
-        sc19_ = (getattr(ex, 'sc112', None) or getattr(ex, 'sc111', None) or getattr(ex, 'sc110', None) or
-                 getattr(ex, 'sc19', None))
+        sc19_ = (getattr(ex, 'sc113', None) or getattr(ex, 'sc112', None) or getattr(ex, 'sc111', None) or
+                 getattr(ex, 'sc110', None) or getattr(ex, 'sc19', None))
         if sc19_ is not None:
             ic = sprite_from_raw_atlas(sc19_, 'icon_key', small=True)
             if ic is not None:
@@ -2043,7 +2043,7 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
         # 1.11: icono del objeto de la caza de Miami, fondo de sus cajas y la celebracion de los desbloqueos
         # (la celebracion y el selector de trajes tambien de la 1.12 si no esta la 1.11; lo de Miami, solo de la 1.11)
         miami_ = getattr(ex, 'sc111', None)
-        sc111_ = miami_ or getattr(ex, 'sc112', None)
+        sc111_ = miami_ or getattr(ex, 'sc112', None) or getattr(ex, 'sc113', None)
         if sc111_ is not None:
             ic = sprite_from_raw_atlas(miami_, 'icon_hunt_item_big', small=True) if miami_ is not None else None
             if ic is not None:
@@ -2085,6 +2085,17 @@ def export_ui(sc, ex, sc14=None, boards=None, sc15=None, city_sc=None):
                 sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
                 ex.textures.append(('generada', 'ui_hunt112', sq.resize((32, 32), Image.LANCZOS), True))
                 print('  icono de la torre Eiffel de la caza de Paris: %dx%d' % (w_, h_))
+        # 1.13: icono del dragon de la caza de Pekin (su hoja normal: icon_hunt_item_big, como los dos anteriores).
+        # Sin el, hunt_data() apaga la caza de Pekin (como pasaba con Miami sin el APK de la 1.11)
+        sc113_ = getattr(ex, 'sc113', None)
+        if sc113_ is not None:
+            ic = sprite_from_raw_atlas(sc113_, 'icon_hunt_item_big', small=True)
+            if ic is not None:
+                w_, h_ = ic.size
+                sq = Image.new('RGBA', (max(w_, h_),) * 2, (0, 0, 0, 0))
+                sq.paste(ic, ((sq.size[0] - w_) // 2, (sq.size[1] - h_) // 2))
+                ex.textures.append(('generada', 'ui_hunt113', sq.resize((32, 32), Image.LANCZOS), True))
+                print('  icono del dragon de la caza de Pekin: %dx%d' % (w_, h_))
         # icono del huevo de Pascua de la 1.8 (contador de la busqueda de huevos), de su hoja normal
         sc18_ = getattr(ex, 'sc18', None) or getattr(ex, 'sc19', None)
         if sc18_ is not None:
@@ -3290,6 +3301,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
         ([sc110] if sc110 is not None and sc110 is not level_sc and sc110 is not sc18 else []) + \
         ([sc111] if sc111 is not None and sc111 is not level_sc else []) + \
         ([sc112] if sc112 is not None and sc112 is not level_sc else []) + \
+        ([sc113] if sc113 is not None and sc113 is not level_sc else []) + \
         ([sc19] if sc19 is not None and sc19 is not level_sc and sc19 is not sc18 else [])   # huevo y llave de la 1.9
     eggsrc = sc18 or sc19
     msc = scl[0] if len(scl) == 1 else MultiScene(scl)
@@ -3301,6 +3313,7 @@ def export_set(sc, level_sc, sc14, outdir, classic=True, sc15=None, boards_ui=No
     ex.sc110 = sc110 # y de la 1.10 (Harumi, la muneca de la caza semanal)
     ex.sc111 = sc111 # y de la 1.11 (Nick, Hotrod, Flamingo, la caza de Miami, los trajes)
     ex.sc112 = sc112 # y de la 1.12 (Coco, Rose, la caza de Paris, trajes de Spike y Tagbot)
+    ex.sc113 = sc113 # y de la 1.13 (MonkeyKing, Dragon, Panda, la caza de Pekin, el pogo, trajes de Fresh)
     ex.level_sc = level_sc
     trees = []
     for r in sc.roots('level0'):

@@ -565,7 +565,7 @@ float game_level_speed(void) { return currentLevelSpeed; }
 static int save_pending;
 /* caza semanal (WeeklyHuntManager): de la 1.10 en Tokio (munecas), de la 1.11 en Miami (su objeto) y de la 1.12 en
  * Paris (la torre Eiffel). Cada semana su objetivo y su premio; lo cogido es de la temporada: cada ano se empieza de
- * cero. hc: 1 Tokio, 2 Miami, 3 Paris */
+ * cero. hc: 1 Tokio, 2 Miami, 3 Paris, 4 Pekin */
 int miami_season(void);
 int paris_season(void);
 static const int hunt_goal[5][5] = {{0}, {0, 25, 40, 30, 60}, {0, 40, 25, 60, 30}, {0, 30, 25, 40, 30},
@@ -636,7 +636,7 @@ int game_hunt_button(void)
 }
 int game_hunt_box_next(void) { return hunt_box != 0; }
 int game_hunt_box_city(void) { return hunt_box_city; }
-/* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (Tokio), 3 objeto de Miami, 4 torre Eiffel (Paris) */
+/* 0 sin caza, 1 huevos (temporada de Roma), 2 munecas (Tokio), 3 objeto de Miami, 4 torre Eiffel (Paris), 5 dragon (Pekin) */
 int game_hunt_kind(void) { return hunt_run ? 1 + hunt_city() : egg_hunt_run ? 1 : 0; }
 float game_hunt_time(void) { return hunt_elapsed; }
 static void hunt_picked(void)
@@ -4221,12 +4221,13 @@ static int outfit_find(int ci, int sel)   /* sel: 0 normal, t+1 traje t */
 /* nombre de cada traje (CharacterThemes de la 1.11: *_THEME_TITLE) */
 static const char *outfit_name(int oi)
 {
-    /* CharacterThemes de la 1.11 y la 1.12 (*_THEME_TITLE): {personaje, {es, en} de cada traje} */
+    /* CharacterThemes de la 1.11, la 1.12 y la 1.13 (*_THEME_TITLE): {personaje, {es, en} de cada traje} */
     static const struct { int ci; const char *t[2][2]; } nm[] = {
         {0,  {{"Traje Oscuro", "Dark Outfit"},       {"Traje Estrella", "Star Outfit"}}},   /* Jake */
         {1,  {{"Traje Camuflaje", "Camo Outfit"},    {"Traje Corazón", "Heart Outfit"}}},   /* Tricky */
         {11, {{"Traje Espacial", "Space Outfit"},    {"Traje Juguete", "Toy Outfit"}}},     /* Tagbot (1.12) */
         {3,  {{"Traje Rock", "Rock Outfit"},         {"Traje Punk", "Punk Outfit"}}},       /* Spike (1.12) */
+        {2,  {{"Traje Baloncesto", "Basket Outfit"}, {"Traje Elegante", "Smooth Outfit"}}}, /* Fresh (1.13) */
     };
     if (oi < 0 || oi >= noutfits) return "";
     int ci = outfits[oi].ci, ti = outfits[oi].ti;
