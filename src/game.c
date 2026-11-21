@@ -4234,13 +4234,14 @@ static const char *outfit_name(int oi)
         if (nm[k].ci == ci && ti >= 0 && ti < 2) return TR(nm[k].t[ti][0], nm[k].t[ti][1]);
     return ci >= 0 && ci < NCHARS ? chars[ci].name : "";
 }
-/* los trajes de cada actualizacion. Los de Jake y Tricky son de la 1.11, pero la 1.12 tambien los trae: salen tras
- * jugar en la temporada de Miami (bit 7) o en la de Paris (bit 9), aunque se haya saltado la de Miami. Los de Spike y
- * Tagbot (1.12) tras jugar en la de Paris. Una version futura que los traiga anade su bit a la mascara.
+/* los trajes de cada actualizacion. Los de una version los trae tambien cualquier version posterior, asi que basta con
+ * haber jugado la temporada de esa o de una mas nueva: los de Jake y Tricky (1.11) salen jugando Miami (bit 7), Paris
+ * (bit 9) o Pekin (bit 11), aunque se hayan saltado las anteriores; los de Spike y Tagbot (1.12), jugando Paris o
+ * Pekin; los de Fresh (1.13), jugando Pekin. Una version futura que los traiga anade su bit a las tres mascaras.
  * Las tablas no: las de temporada solo salen en su fecha (o regaladas, como la de Paris) */
-#define OUTFITS_JT_BITS (1 << 7 | 1 << 9)
-#define OUTFITS_112_BITS (1 << 9)
-#define OUTFITS_113_BITS (1 << 11)   /* 1.13: los trajes de Fresh (Basket y Smooth), en la temporada de Pekin */
+#define OUTFITS_JT_BITS (1 << 7 | 1 << 9 | 1 << 11)
+#define OUTFITS_112_BITS (1 << 9 | 1 << 11)
+#define OUTFITS_113_BITS (1 << 11)   /* 1.13: los trajes de Fresh (Basket y Smooth) */
 /* Jake y Tricky son de la 1.11, Fresh de la 1.13 y los demas (Spike, Tagbot) de la 1.12 */
 static int outfit_ci_avail(int ci)
 {
@@ -4257,7 +4258,7 @@ int char_theme_count(int ci)
 /* como las tablas de cada actualizacion: aparecen la primera vez que se juega en la temporada de Miami (su fecha) y
  * desde ahi se quedan en todos los mapas. Bit propio (7): el 6 tambien lo encienden las tablas de la 1.11 vistas o
  * compradas, y los trajes salian sin haber llegado a la fecha */
-int outfits_avail(void) { return (updates_reached & (OUTFITS_JT_BITS | OUTFITS_112_BITS)) != 0; }
+int outfits_avail(void) { return (updates_reached & (OUTFITS_JT_BITS | OUTFITS_112_BITS | OUTFITS_113_BITS)) != 0; }
 /* PlayerInfo.isAnyCharacterWithFreeTheme (1.11): queda un traje gratis sin reclamar. Los gratis NO se dan solos: el
  * boton ME lleva la pegatina FREE GIFT (GiftBradCharacters) y en la pantalla de personajes se reclaman con X */
 int game_free_outfit(void)
@@ -6351,7 +6352,7 @@ void game_load(void)
             int pb = (e3[4] >> 1) & 63;
             celeb_pend_board = pb ? pb - 1 : -1;
         }
-        updates_reached = e3[3] & 0xffff;   /* bits 8 y 9: la 1.12 */
+        updates_reached = e3[3] & 0xffff;   /* bits 8 y 9 la 1.12, 10 y 11 la 1.13 */
     } else {
         /* partidas de antes: las actualizaciones cuyas tablas ya se vieron o se compraron cuentan como alcanzadas */
         for (int r = 7; r < 32; r++) if ((board_seen | board_owned) >> r & 1) updates_reached |= 1 << board_update(r);
