@@ -237,6 +237,18 @@ CoinRT coins[MAX_COINS];
 int coin_mesh_node = -1, coin_glow_node = -1;
 static V3 coin_local[MAX_COINS];
 
+/* CoinLineManager de la 1.13: altura por encima de la cual las lineas de monedas van escondidas hasta que el pogo las
+ * ensena (CoinLine.topLevelHight, 70 en su constructor). Negativo: sin esa mecanica (los demas mapas) */
+float scene_coin_toplevel_y = -1.0f;
+
+/* CoinLineManager.ToggleLines: ensena o esconde las monedas de las lineas altas */
+void scene_coins_toplevel_visible(int vis)
+{
+    if (scene_coin_toplevel_y < 0) return;
+    for (int i = 0; i < MAX_COINS; i++)
+        if (coins[i].active && coins[i].pos.y > scene_coin_toplevel_y) coins[i].visible = vis ? 1 : 0;
+}
+
 int coin_spawn(V3 pos, int owner)
 {
     for (int i = 0; i < MAX_COINS; i++) {
@@ -573,7 +585,13 @@ static void obj_activate(int n)
     if ((c = node_comp(n, C_COINLINE, NULL))) {
         float len = u2f(c[0]), sp = u2f(c[1]);
         V3 p = m34_pos(&nrt[n].world), f = v3norm(m34_col(&nrt[n].world, 2));
-        for (float t = 0; t < len; t += sp) coin_spawn(v3add(p, v3scale(f, t)), n);
+        for (float t = 0; t < len; t += sp) {
+            V3 cp = v3add(p, v3scale(f, t));
+            int ci = coin_spawn(cp, n);
+            /* CoinLine.OnActivate de la 1.13: las lineas por encima de topLevelHight se colocan escondidas
+             * (CoinLineManager.AddLine) y solo las ensena el pogo, que es quien sube hasta ellas */
+            if (ci >= 0 && scene_coin_toplevel_y >= 0 && cp.y > scene_coin_toplevel_y) coins[ci].visible = 0;
+        }
     }
     if ((c = node_comp(n, C_COINJUMP, NULL))) {
         float offset = u2f(c[1]), sp = u2f(c[2]), br = u2f(c[3]), er = u2f(c[4]);

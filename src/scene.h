@@ -67,6 +67,9 @@ typedef struct {
 extern CoinRT coins[MAX_COINS];
 extern int coin_mesh_node, coin_glow_node;
 int coin_spawn(V3 pos, int owner);
+/* 1.13: las lineas de monedas mas altas que esto van escondidas hasta que el pogo las ensena (-1: sin la mecanica) */
+extern float scene_coin_toplevel_y;
+void scene_coins_toplevel_visible(int vis);
 void coin_release_owner(int owner);
 void coins_release_inair(void);
 void coins_draw(void);

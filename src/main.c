@@ -330,6 +330,10 @@ int main(int argc, char **argv)
          * lejos y salian lineas, y costaban ~0,5 MB de RAM (main, props, environment, trenes, personaje...) */
         { extern int r_nomips; r_nomips = 1; }
         { extern int game_world; game_world = !strcmp(wdir, "data/w113") ? 113 : !strcmp(wdir, "data/w112") ? 112 : !strcmp(wdir, "data/w111") ? 111 : !strcmp(wdir, "data/w110") ? 110 : !strcmp(wdir, "data/w19") ? 19 : !strcmp(wdir, "data/w18") ? 18 : !strcmp(wdir, "data/w17") ? 17 : !strcmp(wdir, "data/w16") ? 16 : !strcmp(wdir, "data/w15") ? 15 : !strcmp(wdir, "data/whw") ? 4 : 0; }   /* los mapas nuevos (1.5.2, 1.6) */
+        /* CoinLineManager de la 1.13: solo en Pekin, el unico mapa con pogo, las lineas de monedas altas van
+         * escondidas hasta que el pogo sube a por ellas (en los demas no habria forma de ensenarlas) */
+        { extern int game_world; extern float scene_coin_toplevel_y;
+          if (game_world == 113) scene_coin_toplevel_y = 70.0f; }
         dlog("Mundo: %s", !strcmp(wdir, "data/w113") ? "1.13 Pekin (data/w113)" : !strcmp(wdir, "data/w112") ? "1.12 Paris (data/w112)" : !strcmp(wdir, "data/w111") ? "1.11 Miami (data/w111)" : !strcmp(wdir, "data/w110") ? "1.10 Tokio (data/w110)" : !strcmp(wdir, "data/w19") ? "1.9 Sidney (data/w19)" : !strcmp(wdir, "data/w18") ? "1.8 Roma (data/w18)" : !strcmp(wdir, "data/w17") ? "1.7 Rio (data/w17)" : !strcmp(wdir, "data/w16") ? "1.6 (data/w16)" : !strcmp(wdir, "data/w15") ? "1.5.2 (data/w15)" : !strcmp(wdir, "data/whw") ? "Halloween (data/whw)" : "clasico (data/)");
     }
 #endif

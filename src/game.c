@@ -516,7 +516,7 @@ static void updates_reached_check(void)
     if (tokyo_season()) r |= 1 << 5;
     if (miami_season()) r |= 1 << 6 | 1 << 7;   /* bit 7: los trajes (solo con la fecha, no por las tablas vistas) */
     if (paris_season()) r |= 1 << 8 | 1 << 9;   /* 1.12: sus tablas fijas y (bit 9) los trajes de Spike y Tagbot */
-    if (beijing_season()) r |= 1 << 10;         /* 1.13: las tablas fijas de Pekin */
+    if (beijing_season()) r |= 1 << 10 | 1 << 11;   /* 1.13: sus tablas fijas y (bit 11) los trajes de Fresh */
     if (r != updates_reached) {
         updates_reached = r;
         dlog("ACTUALIZACIONES alcanzadas: 0x%02x (sus tablas fijas ya salen)", r);
@@ -3387,6 +3387,7 @@ static void start_pogo(void)
     pg.cam_pos0 = cam_pos;                        /* cameraPositionStart */
     pg.tgt_off0 = v3sub(cam_pos, cam_target);     /* CameraTargetStartOffset */
     pg.smx = cam_pos.x; pg.smxv = 0;
+    scene_coins_toplevel_visible(1);      /* coinLineManager.ToggleLines(true): salen las monedas de arriba */
     /* PogostickCoinsManager.placeRow: por cada paso del salto, una fila de 3 monedas (una por carril) a la altura que
      * marca la curva en ese punto, asi que las monedas dibujan el arco del salto */
     float rowz = POGO_JUMP_DISTANCE / (float)POGO_ROWS;
@@ -3439,6 +3440,7 @@ static void pogo_tick(float dt)
     /* fin del salto: a correr con el empujon final (CalculateJumpVerticalSpeed(finalJumpSpeed)) */
     pg.hangtime = 0;
     cc.detect = 1;
+    scene_coins_toplevel_visible(0);      /* vuelven a esconderse: ya no se llega a ellas */
     set_node_active(n_meshPogo, 0);
     coins_release_inair();
     mods_resume();
@@ -4238,7 +4240,13 @@ static const char *outfit_name(int oi)
  * Las tablas no: las de temporada solo salen en su fecha (o regaladas, como la de Paris) */
 #define OUTFITS_JT_BITS (1 << 7 | 1 << 9)
 #define OUTFITS_112_BITS (1 << 9)
-static int outfit_ci_avail(int ci) { return (updates_reached & (ci <= 1 ? OUTFITS_JT_BITS : OUTFITS_112_BITS)) != 0; }
+#define OUTFITS_113_BITS (1 << 11)   /* 1.13: los trajes de Fresh (Basket y Smooth), en la temporada de Pekin */
+/* Jake y Tricky son de la 1.11, Fresh de la 1.13 y los demas (Spike, Tagbot) de la 1.12 */
+static int outfit_ci_avail(int ci)
+{
+    int bits = ci <= 1 ? OUTFITS_JT_BITS : ci == 2 ? OUTFITS_113_BITS : OUTFITS_112_BITS;
+    return (updates_reached & bits) != 0;
+}
 int char_theme_count(int ci)
 {
     if (!outfit_ci_avail(ci)) return 0;
@@ -4279,7 +4287,8 @@ static int coco_seen;            /* Coco ya visto en el carrusel (MarkCharacterA
 static int sticker_flow(void) { return hb_shown; }
 /* visto: mirado en el selector o ya comprado (partidas de antes de las pegatinas) */
 static int theme_is_seen(int ci, int t) { return ((theme_seen[ci] | char_theme_owned[ci]) >> (t - 1)) & 1; }
-static int outfit_is_new(int oi) { int ci = outfits[oi].ci; return ci == 3 || ci == 11; }   /* isNewInThisUpdate: Spike y Tagbot */
+/* isNewInThisUpdate: Spike y Tagbot de la 1.12, y Fresh de la 1.13 */
+static int outfit_is_new(int oi) { int ci = outfits[oi].ci; return ci == 2 || ci == 3 || ci == 11; }
 /* burbuja del boton del traje t (1..) del personaje ci en el selector (UICharacterThemeShifter.SetupButton):
  * 1 NUEVO (de pago, nuevo en la 1.12 y sin mirar), 2 REGALO (gratis y sin reclamar), 0 ninguna */
 int game_theme_bubble(int ci, int t)
@@ -6203,7 +6212,10 @@ static int save_fill(unsigned char *buf)
     /* de la 1.13: los dragones de cada semana de la caza de Pekin, su ano y el aviso de la temporada */
     int e5[8] = {(hunt_items[4][1] & 127) | (hunt_items[4][2] & 127) << 7 | (hunt_items[4][3] & 127) << 14 | (hunt_items[4][4] & 127) << 21,
                  (hunt_year[4] & 0xff) | (beijing_popup_year & 0xffff) << 8,
-                 0, 0, 0, 0, 0, 1 << 30};
+                 /* los trajes de Fresh (ci 2): comprados, puesto, ya celebrados y mirados */
+                 (char_theme_owned[2] & 15) | (char_theme_sel[2] & 7) << 4 | (celeb_theme_done[2] & 15) << 8 |
+                 (theme_seen[2] & 15) << 12,
+                 0, 0, 0, 0, 1 << 30};
     memcpy(buf + sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4), e5, sizeof(e5));
     return (int)(sizeof(d) + sizeof(e) + sizeof(e2) + sizeof(e3) + sizeof(e4) + sizeof(e5));
 }
@@ -6302,6 +6314,8 @@ void game_load(void)
     if (ne5 == 8 && (e5[7] >> 30 & 1)) {
         for (int w = 1; w <= 4; w++) hunt_items[4][w] = (e5[0] >> (7 * (w - 1))) & 127;
         hunt_year[4] = e5[1] & 0xff; beijing_popup_year = (e5[1] >> 8) & 0xffff;
+        char_theme_owned[2] = e5[2] & 15; char_theme_sel[2] = (e5[2] >> 4) & 7;
+        celeb_theme_done[2] = (e5[2] >> 8) & 15; theme_seen[2] = (e5[2] >> 12) & 15;
     }
     if (ne >= 4) { dw_streak = e[0]; dw_last_paid = e[1]; ginfo.sboxes_pending = e[2]; ginfo.sboxes_opened = e[3]; }
     if (ne >= 6) { board_sel = e[4] - 1; board_owned = e[5]; }   /* se comprueba al cargar boards.bin */
