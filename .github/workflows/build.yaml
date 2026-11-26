@@ -1,0 +1,79 @@
+
+name: Build Subway Surfers PSP
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Compile PSP executable
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src" \
+            -w /src \
+            pspdev/pspdev:latest \
+            make
+
+      - name: Prepare distribution
+        run: |
+          mkdir -p dist/PSP/GAME/SUBWAY
+
+          cp EBOOT.PBP dist/PSP/GAME/SUBWAY/
+
+          cat > dist/INSTALL.txt << 'EOF'
+          Subway Surfers PSP - Installation
+
+          1. Extract the PSP directory to the root of your
+             PSP Memory Stick.
+
+          2. Obtain the required Subway Surfers game assets
+             and generate the data directory using the
+             instructions in the original source repository:
+             https://github.com/champi12/subway-surf-psp
+
+          3. Copy the generated data directory into:
+
+             PSP/GAME/SUBWAY/data/
+
+          4. Your final installation should contain:
+
+             PSP/GAME/SUBWAY/EBOOT.PBP
+             PSP/GAME/SUBWAY/data/
+
+          5. Launch Subway Surfers from the PSP Game menu.
+
+          Requires custom firmware (CFW/ARK/PRO) or PPSSPP.
+          EOF
+
+          cd dist
+          zip -r ../subway-surf-psp.zip PSP INSTALL.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: subway-surf-psp
+          path: subway-surf-psp.zip
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: subway-surf-psp.zip
+          generate_release_notes: true
+
